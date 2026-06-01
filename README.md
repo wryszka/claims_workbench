@@ -2,11 +2,12 @@
 
 Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**, built as a redeployable Databricks Asset Bundle. Motor Third Party + Home Property, end to end on the Lakehouse.
 
-> **Phases 0–3** of a multi-phase build.
+> **Phases 0–4** of a multi-phase build.
 > **Phase 0** — scaffold + a synthetic Guidewire CDA **landing zone** (`landing_*`, ~120k claims), UC-tagged.
 > **Phase 1** — a real **bronze DLT pipeline** that reads the landing zone and produces governed `bronze_*` tables with data-quality expectations + quarantine.
 > **Phase 2** — a **silver enrichment** layer (`silver_claims_enriched`): one row per claim joining all seven bronze tables, plus the assembled claim lifecycle and ML training labels.
 > **Phase 3** — **gold analytics** (`gold_*`), a HITL audit shell, and a real **Lakeview board dashboard**.
+> **Phase 4** — two governed **UC feature tables** (`feature_triage`, `feature_reserve`) built with `FeatureEngineeringClient`, with a persisted encoder.
 > Models, agents, and the app come in later phases.
 
 ## The flow, literally
@@ -33,9 +34,14 @@ Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**,
         silver ──► gold_reserve_development   gold_settlement_performance
                    gold_geo_clustering        gold_handler_scorecard
                    gold_handler_decisions (HITL audit shell, empty)
+                   └─► Lakeview "Claims Portfolio — Board View"
+                                   │
+              FEATURES (Phase 4)   ▼
+        silver ──► feature_triage   feature_reserve   (UC Feature Store, PK
+                   ref_feature_encodings (persisted)   claim_public_id)
                                    │
                                    ▼
-        Lakeview "Claims Portfolio — Board View"  →  models / agents / app (future)
+        Phase 5 FeatureLookup / fe.log_model  →  models / agents / app (future)
 ```
 
 ## Quick Start
@@ -58,6 +64,9 @@ databricks bundle run claims_workbench_01_bronze_dlt -t dev
 
 # 6. Phase 3 — build gold analytics; the Lakeview dashboard is created by the deploy above:
 #    run notebooks/03_gold_analytics.py  -> gold_* tables + audit shell
+
+# 7. Phase 4 — build the UC feature tables:
+#    run notebooks/04_feature_engineering.py  -> feature_triage, feature_reserve, ref_feature_encodings
 ```
 
 ## Catalog — portable, with one pinned line for DLT
@@ -143,6 +152,19 @@ Verified: 118,822 rows = 1 per claim = bronze claim count; vivid `cc:900001` →
 
 Modeling proxies (documented, no source data): `customer_touchpoints_avg` scales with claim duration; `claims_per_1000_policies` uses distinct claiming-policies per district (policies aren't geocoded in the feed); `override_rate_pct` is a placeholder 0 until the Phase 8 app logs HITL overrides. Tables tagged `layer=gold` (UC tag + TBLPROPERTIES fallback; `project`/`owner` UC tags governed on this workspace). A `# PRICING HOOK` comment in the gold notebook marks where geo risk would feed the pricing workbench.
 
+## Phase 4 — UC feature tables (`feature_triage`, `feature_reserve`)
+
+`notebooks/04_feature_engineering.py` builds two governed Unity Catalog **feature tables** with `FeatureEngineeringClient`, keyed by `claim_public_id`, sourced from `silver_claims_enriched`. **Features only — no label columns** (`triage_decision` / `reserve_bracket` are targets, joined at training time from silver).
+
+- `feature_triage` — FNOL triage classifier features: encoded peril/channel, `reported_amount_log`, sum-insured ratio, fraud score, prior claims, reporting lag, policy tenure, weather composite, is_high_value, at_fault, third_party_involved, postcode flood risk.
+- `feature_reserve` — reserve-bracket features: encoded peril/handler-grade/triage (historical triage outcome as an *input* feature), `reported_amount_log`, fraud score, prior claims, weather composite, `days_open`, `sum_insured_log`.
+
+**Deterministic, persisted encoding** (`ref_feature_encodings`): fixed canonical maps for `peril_type` / `report_channel` / `handler_grade` / `triage_decision` (unseen → -1), persisted as a Delta table so Phase 5 training and Phase 8 serving encode categoricals identically — inconsistent train/serve encoding is a silent killer. Idempotent (create-or-merge by PK).
+
+**For later phases (not built):** Phase 5 consumes these via `FeatureLookup(lookup_key='claim_public_id')` and logs them with the model via `fe.log_model()`, so Phase 8 serving auto-joins features at inference time.
+
+Verified: both tables UC-registered with PK `claim_public_id`, 118,822 rows = distinct keys = silver count, no label columns; vivid `cc:900001` carries `fraud_score=74`, `prior_claims_12m=2`, `reporting_lag_days=18`, `peril_type_encoded=3 (motor_tp)`; encoding map persisted (13 rows / 4 features). Tagged `layer=feature`.
+
 ## Deliberately-seeded business signals
 
 These are intentional — later phases tell stories with them:
@@ -185,7 +207,8 @@ claims_workbench/
 │   ├── 01_bronze_dlt_pipeline.py          # Phase 1 — bronze DLT pipeline source
 │   ├── 01b_tag_bronze.py                  # Phase 1 — post-step: tag bronze tables
 │   ├── 02_silver_enrichment.py            # Phase 2 — silver_claims_enriched (run this)
-│   └── 03_gold_analytics.py               # Phase 3 — gold_* tables + audit shell (run this)
+│   ├── 03_gold_analytics.py               # Phase 3 — gold_* tables + audit shell (run this)
+│   └── 04_feature_engineering.py          # Phase 4 — UC feature tables + encoder (run this)
 ├── dashboards/
 │   └── claims_board.lvdash.json           # Phase 3 — Lakeview "Board View" dashboard
 ├── resources/
