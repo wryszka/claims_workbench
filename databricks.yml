@@ -1,0 +1,43 @@
+# Bricksurance SE — Claims Intelligence Workbench
+# Databricks Asset Bundle (DAB) — Phase 0: scaffold + synthetic data generation.
+#
+# One-command deploy:  databricks bundle deploy -t dev
+#
+# --------------------------------------------------------------------------
+# CATALOG: this "just works" on any dev workspace.
+# --------------------------------------------------------------------------
+# The `catalog` variable is intentionally EMPTY by default. When it is empty,
+# the setup notebook falls back to the workspace's standard catalog via
+# spark.catalog.currentCatalog() at run time — so you do not have to know or
+# hardcode the catalog name to run the demo.
+#
+# To pin a specific catalog instead, override it in ONE line, either:
+#   * on the CLI:        databricks bundle deploy -t dev --var="catalog=my_catalog"
+#   * or in this file:   set `default:` below to your catalog name.
+# --------------------------------------------------------------------------
+
+bundle:
+  name: claims_workbench
+
+variables:
+  catalog:
+    description: >-
+      Unity Catalog to deploy into. Leave empty to auto-resolve to the
+      workspace's current catalog at run time. Override to pin a catalog.
+    default: ""
+  schema:
+    description: Fixed schema for all Claims Workbench objects.
+    default: claims_workbench
+
+targets:
+  dev:
+    mode: development
+    default: true
+    # Portability: ship with a placeholder host so this bundle is workspace-agnostic.
+    # To run locally, set host to your dev workspace URL and uncomment `profile`.
+    workspace:
+      host: REPLACE-ME            # e.g. https://fevm-lr-serverless-aws-us.cloud.databricks.com
+      # profile: DEFAULT
+    variables:
+      # catalog: ""  # <- pin your catalog here if you don't want auto-resolve
+      schema: claims_workbench
