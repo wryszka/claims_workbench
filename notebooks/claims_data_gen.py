@@ -120,7 +120,9 @@ def roll_dates(df, days_ago_col, out_col, anchor=None):
     never goes stale. Pass an explicit 'YYYY-MM-DD' string to re-anchor.
     """
     anchor_sql = "current_date()" if anchor is None else f"to_date('{anchor}')"
-    return df.withColumn(out_col, F.expr(f"date_sub({anchor_sql}, {days_ago_col})"))
+    # Cast the offset to INT — date_sub() rejects BIGINT, and some offset
+    # expressions derive from LONG columns (e.g. policy_seq).
+    return df.withColumn(out_col, F.expr(f"date_sub({anchor_sql}, CAST({days_ago_col} AS INT))"))
 
 
 def _anchor_sql(anchor=None):
@@ -143,35 +145,38 @@ def build_claims(spark, anchor=None):
     district_wts = [w for _, w in DISTRICTS]
 
     spec = (
-        dg.DataGenerator(spark, name="cc_claim", rows=N_CLAIMS,
-                         partitions=8, randomSeed=SEED)
+        # randomSeedMethod="hash_fieldname" seeds each column independently
+        # (reproducible but decorrelated). Without it, a set randomSeed uses the
+        # "fixed" method -> every column shares one stream, so e.g. u_cause ends
+        # up correlated with postcode_district. We need independent draws.
+        dg.DataGenerator(spark, name="cc_claim", rows=N_CLAIMS, partitions=8,
+                         randomSeed=SEED, randomSeedMethod="hash_fieldname")
         .withColumn("claim_seq", "long",
                     minValue=CLAIM_SEQ_START, maxValue=CLAIM_SEQ_START + N_CLAIMS - 1,
                     uniqueValues=N_CLAIMS, random=False)
         .withColumn("postcode_district", "string",
                     values=district_vals, weights=district_wts, random=True)
-        .withColumn("u_amount", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_cause", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_channel", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_status", "double", minValue=0.0, maxValue=1.0, random=True)
+        .withColumn("u_amount", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_cause", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_channel", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_status", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
         .withColumn("days_ago_loss", "int", minValue=1, maxValue=1080, random=True)
         .withColumn("report_lag_days", "int", minValue=0, maxValue=40, random=True)
-        .withColumn("policy_pick", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_prior", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_fraud", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_role", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_paid", "double", minValue=0.0, maxValue=1.0, random=True)
-        .withColumn("u_sig", "double", minValue=0.0, maxValue=1.0, random=True)
+        .withColumn("policy_pick", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_prior", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_fraud", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_role", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_paid", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_sig", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
         .withColumn("desc_pick", "int", minValue=0, maxValue=7, random=True)
-        .withColumn("u_badpol", "double", minValue=0.0, maxValue=1.0, random=True)
+        .withColumn("u_badpol", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
     )
     df = spec.build()
 
     is_nw = "postcode_district rlike '^(M|BL|OL|WN)[0-9]'"
 
     # loss_cause — NW districts get ~3x escape-of-water (waterdamage) frequency.
-    # Non-NW thresholds:  veh .45 | water .20 | windhail .20 | fire .15
-    # NW thresholds:      veh .28 | water .48 | windhail .14 | fire .10  (~3x water)
+    # NW water band width 0.48, non-NW 0.16 -> ~3x (verified ~0.48 vs ~0.16).
     df = df.withColumn(
         "loss_cause",
         F.expr(f"""
@@ -185,7 +190,7 @@ def build_claims(spark, anchor=None):
             ELSE
                 CASE
                     WHEN u_cause < 0.45 THEN 'vehcollision'
-                    WHEN u_cause < 0.65 THEN 'waterdamage'
+                    WHEN u_cause < 0.61 THEN 'waterdamage'
                     WHEN u_cause < 0.85 THEN 'windhail'
                     ELSE 'fire'
                 END
@@ -544,8 +549,8 @@ def build_handlers(spark, anchor=None):
     import dbldatagen as dg
 
     spec = (
-        dg.DataGenerator(spark, name="handlers", rows=N_HANDLERS,
-                         partitions=1, randomSeed=SEED)
+        dg.DataGenerator(spark, name="handlers", rows=N_HANDLERS, partitions=1,
+                         randomSeed=SEED, randomSeedMethod="hash_fieldname")
         .withColumn("h_seq", "int", minValue=1, maxValue=N_HANDLERS,
                     uniqueValues=N_HANDLERS, random=False)
         .withColumn("fn_idx", "int", minValue=0, maxValue=len(_FIRST_NAMES) - 1, random=True)
@@ -622,15 +627,40 @@ TABLE_LAYERS = {
 }
 
 
+def set_tags_safe(spark, target_sql, tags):
+    """Apply UC tags one key at a time, skipping any rejected by a governed tag
+    policy on the workspace (some workspaces restrict the allowed values for a
+    tag key). Returns (applied, skipped) dicts.
+
+    `target_sql` is the ALTER target, e.g. "TABLE `cat`.`sch`.`tbl`" or
+    "SCHEMA `cat`.`sch`". Keeps the demo portable: the full tag scheme applies
+    on ungoverned workspaces; governed keys are simply logged and skipped.
+    """
+    applied, skipped = {}, {}
+    for k, v in tags.items():
+        try:
+            spark.sql(f"ALTER {target_sql} SET TAGS ('{k}' = '{v}')")
+            applied[k] = v
+        except Exception as e:  # noqa: BLE001 — narrow on governed-tag message
+            msg = str(e)
+            if any(s in msg for s in
+                   ("not an allowed value", "tag policy", "INVALID_PARAMETER_VALUE")):
+                skipped[k] = v
+                print(f"[tags] skipped governed tag {k}={v} on {target_sql}: "
+                      f"{msg.splitlines()[0][:160]}")
+            else:
+                raise
+    return applied, skipped
+
+
 def write_and_tag(spark, df, catalog, schema, table, layer):
     """Overwrite a Delta table (idempotent) and apply UC tags."""
     fqn = f"`{catalog}`.`{schema}`.`{table}`"
     (df.write.format("delta").mode("overwrite")
        .option("overwriteSchema", "true").saveAsTable(fqn))
-    spark.sql(
-        f"ALTER TABLE {fqn} SET TAGS "
-        f"('project' = 'claims_workbench', 'layer' = '{layer}', 'owner' = 'wryszka')"
-    )
+    set_tags_safe(spark, f"TABLE {fqn}", {
+        "project": "claims_workbench", "layer": layer, "owner": "wryszka",
+    })
     return spark.table(fqn).count()
 
 
@@ -644,10 +674,20 @@ def generate_all(spark, catalog, schema, anchor=None):
     # --- claims (bulk + vivid) ---
     # The bulk frame carries helper columns (u_*, policy_seq, is_bad_policy, ...)
     # that the child builders consume; the vivid row carries only the public
-    # schema + the few helper cols the policy builder needs. Keep them separate
-    # and union just the public projection for the persisted claim table.
-    bulk = build_claims(spark, anchor=anchor)
-    bulk.cache()
+    # schema + the few helper cols the policy builder needs.
+    #
+    # dbldatagen's random columns are NOT stable across separate Spark actions
+    # on serverless (and .cache()/.persist() is unsupported there). Deriving the
+    # child tables from a single lazy `bulk` frame would therefore decorrelate
+    # them — e.g. claim.loss_cause vs contact.postcode_district would be
+    # different random draws for the same claim. So materialise the full
+    # enriched frame ONCE to a scratch Delta table and read it back; every child
+    # table then derives from identical, stable rows (correct cross-table
+    # relationships + FK integrity). The scratch table is dropped at the end.
+    scratch = f"`{catalog}`.`{schema}`._tmp_bulk_claims"
+    (build_claims(spark, anchor=anchor).write.format("delta").mode("overwrite")
+        .option("overwriteSchema", "true").saveAsTable(scratch))
+    bulk = spark.table(scratch)
     vivid = vivid_claim_row(spark, anchor=anchor)
 
     claims_public = (
@@ -697,5 +737,7 @@ def generate_all(spark, catalog, schema, anchor=None):
     counts["ref_weather_index"] = write_and_tag(
         spark, weather, catalog, schema, "ref_weather_index", "ref")
 
-    bulk.unpersist()
+    # Drop the scratch materialisation — it is an internal staging table only.
+    spark.sql(f"DROP TABLE IF EXISTS {scratch}")
+
     return counts

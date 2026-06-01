@@ -58,7 +58,7 @@ or set the `catalog` widget when running the notebook. The schema is fixed as `c
 | `bronze_gw_cc_exposure` | bronze | ~120k | Coverage / reserve / paid amounts |
 | `bronze_gw_cc_incident` | bronze | ~120k | Incident type + templated description text |
 | `bronze_gw_cc_contact` | bronze | ~120k | Claimant / third-party / witness + UK postcode district |
-| `bronze_gw_pc_policy` | bronze | ~70k | PolicyCenter policy (motor / home) |
+| `bronze_gw_pc_policy` | bronze | ~55k | PolicyCenter policy (motor / home), only policies referenced by a claim |
 | `bronze_fraud_signals_raw` | bronze | ~120k | Rule-seeded fraud score, prior claims, report lag |
 | `bronze_weather_raw` | bronze | ~30 | Per-district flood / wind / freeze risk |
 | `ref_handlers` | ref | ~80 | Claim handlers (grade / team / BU) |

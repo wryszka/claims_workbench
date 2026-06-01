@@ -65,15 +65,32 @@ print(f"[target]  {catalog}.{schema}")
 
 # MAGIC %md
 # MAGIC ## 3 · Create & tag the schema
+# MAGIC Tags are applied per key and resilient to **governed tag policies** — if a
+# MAGIC workspace restricts the allowed values for a tag key (e.g. `project`), that
+# MAGIC key is logged and skipped rather than failing the run. The full tag scheme
+# MAGIC applies unchanged on ungoverned workspaces.
 
 # COMMAND ----------
 
+import os
+import sys
+
+# Load the helper module first (needed for set_tags_safe).
+_ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+_nb_path = _ctx.notebookPath().get()
+_helper_dir = "/Workspace" + os.path.dirname(_nb_path)
+if _helper_dir not in sys.path:
+    sys.path.insert(0, _helper_dir)
+import claims_data_gen as cdg
+
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
-spark.sql(
-    f"ALTER SCHEMA `{catalog}`.`{schema}` SET TAGS "
-    f"('project' = 'claims_workbench', 'owner' = 'wryszka', 'demo' = 'bricksurance_se')"
+applied, skipped = cdg.set_tags_safe(
+    spark, f"SCHEMA `{catalog}`.`{schema}`",
+    {"project": "claims_workbench", "owner": "wryszka", "demo": "bricksurance_se"},
 )
-print(f"Schema `{catalog}`.`{schema}` ready and tagged.")
+print(f"Schema `{catalog}`.`{schema}` ready. Tags applied: {applied}")
+if skipped:
+    print(f"Tags skipped (governed tag policy on this workspace): {skipped}")
 
 # COMMAND ----------
 
@@ -84,18 +101,7 @@ print(f"Schema `{catalog}`.`{schema}` ready and tagged.")
 
 # COMMAND ----------
 
-import os
-import sys
-
-# Make the sibling helper module importable regardless of where the bundle synced it.
-_ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-_nb_path = _ctx.notebookPath().get()
-_helper_dir = "/Workspace" + os.path.dirname(_nb_path)
-if _helper_dir not in sys.path:
-    sys.path.insert(0, _helper_dir)
-
-import claims_data_gen as cdg
-
+# Helper module already imported in section 3 (cdg).
 print(f"Helper module loaded from: {_helper_dir}")
 print(f"Vivid claim id: {cdg.VIVID_CLAIM_ID}")
 
@@ -172,22 +178,33 @@ print(json.dumps({**vd, **vf, "postcode_district": vc["postcode_district"]}, ind
 
 # COMMAND ----------
 
-# --- 5d · Confirm the project tag on the schema and at least one table ---
+# --- 5d · Confirm UC tags landed (governed tag policies may restrict some keys) ---
 schema_tags = spark.sql(f"""
     SELECT tag_name, tag_value
     FROM `{catalog}`.information_schema.schema_tags
-    WHERE schema_name = '{schema}' AND tag_name = 'project'
+    WHERE schema_name = '{schema}'
 """).collect()
-assert any(r["tag_value"] == "claims_workbench" for r in schema_tags), schema_tags
+schema_tag_map = {r["tag_name"]: r["tag_value"] for r in schema_tags}
+print(f"Schema tags applied: {schema_tag_map}")
 
-table_tags = spark.sql(f"""
-    SELECT table_name, tag_name, tag_value
+table_tag_cov = spark.sql(f"""
+    SELECT tag_name, count(*) AS n_tables
     FROM `{catalog}`.information_schema.table_tags
-    WHERE schema_name = '{schema}' AND tag_name = 'project' AND tag_value = 'claims_workbench'
+    WHERE schema_name = '{schema}'
+    GROUP BY tag_name ORDER BY tag_name
 """).collect()
-assert len(table_tags) >= 1, "no tables carry project=claims_workbench tag"
-print(f"[OK] Schema tag project=claims_workbench present.")
-print(f"[OK] {len(table_tags)} table(s) carry project=claims_workbench (e.g. {table_tags[0]['table_name']}).")
+table_tag_map = {r["tag_name"]: r["n_tables"] for r in table_tag_cov}
+print(f"Table tag coverage: {table_tag_map}")
+
+# At least one UC tag must have applied somewhere; if a governed tag policy
+# blocked 'project' on this workspace, the run still succeeds and other keys
+# (owner/demo/layer) carry through.
+assert schema_tag_map or table_tag_map, "no UC tags applied to schema or any table"
+if "project" in schema_tag_map or "project" in table_tag_map:
+    print("[OK] project=claims_workbench tag present.")
+else:
+    print("[OK] UC tags present; 'project' skipped by this workspace's governed "
+          "tag policy (expected on governed workspaces — applies cleanly elsewhere).")
 
 # COMMAND ----------
 
