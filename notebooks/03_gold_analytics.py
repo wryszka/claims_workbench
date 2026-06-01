@@ -62,17 +62,14 @@ def write_gold(df, table, layer="gold"):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1 · Base = silver + report_channel
-# MAGIC `report_channel` was not carried into silver, so gold sources it via a slim
-# MAGIC left-join to `bronze_gw_cc_claim` (keeps Phase 3 self-contained; no Phase 2 rework).
+# MAGIC ## 1 · Base = silver_claims_enriched
+# MAGIC `report_channel` is carried in silver (Phase 2), so gold reads everything
+# MAGIC from the silver consumption table directly.
 
 # COMMAND ----------
 
-silver = spark.table(tbl("silver_claims_enriched"))
-channel = spark.table(tbl("bronze_gw_cc_claim")).select("claim_public_id", "report_channel")
-
 base = (
-    silver.join(channel, "claim_public_id", "left")
+    spark.table(tbl("silver_claims_enriched"))
     .withColumn("accident_qtr", F.expr("concat(year(loss_date), '-Q', quarter(loss_date))"))
     .withColumn("is_closed", F.expr("claim_status IN ('settled','declined','withdrawn')"))
     .withColumn("is_open", F.expr("claim_status IN ('open','under_investigation')"))

@@ -114,10 +114,11 @@ UC tags (`project/layer=bronze/owner`) are applied by the post-step `notebooks/0
 - **Join chain** (spine = `bronze_gw_cc_claim`, left joins keep all claims): exposure (→ `paid_amount`, `case_reserve`), incident, contact (→ claimant `postcode_district`, `third_party_involved`), policy, fraud signals, `ref_weather_index`.
 - **Derived:** `peril_type`, `reporting_lag_days`, `policy_tenure_years`, `weather_risk_composite` (peril-weighted), `sum_insured_to_reported_ratio`, `is_high_value`, `is_potential_fraud`, `at_fault` (motor only).
 - **Lifecycle:** `claim_status` (open / under_investigation / settled / withdrawn / declined), `settlement_date`, `days_to_settle`, `initial_reserve` / `ultimate_reserve`, `leakage_flag`, deterministic `handler_id` / `handler_grade` (routed by peril & severity).
+- **`days_to_settle` & `leakage_flag` are channel-modified:** a peril + claim-size base, scaled by `report_channel` as a multiplier (digital STP fastest/cleanest, phone slowest/leakiest), with large losses dampened so claim size still dominates. A bronze-closed claim counts as settled only once its modeled settlement date has arrived.
 - **ML labels:** `triage_decision` (pay_direct / refer_siu / escalate, ~10% deliberate noise), `reserve_bracket`, `triage_source='historical'`.
 - **Deterministic** — all "random" choices derive from `crc32(claim_public_id)` (no `rand()`), so resets reproduce identically. The vivid claim `cc:900001` is exempt from label noise.
 
-Modeling notes (the CDA landing carries less than the silver model assumes): `ultimate_reserve` = paid + outstanding case reserve; `initial_reserve` is a deterministically reconstructed opening estimate (so `leakage_flag` is meaningful, not always-true); `triage_decision` is computed for all claims (triage is a front-door decision). Tagged `layer=silver` (UC tag + TBLPROPERTIES fallback, since `project`/`owner` UC tags are governed on this workspace).
+Modeling notes (the CDA landing carries less than the silver model assumes): `ultimate_reserve` = paid + outstanding case reserve; `initial_reserve` is a deterministically reconstructed opening estimate (feeds the reserve-development story); `leakage_flag` is a modeled claims-leakage indicator (claim-size base rate × `report_channel` multiplier, crc32-seeded — decoupled from the opening-reserve recon); `triage_decision` is computed for all claims (triage is a front-door decision). Tagged `layer=silver` (UC tag + TBLPROPERTIES fallback, since `project`/`owner` UC tags are governed on this workspace).
 
 Verified: 118,822 rows = 1 per claim = bronze claim count; vivid `cc:900001` → `peril_type=motor_tp`, `triage_decision=refer_siu`, `ultimate_reserve=8,500` → `reserve_bracket=medium`; key derived columns 0% null.
 
@@ -137,8 +138,8 @@ Verified: 118,822 rows = 1 per claim = bronze claim count; vivid `cc:900001` →
 
 **Verified headline numbers (real, not hardcoded):**
 - **Under-reserving:** `home_escape_water` development ratio (Σultimate/Σinitial) = **1.252** vs ~1.06 for other perils — the systematic FNOL under-reserving is present (target was ~1.28).
+- **Digital STP:** digital settles in **32.7 days** vs phone **57.7 days** = **43% faster**; leakage **5.5%** (digital) / 8.3% (broker) / **11.7%** (phone). Severity still dominates — large losses leak 14.8% → 29.8% and settle slowly through any channel.
 - **Geo clustering:** north-west districts show **3.0×** escape-of-water frequency (503.6 vs 167.6 claims per 1,000 policies).
-- **⚠️ Settlement-by-channel:** digital 58.8d / phone 58.8d / broker 58.3d, leakage ~19.6% across all — **the digital-STP story is NOT in the seeded data** (Phase 0/2 don't tie settlement speed or leakage to `report_channel`). Reported honestly; flagged for a Phase 0/2 seed adjustment if that story is wanted.
 
 Modeling proxies (documented, no source data): `customer_touchpoints_avg` scales with claim duration; `claims_per_1000_policies` uses distinct claiming-policies per district (policies aren't geocoded in the feed); `override_rate_pct` is a placeholder 0 until the Phase 8 app logs HITL overrides. Tables tagged `layer=gold` (UC tag + TBLPROPERTIES fallback; `project`/`owner` UC tags governed on this workspace). A `# PRICING HOOK` comment in the gold notebook marks where geo risk would feed the pricing workbench.
 

@@ -189,39 +189,91 @@ df = (
     .withColumn("ultimate_reserve", F.expr("CAST(paid_amount + case_reserve AS decimal(12,2))"))
     # Opening (initial) reserve reconstructed deterministically — the CDA landing
     # carries a single booked reserve, so we model a plausible opening estimate
-    # (escape-of-water biased lower) to make leakage meaningful, not always-true.
+    # (escape-of-water biased lower). Feeds the reserve-development story.
     .withColumn(
         "_opening_factor",
         F.expr("greatest(0.30, 0.60 + pmod(crc32(concat(claim_public_id, '|open')), 70) / 100.0 "
                "- CASE WHEN peril_type = 'home_escape_water' THEN 0.15 ELSE 0 END)"),
     )
     .withColumn("initial_reserve", F.expr("CAST(round(ultimate_reserve * _opening_factor) AS decimal(12,2))"))
-    .withColumn("leakage_flag", F.expr("paid_amount > initial_reserve * 1.2"))
-    .withColumn(
-        "claim_status",
-        F.expr("""
-            CASE
-                WHEN src_claim_status = 'closed' AND is_potential_fraud
-                     AND pmod(crc32(concat(claim_public_id, '|st')), 100) < 40 THEN 'declined'
-                WHEN src_claim_status = 'closed'
-                     AND pmod(crc32(concat(claim_public_id, '|st')), 100) < 5  THEN 'withdrawn'
-                WHEN src_claim_status = 'closed'     THEN 'settled'
-                WHEN src_claim_status = 'reopened'   THEN 'under_investigation'
-                WHEN is_potential_fraud              THEN 'under_investigation'
-                ELSE 'open'
-            END
-        """),
-    )
-    .withColumn("_settle_days", F.expr("CAST(5 + pmod(crc32(concat(claim_public_id, '|settle')), 115) AS INT)"))
-    .withColumn(
-        "settlement_date",
-        F.expr("CASE WHEN claim_status IN ('settled','declined','withdrawn') "
-               "THEN least(date_add(report_date, _settle_days), current_date()) ELSE NULL END"),
-    )
-    .withColumn(
-        "days_to_settle",
-        F.expr("CASE WHEN settlement_date IS NOT NULL THEN datediff(settlement_date, report_date) ELSE NULL END"),
-    )
+    # Severity tier (claim size) from ultimate_reserve — the PRIMARY driver of
+    # both settle time and leakage; report_channel is layered on as a multiplier.
+    .withColumn("_severity", F.expr("""
+        CASE WHEN ultimate_reserve < 2000  THEN 'low'
+             WHEN ultimate_reserve < 10000 THEN 'medium'
+             WHEN ultimate_reserve < 50000 THEN 'high'
+             ELSE 'large_loss' END
+    """))
+)
+
+# --- days_to_settle: peril+severity base, report_channel as a MULTIPLIER ---
+# Base settle time is driven by peril and claim size. report_channel scales it
+# (digital STP ~0.55x, broker ~0.85x, phone ~1.15x) with deterministic jitter so
+# it's an aggregate tendency, not a fixed rule. Large/complex losses dampen the
+# channel effect (they settle slowly through ANY channel). Deterministic by seed.
+df = (
+    df
+    .withColumn("_peril_base", F.expr("""
+        CASE peril_type WHEN 'motor_tp' THEN 22 WHEN 'home_escape_water' THEN 35
+                        WHEN 'home_storm' THEN 33 WHEN 'home_fire' THEN 48 ELSE 30 END"""))
+    .withColumn("_severity_add", F.expr("""
+        CASE _severity WHEN 'low' THEN 0 WHEN 'medium' THEN 12 WHEN 'high' THEN 45 ELSE 95 END"""))
+    .withColumn("_settle_noise", F.expr("pmod(crc32(concat(claim_public_id, '|settlenoise')), 28) - 8"))
+    .withColumn("_base_days", F.expr("greatest(_peril_base + _severity_add + _settle_noise, 4)"))
+    .withColumn("_chan_mult", F.expr("""
+        (CASE report_channel WHEN 'digital' THEN 0.55 WHEN 'broker_email' THEN 0.85
+                             WHEN 'phone' THEN 1.15 ELSE 1.0 END)
+        * (0.92 + pmod(crc32(concat(claim_public_id, '|chanj')), 16) / 100.0)"""))
+    .withColumn("_chan_damp", F.expr("""
+        CASE _severity WHEN 'large_loss' THEN 0.25 WHEN 'high' THEN 0.55 ELSE 1.0 END"""))
+    .withColumn("_settle_days",
+                F.expr("greatest(CAST(round(_base_days * (1 + (_chan_mult - 1) * _chan_damp)) AS INT), 3)"))
+    .withColumn("_modeled_settle_date", F.expr("date_add(report_date, _settle_days)"))
+    # A bronze-closed claim has actually settled only if its modeled settlement
+    # date has already arrived; otherwise it's still being worked.
+    .withColumn("_settled_now",
+                F.expr("src_claim_status = 'closed' AND _modeled_settle_date <= current_date()"))
+)
+
+# --- claim lifecycle status ---
+df = df.withColumn("claim_status", F.expr("""
+    CASE
+        WHEN _settled_now AND is_potential_fraud
+             AND pmod(crc32(concat(claim_public_id, '|st')), 100) < 40 THEN 'declined'
+        WHEN _settled_now AND pmod(crc32(concat(claim_public_id, '|st')), 100) < 5 THEN 'withdrawn'
+        WHEN _settled_now                          THEN 'settled'
+        WHEN src_claim_status = 'closed'           THEN 'under_investigation'
+        WHEN src_claim_status = 'reopened'         THEN 'under_investigation'
+        WHEN is_potential_fraud                    THEN 'under_investigation'
+        ELSE 'open'
+    END
+"""))
+df = (
+    df
+    .withColumn("settlement_date", F.expr(
+        "CASE WHEN claim_status IN ('settled','declined','withdrawn') THEN _modeled_settle_date ELSE NULL END"))
+    # days_to_settle = the modeled settle duration (= datediff(settlement_date, report_date)),
+    # so the channel signal is clean for the settled population.
+    .withColumn("days_to_settle", F.expr(
+        "CASE WHEN claim_status IN ('settled','declined','withdrawn') THEN _settle_days ELSE NULL END"))
+)
+
+# --- leakage_flag: severity-driven base rate, report_channel as a MULTIPLIER ---
+# Claims-leakage indicator. Claim size (severity) sets the base propensity; the
+# channel scales it (digital STP cleaner ~0.7x, phone leakier ~1.45x). Large
+# losses leak more through ANY channel. Modeled deterministically (crc32 uniform
+# vs probability) so resets reproduce — decoupled from the opening-reserve recon.
+df = (
+    df
+    .withColumn("_leak_base", F.expr("""
+        CASE _severity WHEN 'low' THEN 0.055 WHEN 'medium' THEN 0.075
+                       WHEN 'high' THEN 0.13 ELSE 0.20 END"""))
+    .withColumn("_leak_chan_mult", F.expr("""
+        CASE report_channel WHEN 'digital' THEN 0.70 WHEN 'broker_email' THEN 1.0
+                            WHEN 'phone' THEN 1.45 ELSE 1.0 END"""))
+    .withColumn("_leak_prob", F.expr("least(_leak_base * _leak_chan_mult, 0.9)"))
+    .withColumn("leakage_flag",
+                F.expr("(pmod(crc32(concat(claim_public_id, '|leak')), 100000) / 100000.0) < _leak_prob"))
 )
 
 # COMMAND ----------
@@ -333,7 +385,7 @@ df = df.withColumn(
 
 OUTPUT_COLS = [
     "claim_public_id", "claim_number", "policy_number",
-    "loss_date", "report_date", "reporting_lag_days",
+    "loss_date", "report_date", "reporting_lag_days", "report_channel",
     "peril_type", "loss_cause", "incident_type", "description_text",
     "product", "sum_insured", "annual_premium", "effective_date", "expiry_date",
     "policy_tenure_years", "sum_insured_to_reported_ratio",
