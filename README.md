@@ -2,10 +2,11 @@
 
 Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**, built as a redeployable Databricks Asset Bundle. Motor Third Party + Home Property, end to end on the Lakehouse.
 
-> **Phases 0–1** of a multi-phase build.
+> **Phases 0–2** of a multi-phase build.
 > **Phase 0** — scaffold + a synthetic Guidewire CDA **landing zone** (`landing_*`, ~120k claims), UC-tagged.
 > **Phase 1** — a real **bronze DLT pipeline** that reads the landing zone and produces governed `bronze_*` tables with data-quality expectations + quarantine.
-> Silver, gold, ML, agents, and the app come in later phases.
+> **Phase 2** — a **silver enrichment** layer (`silver_claims_enriched`): one row per claim joining all seven bronze tables, plus the assembled claim lifecycle and ML training labels.
+> Gold, models, agents, and the app come in later phases.
 
 ## The flow, literally
 
@@ -22,8 +23,13 @@ Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**,
     ref_handlers, ref_weather_index                   │
                                                       ├─► bronze_quarantine_claims
                                                       └─► bronze_quarantine_fraud_signals
+                                   │
+              SILVER (Phase 2)     ▼
+        bronze_* (7 tables) ──join──► silver_claims_enriched   (1 row / claim
+                                       + lifecycle + ML labels)
+                                   │
                                    ▼
-        Phase 2 features → Phase 3 reserving → ML / agents / app   (future)
+        Phase 3 reserving → gold → ML / agents / app   (future)
 ```
 
 ## Quick Start
@@ -40,6 +46,9 @@ databricks bundle deploy -t dev
 # 4. Phase 1 — run the bronze DLT pipeline, then tag its tables:
 databricks bundle run claims_workbench_01_bronze_dlt -t dev
 #    then run notebooks/01b_tag_bronze.py (applies project/layer/owner tags)
+
+# 5. Phase 2 — build the silver enrichment table:
+#    run notebooks/02_silver_enrichment.py  -> silver_claims_enriched
 ```
 
 ## Catalog — portable, with one pinned line for DLT
@@ -89,6 +98,20 @@ The ~3% malformed records seeded in Phase 0 surface here: bad `policy_number` ro
 
 UC tags (`project/layer=bronze/owner`) are applied by the post-step `notebooks/01b_tag_bronze.py` (DLT can reset tags on a full refresh, so re-run it after one).
 
+## Phase 2 — silver enrichment (`silver_claims_enriched`)
+
+`notebooks/02_silver_enrichment.py` collapses the seven `bronze_*` tables into **one enriched row per claim** — "everything we know before a handler picks up the phone" — plus the assembled claim lifecycle and ML training labels for later phases. A standalone notebook writing a managed Delta table (heavy deterministic business logic, no need for DLT streaming/expectations).
+
+- **Join chain** (spine = `bronze_gw_cc_claim`, left joins keep all claims): exposure (→ `paid_amount`, `case_reserve`), incident, contact (→ claimant `postcode_district`, `third_party_involved`), policy, fraud signals, `ref_weather_index`.
+- **Derived:** `peril_type`, `reporting_lag_days`, `policy_tenure_years`, `weather_risk_composite` (peril-weighted), `sum_insured_to_reported_ratio`, `is_high_value`, `is_potential_fraud`, `at_fault` (motor only).
+- **Lifecycle:** `claim_status` (open / under_investigation / settled / withdrawn / declined), `settlement_date`, `days_to_settle`, `initial_reserve` / `ultimate_reserve`, `leakage_flag`, deterministic `handler_id` / `handler_grade` (routed by peril & severity).
+- **ML labels:** `triage_decision` (pay_direct / refer_siu / escalate, ~10% deliberate noise), `reserve_bracket`, `triage_source='historical'`.
+- **Deterministic** — all "random" choices derive from `crc32(claim_public_id)` (no `rand()`), so resets reproduce identically. The vivid claim `cc:900001` is exempt from label noise.
+
+Modeling notes (the CDA landing carries less than the silver model assumes): `ultimate_reserve` = paid + outstanding case reserve; `initial_reserve` is a deterministically reconstructed opening estimate (so `leakage_flag` is meaningful, not always-true); `triage_decision` is computed for all claims (triage is a front-door decision). Tagged `layer=silver` (UC tag + TBLPROPERTIES fallback, since `project`/`owner` UC tags are governed on this workspace).
+
+Verified: 118,822 rows = 1 per claim = bronze claim count; vivid `cc:900001` → `peril_type=motor_tp`, `triage_decision=refer_siu`, `ultimate_reserve=8,500` → `reserve_bracket=medium`; key derived columns 0% null.
+
 ## Deliberately-seeded business signals
 
 These are intentional — later phases tell stories with them:
@@ -129,7 +152,8 @@ claims_workbench/
 │   ├── 00_setup_and_data_generation.py    # Phase 0 — generate the landing zone (run this)
 │   ├── claims_data_gen.py                 # reusable generation module (roll_dates, generate_all)
 │   ├── 01_bronze_dlt_pipeline.py          # Phase 1 — bronze DLT pipeline source
-│   └── 01b_tag_bronze.py                  # Phase 1 — post-step: tag bronze tables
+│   ├── 01b_tag_bronze.py                  # Phase 1 — post-step: tag bronze tables
+│   └── 02_silver_enrichment.py            # Phase 2 — silver_claims_enriched (run this)
 ├── resources/
 │   └── bronze_pipeline.yml                # Phase 1 — DLT pipeline resource
 ├── app/                                   # (future) Databricks App
