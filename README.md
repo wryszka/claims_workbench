@@ -2,13 +2,14 @@
 
 Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**, built as a redeployable Databricks Asset Bundle. Motor Third Party + Home Property, end to end on the Lakehouse.
 
-> **Phases 0–4** of a multi-phase build.
+> **Phases 0–5** of a multi-phase build.
 > **Phase 0** — scaffold + a synthetic Guidewire CDA **landing zone** (`landing_*`, ~120k claims), UC-tagged.
 > **Phase 1** — a real **bronze DLT pipeline** that reads the landing zone and produces governed `bronze_*` tables with data-quality expectations + quarantine.
 > **Phase 2** — a **silver enrichment** layer (`silver_claims_enriched`): one row per claim joining all seven bronze tables, plus the assembled claim lifecycle and ML training labels.
 > **Phase 3** — **gold analytics** (`gold_*`), a HITL audit shell, and a real **Lakeview board dashboard**.
 > **Phase 4** — two governed **UC feature tables** (`feature_triage`, `feature_reserve`) built with `FeatureEngineeringClient`, with a persisted encoder.
-> Models, agents, and the app come in later phases.
+> **Phase 5** — two models trained via the Feature Store, registered in **UC** with `@champion` aliases, and served on **Mosaic AI Model Serving**.
+> Agents and the app come in later phases.
 
 ## The flow, literally
 
@@ -40,8 +41,12 @@ Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**,
         silver ──► feature_triage   feature_reserve   (UC Feature Store, PK
                    ref_feature_encodings (persisted)   claim_public_id)
                                    │
+              MODELS (Phase 5)     ▼
+        feature tables ──► model_triage_classifier @champion  → endpoint claims-workbench-triage
+                           model_reserve_bracket   @champion  → endpoint claims-workbench-reserve
+                                   │
                                    ▼
-        Phase 5 FeatureLookup / fe.log_model  →  models / agents / app (future)
+                        agents / app (future)
 ```
 
 ## Quick Start
@@ -67,6 +72,10 @@ databricks bundle run claims_workbench_01_bronze_dlt -t dev
 
 # 7. Phase 4 — build the UC feature tables:
 #    run notebooks/04_feature_engineering.py  -> feature_triage, feature_reserve, ref_feature_encodings
+
+# 8. Phase 5 — train + register models, then deploy serving pinned to the trained versions:
+#    run notebooks/05_ml_models.py            -> model_triage_classifier, model_reserve_bracket (@champion)
+databricks bundle deploy -t dev --var="triage_model_version=<v>" --var="reserve_model_version=<v>"
 ```
 
 ## Catalog — portable, with one pinned line for DLT
@@ -163,7 +172,20 @@ Modeling proxies (documented, no source data): `customer_touchpoints_avg` scales
 
 **For later phases (not built):** Phase 5 consumes these via `FeatureLookup(lookup_key='claim_public_id')` and logs them with the model via `fe.log_model()`, so Phase 8 serving auto-joins features at inference time.
 
-Verified: both tables UC-registered with PK `claim_public_id`, 118,822 rows = distinct keys = silver count, no label columns; vivid `cc:900001` carries `fraud_score=74`, `prior_claims_12m=2`, `reporting_lag_days=18`, `peril_type_encoded=3 (motor_tp)`; encoding map persisted (13 rows / 4 features). Tagged `layer=feature`.
+Verified: both tables UC-registered with PK `claim_public_id`, 118,822 rows = distinct keys = silver count, no label columns; vivid `cc:900001` carries `fraud_score=74`, `prior_claims_12m=2`, `reporting_lag_days=18`, `peril_type_encoded=3 (motor_tp)`; encoding map persisted (13 rows / 4 features). Tagged `layer=feature`. (Numeric features cast to `double` — UC `Decimal` becomes pandas `object` and breaks LightGBM/serving.)
+
+## Phase 5 — models (train, register, serve)
+
+`notebooks/05_ml_models.py` trains two models, **training via the Feature Store** (`fe.create_training_set` joins labels from silver to the feature tables by `claim_public_id`), logs to MLflow, and registers in UC with a `@champion` alias each.
+
+- **Model A — FNOL Triage** (LightGBM, `pay_direct`/`escalate`/`refer_siu`): accuracy **89.6%**, macro-F1 0.81 (high-but-not-perfect — reflects the ~10% label noise). Top features: policy tenure, reported amount (log), sum-insured ratio, **fraud score**, reporting lag. Confusion-matrix + feature-importance artifacts logged. → `model_triage_classifier @champion`.
+- **Model B — Reserve Bracket** (XGBoost, low/medium/high/large_loss): accuracy 99.8%, trained on closed/settled claims (valid ultimate). Confusion-matrix + explainability artifacts. **Business story:** the model **reclassifies 13.1% of home_escape_water claims UPWARD** vs the handler's initial reserve bracket — catching the systematic under-reserving. → `model_reserve_bracket @champion`.
+
+**Serving (`resources/serving_endpoints.yml`):** two serverless scale-to-zero Mosaic AI endpoints — `claims-workbench-triage`, `claims-workbench-reserve` — pinned to the trained model versions via DAB variables.
+
+> **Serving design — feature-vector contract, no online store.** Real-time `fe.log_model` serving-*by-key* requires an online feature store; Mosaic AI auto-setup failed on this workspace and the spec excludes an online/Lakebase path. So models are logged with the LightGBM/XGBoost MLflow flavors (feature-vector input). The app/agent does the cheap by-`claim_public_id` lookup against the **offline** UC feature table, then calls the endpoint with the features. On a workspace with online tables enabled, switch to `fe.log_model` for true by-key serving. (Use the flavor-specific loggers, not `mlflow.sklearn` — the sklearn flavor omits the `lightgbm`/`xgboost` dependency and the served model fails to load.)
+
+Verified: both endpoints reach **READY**; scoring the vivid claim `cc:900001` (by feature vector) returns **triage = `refer_siu`** (80.4% confidence) and **reserve = MEDIUM** (consistent with its `ultimate_reserve` of £8,500). Models carry `@champion` (triage v4, reserve v3) so Phase 6/8 reference a stable alias.
 
 ## Deliberately-seeded business signals
 
@@ -208,12 +230,14 @@ claims_workbench/
 │   ├── 01b_tag_bronze.py                  # Phase 1 — post-step: tag bronze tables
 │   ├── 02_silver_enrichment.py            # Phase 2 — silver_claims_enriched (run this)
 │   ├── 03_gold_analytics.py               # Phase 3 — gold_* tables + audit shell (run this)
-│   └── 04_feature_engineering.py          # Phase 4 — UC feature tables + encoder (run this)
+│   ├── 04_feature_engineering.py          # Phase 4 — UC feature tables + encoder (run this)
+│   └── 05_ml_models.py                    # Phase 5 — train/register triage + reserve models (run this)
 ├── dashboards/
 │   └── claims_board.lvdash.json           # Phase 3 — Lakeview "Board View" dashboard
 ├── resources/
 │   ├── bronze_pipeline.yml                # Phase 1 — DLT pipeline resource
-│   └── gold_dashboard.yml                 # Phase 3 — Lakeview dashboard resource
+│   ├── gold_dashboard.yml                 # Phase 3 — Lakeview dashboard resource
+│   └── serving_endpoints.yml              # Phase 5 — Mosaic AI serving endpoints
 ├── app/                                   # (future) Databricks App
 └── data/seed/                             # (future) static seed assets
 ```

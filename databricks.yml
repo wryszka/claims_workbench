@@ -40,6 +40,15 @@ variables:
       SQL warehouse the Phase 3 Lakeview dashboard runs its queries on
       (workspace-specific). Pinned on the dev target below.
     default: ""
+  triage_model_version:
+    description: >-
+      Registered version of model_triage_classifier the Phase 5 triage endpoint
+      serves. Set to the version your training run registered (the @champion
+      version), e.g. --var="triage_model_version=2". Default 1 = fresh deploy.
+    default: "1"
+  reserve_model_version:
+    description: Registered version of model_reserve_bracket the reserve endpoint serves.
+    default: "1"
 
 targets:
   dev:

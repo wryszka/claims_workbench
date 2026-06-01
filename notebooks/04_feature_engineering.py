@@ -109,13 +109,15 @@ feature_triage = silver.select(
     "claim_public_id",
     encode("peril_type", "peril_type").alias("peril_type_encoded"),
     encode("report_channel", "report_channel").alias("report_channel_encoded"),
-    F.expr("log1p(total_incurred)").alias("reported_amount_log"),
-    F.expr("coalesce(sum_insured_to_reported_ratio, 0.0)").alias("sum_insured_to_reported_ratio"),
+    # Cast derived numerics to double — silver carries some as DecimalType, which
+    # becomes Python Decimal (object dtype) in pandas and breaks LightGBM/serving.
+    F.expr("CAST(log1p(total_incurred) AS double)").alias("reported_amount_log"),
+    F.expr("CAST(coalesce(sum_insured_to_reported_ratio, 0.0) AS double)").alias("sum_insured_to_reported_ratio"),
     F.expr("coalesce(fraud_score, 0)").alias("fraud_score"),
     F.expr("coalesce(prior_claims_12m, 0)").alias("prior_claims_12m"),
     F.col("reporting_lag_days"),
-    F.expr("coalesce(policy_tenure_years, 0.0)").alias("policy_tenure_years"),
-    F.col("weather_risk_composite"),
+    F.expr("CAST(coalesce(policy_tenure_years, 0.0) AS double)").alias("policy_tenure_years"),
+    F.expr("CAST(weather_risk_composite AS double)").alias("weather_risk_composite"),
     F.expr("CAST(is_high_value AS INT)").alias("is_high_value"),
     F.expr("CAST(coalesce(at_fault, false) AS INT)").alias("at_fault"),
     F.expr("CAST(coalesce(third_party_involved, false) AS INT)").alias("third_party_involved"),
@@ -127,17 +129,17 @@ feature_reserve = silver.select(
     "claim_public_id",
     encode("peril_type", "peril_type").alias("peril_type_encoded"),
     encode("handler_grade", "handler_grade").alias("handler_grade_encoded"),
-    F.expr("log1p(total_incurred)").alias("reported_amount_log"),
+    F.expr("CAST(log1p(total_incurred) AS double)").alias("reported_amount_log"),
     F.expr("coalesce(fraud_score, 0)").alias("fraud_score"),
     F.expr("coalesce(prior_claims_12m, 0)").alias("prior_claims_12m"),
-    F.col("weather_risk_composite"),
+    F.expr("CAST(weather_risk_composite AS double)").alias("weather_risk_composite"),
     # days_open: time on book — settled claims use days_to_settle, open use now-report.
     F.expr("""
         CASE WHEN claim_status IN ('settled','declined','withdrawn') THEN days_to_settle
              ELSE datediff(current_date(), report_date) END
     """).alias("days_open"),
     encode("triage_decision", "triage_decision").alias("triage_decision_encoded"),
-    F.expr("log1p(coalesce(sum_insured, 0))").alias("sum_insured_log"),
+    F.expr("CAST(log1p(coalesce(sum_insured, 0)) AS double)").alias("sum_insured_log"),
 )
 
 # COMMAND ----------

@@ -1,0 +1,47 @@
+# Phase 5 — Mosaic AI Model Serving endpoints (serverless, scale-to-zero).
+# Each serves the latest trained version of a UC-registered model. The models
+# are logged with fe.log_model(), so calling an endpoint with a claim_public_id
+# auto-joins features from the UC feature table by PK (no online store needed).
+#
+# entity_version is pinned via a variable. Set it to the version your training
+# run registered (the @champion-aliased version), e.g.:
+#   databricks bundle deploy -t dev --var="triage_model_version=2" --var="reserve_model_version=1"
+resources:
+  model_serving_endpoints:
+    claims_workbench_triage:
+      name: claims-workbench-triage
+      config:
+        served_entities:
+          - name: triage
+            entity_name: ${var.catalog}.${var.schema}.model_triage_classifier
+            entity_version: "${var.triage_model_version}"
+            scale_to_zero_enabled: true
+            workload_size: Small
+        traffic_config:
+          routes:
+            - served_model_name: triage
+              traffic_percentage: 100
+      tags:
+        - key: project
+          value: claims_workbench
+        - key: layer
+          value: serving
+
+    claims_workbench_reserve:
+      name: claims-workbench-reserve
+      config:
+        served_entities:
+          - name: reserve
+            entity_name: ${var.catalog}.${var.schema}.model_reserve_bracket
+            entity_version: "${var.reserve_model_version}"
+            scale_to_zero_enabled: true
+            workload_size: Small
+        traffic_config:
+          routes:
+            - served_model_name: reserve
+              traffic_percentage: 100
+      tags:
+        - key: project
+          value: claims_workbench
+        - key: layer
+          value: serving
