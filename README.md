@@ -2,11 +2,12 @@
 
 Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**, built as a redeployable Databricks Asset Bundle. Motor Third Party + Home Property, end to end on the Lakehouse.
 
-> **Phases 0–2** of a multi-phase build.
+> **Phases 0–3** of a multi-phase build.
 > **Phase 0** — scaffold + a synthetic Guidewire CDA **landing zone** (`landing_*`, ~120k claims), UC-tagged.
 > **Phase 1** — a real **bronze DLT pipeline** that reads the landing zone and produces governed `bronze_*` tables with data-quality expectations + quarantine.
 > **Phase 2** — a **silver enrichment** layer (`silver_claims_enriched`): one row per claim joining all seven bronze tables, plus the assembled claim lifecycle and ML training labels.
-> Gold, models, agents, and the app come in later phases.
+> **Phase 3** — **gold analytics** (`gold_*`), a HITL audit shell, and a real **Lakeview board dashboard**.
+> Models, agents, and the app come in later phases.
 
 ## The flow, literally
 
@@ -28,8 +29,13 @@ Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**,
         bronze_* (7 tables) ──join──► silver_claims_enriched   (1 row / claim
                                        + lifecycle + ML labels)
                                    │
+              GOLD (Phase 3)       ▼
+        silver ──► gold_reserve_development   gold_settlement_performance
+                   gold_geo_clustering        gold_handler_scorecard
+                   gold_handler_decisions (HITL audit shell, empty)
+                                   │
                                    ▼
-        Phase 3 reserving → gold → ML / agents / app   (future)
+        Lakeview "Claims Portfolio — Board View"  →  models / agents / app (future)
 ```
 
 ## Quick Start
@@ -49,6 +55,9 @@ databricks bundle run claims_workbench_01_bronze_dlt -t dev
 
 # 5. Phase 2 — build the silver enrichment table:
 #    run notebooks/02_silver_enrichment.py  -> silver_claims_enriched
+
+# 6. Phase 3 — build gold analytics; the Lakeview dashboard is created by the deploy above:
+#    run notebooks/03_gold_analytics.py  -> gold_* tables + audit shell
 ```
 
 ## Catalog — portable, with one pinned line for DLT
@@ -112,6 +121,27 @@ Modeling notes (the CDA landing carries less than the silver model assumes): `ul
 
 Verified: 118,822 rows = 1 per claim = bronze claim count; vivid `cc:900001` → `peril_type=motor_tp`, `triage_decision=refer_siu`, `ultimate_reserve=8,500` → `reserve_bracket=medium`; key derived columns 0% null.
 
+## Phase 3 — gold analytics + Lakeview board dashboard
+
+`notebooks/03_gold_analytics.py` turns silver into four business aggregates (managed Delta) + one empty HITL audit shell. Every table answers a question a claims leader asks:
+
+| Table | Question | Grain |
+|-------|----------|-------|
+| `gold_reserve_development` | Are we reserving accurately? | accident_qtr × peril_type × reserve_bracket |
+| `gold_settlement_performance` | How fast / how clean do we settle? | handler_grade × peril_type × report_channel |
+| `gold_geo_clustering` | Where is risk concentrated? | postcode_district × peril_type |
+| `gold_handler_scorecard` | How is my team performing? | handler_id |
+| `gold_handler_decisions` | HITL audit trail (empty; app appends in Phase 8) | — |
+
+**Lakeview dashboard "Claims Portfolio — Board View"** (`dashboards/claims_board.lvdash.json`, deployed via `resources/gold_dashboard.yml`): KPI row (open claims, avg days to settle, total open reserves £, leakage %), reserve-development line by cohort, settlement-by-channel bar, geo **ranked table** (choropleth fallback — UK district GeoJSON not used), and the handler scorecard table. `warehouse_id` is a DAB variable (pinned on dev); the dashboard JSON embeds the catalog (workspace-bound asset) — change it with the `sed` one-liner noted in `resources/gold_dashboard.yml`.
+
+**Verified headline numbers (real, not hardcoded):**
+- **Under-reserving:** `home_escape_water` development ratio (Σultimate/Σinitial) = **1.252** vs ~1.06 for other perils — the systematic FNOL under-reserving is present (target was ~1.28).
+- **Geo clustering:** north-west districts show **3.0×** escape-of-water frequency (503.6 vs 167.6 claims per 1,000 policies).
+- **⚠️ Settlement-by-channel:** digital 58.8d / phone 58.8d / broker 58.3d, leakage ~19.6% across all — **the digital-STP story is NOT in the seeded data** (Phase 0/2 don't tie settlement speed or leakage to `report_channel`). Reported honestly; flagged for a Phase 0/2 seed adjustment if that story is wanted.
+
+Modeling proxies (documented, no source data): `customer_touchpoints_avg` scales with claim duration; `claims_per_1000_policies` uses distinct claiming-policies per district (policies aren't geocoded in the feed); `override_rate_pct` is a placeholder 0 until the Phase 8 app logs HITL overrides. Tables tagged `layer=gold` (UC tag + TBLPROPERTIES fallback; `project`/`owner` UC tags governed on this workspace). A `# PRICING HOOK` comment in the gold notebook marks where geo risk would feed the pricing workbench.
+
 ## Deliberately-seeded business signals
 
 These are intentional — later phases tell stories with them:
@@ -153,9 +183,13 @@ claims_workbench/
 │   ├── claims_data_gen.py                 # reusable generation module (roll_dates, generate_all)
 │   ├── 01_bronze_dlt_pipeline.py          # Phase 1 — bronze DLT pipeline source
 │   ├── 01b_tag_bronze.py                  # Phase 1 — post-step: tag bronze tables
-│   └── 02_silver_enrichment.py            # Phase 2 — silver_claims_enriched (run this)
+│   ├── 02_silver_enrichment.py            # Phase 2 — silver_claims_enriched (run this)
+│   └── 03_gold_analytics.py               # Phase 3 — gold_* tables + audit shell (run this)
+├── dashboards/
+│   └── claims_board.lvdash.json           # Phase 3 — Lakeview "Board View" dashboard
 ├── resources/
-│   └── bronze_pipeline.yml                # Phase 1 — DLT pipeline resource
+│   ├── bronze_pipeline.yml                # Phase 1 — DLT pipeline resource
+│   └── gold_dashboard.yml                 # Phase 3 — Lakeview dashboard resource
 ├── app/                                   # (future) Databricks App
 └── data/seed/                             # (future) static seed assets
 ```

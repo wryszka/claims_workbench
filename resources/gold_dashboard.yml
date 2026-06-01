@@ -1,0 +1,16 @@
+# Phase 3 — Lakeview / AI-BI dashboard: "Claims Portfolio — Board View".
+# Reads the gold_* tables + silver_claims_enriched. Deployed by
+# `databricks bundle deploy -t dev` as a draft dashboard.
+#
+# Note: the dashboard JSON embeds the catalog in its queries (a dashboard is a
+# workspace-bound asset, like its warehouse_id). For another catalog:
+#   sed -i '' "s/lr_serverless_aws_us_catalog/<your_catalog>/g" dashboards/claims_board.lvdash.json
+#
+# Lakeview dashboard resources do not accept UC tags; project association is via
+# the bundle (the underlying gold tables carry layer/project metadata).
+resources:
+  dashboards:
+    claims_board:
+      display_name: "Claims Portfolio — Board View"
+      file_path: ../dashboards/claims_board.lvdash.json
+      warehouse_id: ${var.warehouse_id}

@@ -35,6 +35,11 @@ variables:
   schema:
     description: Fixed schema for all Claims Workbench objects.
     default: claims_workbench
+  warehouse_id:
+    description: >-
+      SQL warehouse the Phase 3 Lakeview dashboard runs its queries on
+      (workspace-specific). Pinned on the dev target below.
+    default: ""
 
 targets:
   dev:
@@ -49,3 +54,5 @@ targets:
       # Phase 1 DLT needs an explicit catalog — pin your dev workspace catalog here.
       catalog: lr_serverless_aws_us_catalog
       schema: claims_workbench
+      # Phase 3 Lakeview dashboard — pin your dev SQL warehouse id here.
+      warehouse_id: ab79eced8207d29b
