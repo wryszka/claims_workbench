@@ -125,7 +125,7 @@ for tbl, n in counts.items():
 import json
 
 # --- 5a · Row-count assertions ---
-n_claims = counts["bronze_gw_cc_claim"]
+n_claims = counts["landing_gw_cc_claim"]
 n_handlers = counts["ref_handlers"]
 assert 119_000 <= n_claims <= 121_500, f"cc_claim count off: {n_claims:,}"
 assert 75 <= n_handlers <= 85, f"handlers count off: {n_handlers}"
@@ -133,9 +133,9 @@ print(f"[OK] cc_claim ≈ 120k (actual {n_claims:,}), handlers ≈ 80 (actual {n
 
 # COMMAND ----------
 
-# --- 5b · One sample row from bronze_gw_cc_claim (pretty-printed) ---
+# --- 5b · One sample row from landing_gw_cc_claim (pretty-printed) ---
 sample = (
-    spark.table(f"`{catalog}`.`{schema}`.bronze_gw_cc_claim")
+    spark.table(f"`{catalog}`.`{schema}`.landing_gw_cc_claim")
     .where("claim_public_id <> 'cc:900001'")
     .limit(1)
     .collect()[0]
@@ -148,7 +148,7 @@ print(json.dumps(sample, indent=2, default=str))
 
 # --- 5c · The SACRED vivid claim cc:900001 ---
 v = (
-    spark.table(f"`{catalog}`.`{schema}`.bronze_gw_cc_claim")
+    spark.table(f"`{catalog}`.`{schema}`.landing_gw_cc_claim")
     .where("claim_public_id = 'cc:900001'")
     .collect()
 )
@@ -159,7 +159,7 @@ assert vd["report_channel"] == "phone", vd
 assert vd["total_incurred"] == 8500, vd
 
 vf = (
-    spark.table(f"`{catalog}`.`{schema}`.bronze_fraud_signals_raw")
+    spark.table(f"`{catalog}`.`{schema}`.landing_fraud_signals")
     .where("claim_public_id = 'cc:900001'")
     .collect()[0]
     .asDict()
@@ -167,7 +167,7 @@ vf = (
 assert vf["fraud_score"] == 74 and vf["prior_claims_12m"] == 2 and vf["days_since_incident"] == 18, vf
 
 vc = (
-    spark.table(f"`{catalog}`.`{schema}`.bronze_gw_cc_contact")
+    spark.table(f"`{catalog}`.`{schema}`.landing_gw_cc_contact")
     .where("claim_public_id = 'cc:900001'")
     .collect()[0]
     .asDict()
@@ -211,5 +211,5 @@ else:
 # MAGIC %md
 # MAGIC ## Done — Phase 0 complete
 # MAGIC All tables landed, tagged, and verified. Next phases (DLT, models, agents,
-# MAGIC app) build on top of these bronze/reference tables. The vivid claim
+# MAGIC app) build on top of these landing/reference tables. The vivid claim
 # MAGIC **cc:900001** is reproducible and survives every reset.

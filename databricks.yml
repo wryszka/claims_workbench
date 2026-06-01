@@ -1,29 +1,36 @@
 # Bricksurance SE — Claims Intelligence Workbench
-# Databricks Asset Bundle (DAB) — Phase 0: scaffold + synthetic data generation.
+# Databricks Asset Bundle (DAB).
+#   Phase 0: scaffold + synthetic landing-zone data generation (notebook).
+#   Phase 1: bronze DLT pipeline (resources/bronze_pipeline.yml).
 #
 # One-command deploy:  databricks bundle deploy -t dev
 #
 # --------------------------------------------------------------------------
-# CATALOG: this "just works" on any dev workspace.
+# CATALOG
 # --------------------------------------------------------------------------
-# The `catalog` variable is intentionally EMPTY by default. When it is empty,
-# the setup notebook falls back to the workspace's standard catalog via
-# spark.catalog.currentCatalog() at run time — so you do not have to know or
-# hardcode the catalog name to run the demo.
+# The top-level `catalog` variable is EMPTY by default for portability — the
+# Phase 0 setup notebook auto-resolves to the workspace's current catalog at
+# run time (spark.catalog.currentCatalog()).
 #
-# To pin a specific catalog instead, override it in ONE line, either:
-#   * on the CLI:        databricks bundle deploy -t dev --var="catalog=my_catalog"
-#   * or in this file:   set `default:` below to your catalog name.
+# The Phase 1 DLT pipeline, however, needs an EXPLICIT target catalog (a
+# pipeline can't resolve a catalog at runtime the way a notebook can). So the
+# `dev` target below pins `catalog` to this workspace's catalog. Change that one
+# line for another workspace, or override on the CLI:
+#   databricks bundle deploy -t dev --var="catalog=my_catalog"
 # --------------------------------------------------------------------------
 
 bundle:
   name: claims_workbench
 
+include:
+  - resources/*.yml
+
 variables:
   catalog:
     description: >-
-      Unity Catalog to deploy into. Leave empty to auto-resolve to the
-      workspace's current catalog at run time. Override to pin a catalog.
+      Unity Catalog to deploy into. Empty = Phase 0 notebook auto-resolves to
+      the workspace current catalog. Phase 1 (DLT) needs it set — the dev
+      target pins it below.
     default: ""
   schema:
     description: Fixed schema for all Claims Workbench objects.
@@ -39,5 +46,6 @@ targets:
       host: REPLACE-ME            # e.g. https://fevm-lr-serverless-aws-us.cloud.databricks.com
       # profile: DEFAULT
     variables:
-      # catalog: ""  # <- pin your catalog here if you don't want auto-resolve
+      # Phase 1 DLT needs an explicit catalog — pin your dev workspace catalog here.
+      catalog: lr_serverless_aws_us_catalog
       schema: claims_workbench

@@ -2,69 +2,92 @@
 
 Synthetic **Guidewire ClaimCenter** claims intelligence for **Bricksurance SE**, built as a redeployable Databricks Asset Bundle. Motor Third Party + Home Property, end to end on the Lakehouse.
 
-> **Phase 0** of a multi-phase build. This phase scaffolds the bundle, generates a synthetic Guidewire CDA landing (~120k claims), and tags everything in Unity Catalog. DLT, ML models, agents, and the app come in later phases.
+> **Phases 0–1** of a multi-phase build.
+> **Phase 0** — scaffold + a synthetic Guidewire CDA **landing zone** (`landing_*`, ~120k claims), UC-tagged.
+> **Phase 1** — a real **bronze DLT pipeline** that reads the landing zone and produces governed `bronze_*` tables with data-quality expectations + quarantine.
+> Silver, gold, ML, agents, and the app come in later phases.
 
 ## The flow, literally
 
 ```
-Guidewire ClaimCenter (CDA)        Enrichment feeds          Reference
-  bronze_gw_cc_claim                bronze_fraud_signals_raw   ref_handlers
-  bronze_gw_cc_exposure             bronze_weather_raw         ref_weather_index
-  bronze_gw_cc_incident                   │                         │
-  bronze_gw_cc_contact                    │                         │
-  bronze_gw_pc_policy                     │                         │
-        └──────────────┬─────────────────┴─────────────────────────┘
-                       ▼
-            <catalog>.claims_workbench   (UC-tagged Delta tables)
-                       │
-                       ▼
-        Phase 1 DLT → Phase 2 features → Phase 3 reserving →
-        Phase ... ML / agents / app   (future)
+                LANDING ZONE                         BRONZE (DLT, governed)
+  Guidewire CDA drop (Phase 0 notebook)      Phase 1 DLT pipeline
+    landing_gw_cc_claim    ─────────────►      bronze_gw_cc_claim     ┐
+    landing_gw_cc_exposure ─────────────►      bronze_gw_cc_exposure  │
+    landing_gw_cc_incident ─────────────►      bronze_gw_cc_incident  │ expectations
+    landing_gw_cc_contact  ─────────────►      bronze_gw_cc_contact   │  + typing
+    landing_gw_pc_policy   ─────────────►      bronze_gw_pc_policy    │
+    landing_fraud_signals  ─────────────►      bronze_fraud_signals_raw
+    landing_weather        ─────────────►      bronze_weather_raw     ┘
+    ref_handlers, ref_weather_index                   │
+                                                      ├─► bronze_quarantine_claims
+                                                      └─► bronze_quarantine_fraud_signals
+                                   ▼
+        Phase 2 features → Phase 3 reserving → ML / agents / app   (future)
 ```
 
 ## Quick Start
 
-One-command deploy to your dev workspace:
-
 ```bash
 # 1. Point the bundle at your workspace (set host in databricks.yml, or use a profile)
-# 2. Deploy
+#    and confirm the dev-target catalog (databricks.yml -> targets.dev.variables.catalog).
+# 2. Deploy scaffold + DLT pipeline
 databricks bundle deploy -t dev
 
-# 3. Run the setup notebook in the workspace:
-#    notebooks/00_setup_and_data_generation.py
-#    Leave the `catalog` widget blank to use the workspace's current catalog.
+# 3. Phase 0 — generate the landing zone:
+#    run notebooks/00_setup_and_data_generation.py (catalog widget blank = workspace current)
+
+# 4. Phase 1 — run the bronze DLT pipeline, then tag its tables:
+databricks bundle run claims_workbench_01_bronze_dlt -t dev
+#    then run notebooks/01b_tag_bronze.py (applies project/layer/owner tags)
 ```
 
-The setup notebook installs `dbldatagen`, creates `<catalog>.claims_workbench`, generates and tags all tables, and runs a targeted check at the end.
+## Catalog — portable, with one pinned line for DLT
 
-## Catalog — it just works, and it's trivially changeable
+The top-level `catalog` variable is **empty by default**: the Phase 0 notebook auto-resolves to the workspace's current catalog via `spark.catalog.currentCatalog()` at run time — no config on a fresh dev workspace.
 
-The DAB `catalog` variable is **empty by default**. When empty, the setup notebook resolves to the workspace's current catalog via `spark.catalog.currentCatalog()` at run time — no config needed on a fresh dev workspace.
-
-To pin a specific catalog, override in one line:
+A **DLT pipeline needs an explicit target catalog** (it can't resolve one at runtime like a notebook), so the `dev` target pins `catalog`. Change that one line for another workspace, or override:
 
 ```bash
 databricks bundle deploy -t dev --var="catalog=my_catalog"
 ```
 
-or set the `catalog` widget when running the notebook. The schema is fixed as `claims_workbench`.
+The schema is fixed as `claims_workbench`.
 
-## What lands in Unity Catalog
+## Phase 0 — the landing zone (`landing_*`)
+
+Produced by `notebooks/00_setup_and_data_generation.py` (generation logic in `notebooks/claims_data_gen.py`), simulating a raw Guidewire ClaimCenter CDA drop.
 
 | Table | Layer | Rows | Notes |
 |-------|-------|------|-------|
-| `bronze_gw_cc_claim` | bronze | ~120k | Guidewire CDA claim header (`cc:NNNNNN`, `BSE-CC-{yyyy}-{seq}`) |
-| `bronze_gw_cc_exposure` | bronze | ~120k | Coverage / reserve / paid amounts |
-| `bronze_gw_cc_incident` | bronze | ~120k | Incident type + templated description text |
-| `bronze_gw_cc_contact` | bronze | ~120k | Claimant / third-party / witness + UK postcode district |
-| `bronze_gw_pc_policy` | bronze | ~55k | PolicyCenter policy (motor / home), only policies referenced by a claim |
-| `bronze_fraud_signals_raw` | bronze | ~120k | Rule-seeded fraud score, prior claims, report lag |
-| `bronze_weather_raw` | bronze | ~30 | Per-district flood / wind / freeze risk |
+| `landing_gw_cc_claim` | landing | ~120k | Claim header (`cc:NNNNNN`, `BSE-CC-{yyyy}-{seq}`) |
+| `landing_gw_cc_exposure` | landing | ~120k | Coverage / reserve / paid amounts |
+| `landing_gw_cc_incident` | landing | ~120k | Incident type + templated description text |
+| `landing_gw_cc_contact` | landing | ~120k | Claimant / third-party / witness + UK postcode district |
+| `landing_gw_pc_policy` | landing | ~55k | PolicyCenter policy (motor / home), only policies referenced by a claim |
+| `landing_fraud_signals` | landing | ~120k | Rule-seeded fraud score, prior claims, report lag |
+| `landing_weather` | landing | ~30 | Per-district flood / wind / freeze risk |
 | `ref_handlers` | ref | ~80 | Claim handlers (grade / team / BU) |
 | `ref_weather_index` | ref | ~30 | Materialised weather feed for joins |
 
-All dates are **rolling** relative to `current_date()`, so the demo never goes stale. UC tags applied: `project=claims_workbench`, `owner=wryszka`, `layer=<bronze\|ref>` (tables); `demo=bricksurance_se` (schema).
+All dates are **rolling** relative to `current_date()`, so the demo never goes stale. Schema tagged `project=claims_workbench`, `owner=wryszka`, `demo=bricksurance_se`; tables tagged `layer=landing|ref`.
+
+## Phase 1 — bronze DLT pipeline (`claims_workbench_01_bronze_dlt`)
+
+`notebooks/01_bronze_dlt_pipeline.py` reads the landing zone and produces 7 governed, lightly-typed `bronze_*` tables (`bronze_gw_cc_claim`, `_exposure`, `_incident`, `_contact`, `bronze_gw_pc_policy`, `bronze_fraud_signals_raw`, `bronze_weather_raw`) plus 2 quarantine tables. Streaming reads (`skipChangeCommits`), amounts cast to `decimal(12,2)`, dates/timestamps typed.
+
+**Expectations show all three DLT behaviours:**
+
+| Rule | Type | Behaviour |
+|------|------|-----------|
+| `valid_policy_number` (`RLIKE '^BSE-'`) | `expect` | track & retain (bad policy numbers flagged, kept) |
+| `valid_report_channel` | `expect` | track & retain |
+| `valid_loss_cause` | `expect_or_drop` | drop garbage typecodes → `bronze_quarantine_claims` |
+| `fraud_score_range` (`0–100`) | `expect_or_drop` | drop out-of-range → `bronze_quarantine_fraud_signals` |
+
+The ~3% malformed records seeded in Phase 0 surface here: bad `policy_number` rows are **tracked** (retained, visible in metrics), while invalid `loss_cause` and out-of-range `fraud_score` rows are **dropped and quarantined** — *no claims data lost, bad records quarantined not silently dropped.* Expectation pass/fail metrics are visible in the DLT pipeline event log / UI.
+
+UC tags (`project/layer=bronze/owner`) are applied by the post-step `notebooks/01b_tag_bronze.py` (DLT can reset tags on a full refresh, so re-run it after one).
 
 ## Deliberately-seeded business signals
 
@@ -73,7 +96,7 @@ These are intentional — later phases tell stories with them:
 - **Long tail:** 80% of claims report < £5k, tail to £250k.
 - **Under-reserving:** home escape-of-water reserves are systematically ~28% light vs. what's needed (the "+28% under-reserving" story in Phase 3).
 - **Geo skew:** north-west districts (M, BL, OL, WN) get ~3× escape-of-water frequency.
-- **Quarantine bait:** ~2% intentionally malformed rows (bad `policy_number` / out-of-range `fraud_score`) for the Phase 1 DLT quarantine demo.
+- **Quarantine bait:** ~3% intentionally malformed rows — bad `policy_number` (tracked), invalid `loss_cause` and out-of-range `fraud_score` (dropped & quarantined) — for the Phase 1 DLT quarantine demo.
 
 ## The vivid demo claim — `cc:900001` (SACRED)
 
@@ -91,19 +114,24 @@ One specific claim is hand-seeded with **fixed, reproducible** attributes. It su
 | `days_since_incident` | 18 |
 
 ```sql
-SELECT * FROM <catalog>.claims_workbench.bronze_gw_cc_claim WHERE claim_public_id = 'cc:900001';
+-- in the landing zone (Phase 0) and, after Phase 1, in governed bronze:
+SELECT * FROM <catalog>.claims_workbench.landing_gw_cc_claim WHERE claim_public_id = 'cc:900001';
+SELECT * FROM <catalog>.claims_workbench.bronze_gw_cc_claim  WHERE claim_public_id = 'cc:900001';
 ```
 
 ## Repository Structure
 
 ```
 claims_workbench/
-├── databricks.yml                         # DAB definition (catalog variable, dev target)
+├── databricks.yml                         # DAB definition (catalog var, dev target, includes resources/)
 ├── README.md
 ├── notebooks/
-│   ├── 00_setup_and_data_generation.py    # orchestration notebook (run this)
-│   └── claims_data_gen.py                 # reusable generation module (roll_dates, generate_all)
-├── resources/                             # (future) jobs / pipelines / app resources
+│   ├── 00_setup_and_data_generation.py    # Phase 0 — generate the landing zone (run this)
+│   ├── claims_data_gen.py                 # reusable generation module (roll_dates, generate_all)
+│   ├── 01_bronze_dlt_pipeline.py          # Phase 1 — bronze DLT pipeline source
+│   └── 01b_tag_bronze.py                  # Phase 1 — post-step: tag bronze tables
+├── resources/
+│   └── bronze_pipeline.yml                # Phase 1 — DLT pipeline resource
 ├── app/                                   # (future) Databricks App
 └── data/seed/                             # (future) static seed assets
 ```

@@ -133,11 +133,11 @@ def _anchor_sql(anchor=None):
 # Core claims table (dbldatagen for primitives, Spark expr for business logic)
 # --------------------------------------------------------------------------
 def build_claims(spark, anchor=None):
-    """Return the bulk `bronze_gw_cc_claim` DataFrame (vivid claim added later).
+    """Return the bulk `landing_gw_cc_claim` DataFrame (vivid claim added later).
 
     Carries a few helper columns (policy_seq, product, postcode_district,
     report_lag_days, is_bad_*) consumed by the child-table builders. Callers
-    should select the public schema before persisting `bronze_gw_cc_claim`.
+    should select the public schema before persisting `landing_gw_cc_claim`.
     """
     import dbldatagen as dg
 
@@ -170,15 +170,18 @@ def build_claims(spark, anchor=None):
         .withColumn("u_sig", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
         .withColumn("desc_pick", "int", minValue=0, maxValue=7, random=True)
         .withColumn("u_badpol", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
+        .withColumn("u_badcause", "double", minValue=0.0, maxValue=1.0, continuous=True, random=True)
     )
     df = spec.build()
 
     is_nw = "postcode_district rlike '^(M|BL|OL|WN)[0-9]'"
 
-    # loss_cause — NW districts get ~3x escape-of-water (waterdamage) frequency.
-    # NW water band width 0.48, non-NW 0.16 -> ~3x (verified ~0.48 vs ~0.16).
+    # loss_cause_clean — the valid typecode used to derive child entities
+    # (product, incident_type, coverage, under-reserving). NW districts get ~3x
+    # escape-of-water (waterdamage) frequency. NW water band width 0.48,
+    # non-NW 0.16 -> ~3x (verified ~0.48 vs ~0.16).
     df = df.withColumn(
-        "loss_cause",
+        "loss_cause_clean",
         F.expr(f"""
             CASE WHEN {is_nw} THEN
                 CASE
@@ -198,9 +201,19 @@ def build_claims(spark, anchor=None):
         """),
     )
 
+    # loss_cause as it lands in the raw claim record: ~1% carry a garbage
+    # typecode ('unknown') to simulate a dirty Guidewire CDA drop. These survive
+    # into the landing zone and are quarantined by the Phase 1 bronze DLT
+    # (expect_or_drop on valid_loss_cause). Child tables key off the *clean*
+    # cause, so only the claim header is corrupted.
+    df = df.withColumn(
+        "loss_cause",
+        F.expr("CASE WHEN u_badcause < 0.01 THEN 'unknown' ELSE loss_cause_clean END"),
+    )
+
     df = df.withColumn(
         "product",
-        F.expr("CASE WHEN loss_cause = 'vehcollision' THEN 'motor' ELSE 'home' END"),
+        F.expr("CASE WHEN loss_cause_clean = 'vehcollision' THEN 'motor' ELSE 'home' END"),
     )
 
     # report_channel
@@ -312,7 +325,7 @@ def vivid_claim_row(spark, anchor=None):
 # Child / related tables — derived from the claims DataFrame (FK-safe)
 # --------------------------------------------------------------------------
 def build_exposures(claims):
-    """`bronze_gw_cc_exposure` (1 exposure per claim).
+    """`landing_gw_cc_exposure` (1 exposure per claim).
 
     Home escape-of-water is under-reserved: reserve_amount ≈ 0.72x of the
     outstanding it should carry -> "+28% under-reserving" story in Phase 3.
@@ -330,7 +343,7 @@ def build_exposures(claims):
     df = df.withColumn("paid_amount", F.expr("CAST(round(total_incurred * paid_frac) AS INT)"))
     df = df.withColumn("correct_reserve", F.expr("greatest(total_incurred - paid_amount, 0)"))
     df = df.withColumn(
-        "is_eow", F.expr("loss_cause = 'waterdamage' AND product = 'home'"))
+        "is_eow", F.expr("loss_cause_clean = 'waterdamage' AND product = 'home'"))
     df = df.withColumn(
         "reserve_amount",
         F.expr("CAST(round(CASE WHEN is_eow THEN correct_reserve * 0.72 ELSE correct_reserve END) AS INT)"),
@@ -338,7 +351,7 @@ def build_exposures(claims):
     df = df.withColumn(
         "coverage_type",
         F.expr("""
-            CASE loss_cause
+            CASE loss_cause_clean
                 WHEN 'vehcollision' THEN 'motor_third_party'
                 WHEN 'fire' THEN 'home_buildings'
                 ELSE 'home_buildings'
@@ -354,11 +367,11 @@ def build_exposures(claims):
 
 
 def build_incidents(claims):
-    """`bronze_gw_cc_incident` (1 incident per claim) with templated text."""
+    """`landing_gw_cc_incident` (1 incident per claim) with templated text."""
     df = claims.withColumn(
         "incident_type",
         F.expr("""
-            CASE loss_cause
+            CASE loss_cause_clean
                 WHEN 'vehcollision' THEN 'vehicle_collision'
                 WHEN 'waterdamage' THEN 'escape_of_water'
                 WHEN 'windhail' THEN 'storm_damage'
@@ -383,7 +396,7 @@ def build_incidents(claims):
     )
     df = df.withColumn("incident_public_id", F.expr("concat('in:', claim_seq)"))
 
-    # description_text via a CASE over (loss_cause, desc_pick); templates inline.
+    # description_text via a CASE over (loss_cause_clean, desc_pick); inline.
     branches = []
     for cause, templates in DESC_TEMPLATES.items():
         n = len(templates)
@@ -391,7 +404,7 @@ def build_incidents(claims):
             f"WHEN pmod(desc_pick, {n}) = {i} THEN '{t.replace(chr(39), chr(39)*2)}'"
             for i, t in enumerate(templates)
         )
-        branches.append(f"WHEN loss_cause = '{cause}' THEN (CASE {inner} END)")
+        branches.append(f"WHEN loss_cause_clean = '{cause}' THEN (CASE {inner} END)")
     desc_sql = "CASE " + " ".join(branches) + " END"
     df = df.withColumn("description_text", F.expr(desc_sql))
 
@@ -402,7 +415,7 @@ def build_incidents(claims):
 
 
 def build_contacts(claims):
-    """`bronze_gw_cc_contact` (1 primary contact per claim)."""
+    """`landing_gw_cc_contact` (1 primary contact per claim)."""
     df = claims.withColumn(
         "contact_role",
         F.expr("""
@@ -420,7 +433,7 @@ def build_contacts(claims):
 
 
 def build_fraud_signals(claims):
-    """`bronze_fraud_signals_raw` — rule-seeded fraud_score.
+    """`landing_fraud_signals` — rule-seeded fraud_score.
 
     Elevated by: late report (lag > 21d, +20), high amount (>£20k, +20), and
     prior claims (+8 each). ~1% get an OUT-OF-RANGE score (quarantine demo).
@@ -497,7 +510,7 @@ def vivid_children(spark, anchor=None):
 # Policy / handler / weather tables
 # --------------------------------------------------------------------------
 def build_policies(spark, claims, anchor=None):
-    """`bronze_gw_pc_policy` — derived from referenced (valid) policies + vivid.
+    """`landing_gw_pc_policy` — derived from referenced (valid) policies + vivid.
 
     Only non-malformed claims contribute policy ids, so every policy here is
     real; malformed claims dangle intentionally for the quarantine demo.
@@ -579,7 +592,7 @@ def build_handlers(spark, anchor=None):
 
 
 def build_weather(spark, anchor=None):
-    """`bronze_weather_raw` — one row per postcode district.
+    """`landing_weather` — one row per postcode district.
 
     NW districts carry elevated flood risk (consistent with the EoW skew).
     Scores are deterministic functions of the district string.
@@ -613,15 +626,17 @@ CLAIM_PUBLIC_COLS = [
     "total_incurred", "cda_batch_ts",
 ]
 
-# table -> layer, for UC tagging
+# table -> layer, for UC tagging. Phase 0 produces the LANDING ZONE (a simulated
+# Guidewire ClaimCenter CDA drop). The Phase 1 bronze DLT pipeline reads these
+# landing_* tables and produces governed bronze_* tables.
 TABLE_LAYERS = {
-    "bronze_gw_cc_claim": "bronze",
-    "bronze_gw_cc_exposure": "bronze",
-    "bronze_gw_cc_incident": "bronze",
-    "bronze_gw_cc_contact": "bronze",
-    "bronze_gw_pc_policy": "bronze",
-    "bronze_fraud_signals_raw": "bronze",
-    "bronze_weather_raw": "bronze",
+    "landing_gw_cc_claim": "landing",
+    "landing_gw_cc_exposure": "landing",
+    "landing_gw_cc_incident": "landing",
+    "landing_gw_cc_contact": "landing",
+    "landing_gw_pc_policy": "landing",
+    "landing_fraud_signals": "landing",
+    "landing_weather": "landing",
     "ref_handlers": "ref",
     "ref_weather_index": "ref",
 }
@@ -694,8 +709,8 @@ def generate_all(spark, catalog, schema, anchor=None):
         bulk.select(*CLAIM_PUBLIC_COLS)
             .unionByName(vivid.select(*CLAIM_PUBLIC_COLS))
     )
-    counts["bronze_gw_cc_claim"] = write_and_tag(
-        spark, claims_public, catalog, schema, "bronze_gw_cc_claim", "bronze")
+    counts["landing_gw_cc_claim"] = write_and_tag(
+        spark, claims_public, catalog, schema, "landing_gw_cc_claim", "landing")
 
     # --- child tables (bulk derived + vivid rows) ---
     v_exp, v_inc, v_con, v_fraud = vivid_children(spark, anchor=anchor)
@@ -703,35 +718,35 @@ def generate_all(spark, catalog, schema, anchor=None):
     # vivid carries no u_*/report_lag helper cols, so derive children from the
     # bulk frame only, then union the explicit vivid child rows.
     exposures = build_exposures(bulk).unionByName(v_exp)
-    counts["bronze_gw_cc_exposure"] = write_and_tag(
-        spark, exposures, catalog, schema, "bronze_gw_cc_exposure", "bronze")
+    counts["landing_gw_cc_exposure"] = write_and_tag(
+        spark, exposures, catalog, schema, "landing_gw_cc_exposure", "landing")
 
     incidents = build_incidents(bulk).unionByName(v_inc)
-    counts["bronze_gw_cc_incident"] = write_and_tag(
-        spark, incidents, catalog, schema, "bronze_gw_cc_incident", "bronze")
+    counts["landing_gw_cc_incident"] = write_and_tag(
+        spark, incidents, catalog, schema, "landing_gw_cc_incident", "landing")
 
     contacts = build_contacts(bulk).unionByName(v_con)
-    counts["bronze_gw_cc_contact"] = write_and_tag(
-        spark, contacts, catalog, schema, "bronze_gw_cc_contact", "bronze")
+    counts["landing_gw_cc_contact"] = write_and_tag(
+        spark, contacts, catalog, schema, "landing_gw_cc_contact", "landing")
 
     fraud = build_fraud_signals(bulk).unionByName(v_fraud)
-    counts["bronze_fraud_signals_raw"] = write_and_tag(
-        spark, fraud, catalog, schema, "bronze_fraud_signals_raw", "bronze")
+    counts["landing_fraud_signals"] = write_and_tag(
+        spark, fraud, catalog, schema, "landing_fraud_signals", "landing")
 
     # --- policy / handlers / weather ---
     # Derive policies from the bulk frame only; the vivid policy is appended
     # explicitly inside build_policies (avoids a double-count).
     policies = build_policies(spark, bulk, anchor=anchor)
-    counts["bronze_gw_pc_policy"] = write_and_tag(
-        spark, policies, catalog, schema, "bronze_gw_pc_policy", "bronze")
+    counts["landing_gw_pc_policy"] = write_and_tag(
+        spark, policies, catalog, schema, "landing_gw_pc_policy", "landing")
 
     handlers = build_handlers(spark, anchor=anchor)
     counts["ref_handlers"] = write_and_tag(
         spark, handlers, catalog, schema, "ref_handlers", "ref")
 
     weather = build_weather(spark, anchor=anchor)
-    counts["bronze_weather_raw"] = write_and_tag(
-        spark, weather, catalog, schema, "bronze_weather_raw", "bronze")
+    counts["landing_weather"] = write_and_tag(
+        spark, weather, catalog, schema, "landing_weather", "landing")
 
     # ref_weather_index — materialised copy of the weather feed for joins.
     counts["ref_weather_index"] = write_and_tag(

@@ -1,0 +1,26 @@
+# Phase 1 — Bronze DLT (Lakeflow Declarative) pipeline.
+# Reads the Phase 0 landing zone (landing_*) and produces governed bronze_*
+# tables with data-quality expectations + quarantine. Serverless.
+#
+# Deployed by `databricks bundle deploy -t dev`. Trigger with:
+#   databricks bundle run claims_workbench_01_bronze_dlt -t dev
+resources:
+  pipelines:
+    claims_workbench_01_bronze_dlt:
+      name: claims_workbench_01_bronze_dlt
+      serverless: true
+      photon: true
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      development: true
+      configuration:
+        # Source resolution for the pipeline notebook (mirrors Phase 0).
+        source_catalog: ${var.catalog}
+        source_schema: ${var.schema}
+      libraries:
+        - notebook:
+            path: ../notebooks/01_bronze_dlt_pipeline.py
+      tags:
+        project: claims_workbench
+        layer: bronze
+        owner: wryszka
