@@ -127,6 +127,16 @@ async def governance_inventory():
     return await svc.governance_inventory()
 
 
+@router.get("/claim/track")
+async def claim_track(cid: str):
+    return await svc.claim_track(cid)
+
+
+@router.get("/agents")
+async def agents():
+    return await svc.agent_roster()
+
+
 @router.get("/reset-status")
 async def reset_status():
     import asyncio

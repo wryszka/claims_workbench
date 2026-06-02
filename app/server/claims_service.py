@@ -438,35 +438,219 @@ async def claim_reasoning(cid: str) -> list[dict]:
 _INVENTORY = [
     {"source": "Guidewire ClaimCenter (CDA)", "table": "landing_gw_cc_claim / bronze_gw_cc_claim",
      "fields": "claim id, policy, loss/report date, peril, channel, amount, status",
-     "tier": "PII", "retention": "7 years", "masking": "postcode masked in v_claims_masked"},
+     "tier": "PII", "retention": "7 years", "masking": "postcode masked in v_claims_masked",
+     "used_for": "The spine of every claim — drives triage, reserving and the control tower."},
     {"source": "Guidewire ClaimCenter", "table": "bronze_gw_cc_incident",
      "fields": "incident type, free-text description (health/injury possible)",
-     "tier": "SECRET", "retention": "7 years", "masking": "narrative withheld in v_claims_secret (CMK)"},
+     "tier": "SECRET", "retention": "7 years", "masking": "narrative withheld in v_claims_secret (CMK)",
+     "used_for": "Context for the dossier and fraud agents; never shown raw to non-privileged roles."},
     {"source": "Guidewire ClaimCenter", "table": "bronze_gw_cc_contact",
      "fields": "contact role, claimant postcode district", "tier": "PII",
-     "retention": "7 years", "masking": "postcode masked"},
+     "retention": "7 years", "masking": "postcode masked",
+     "used_for": "Third-party detection (recovery) and weather-risk join by district."},
     {"source": "Guidewire PolicyCenter", "table": "bronze_gw_pc_policy",
      "fields": "product, sum insured, premium, effective/expiry", "tier": "PII",
-     "retention": "10 years", "masking": "policy-level, restricted to handlers"},
+     "retention": "10 years", "masking": "policy-level, restricted to handlers",
+     "used_for": "Policy context for the dossier; loss-ratio and premium-adequacy analytics."},
     {"source": "Internal fraud rules", "table": "bronze_fraud_signals_raw",
      "fields": "fraud score, flag, prior claims, reporting lag", "tier": "SECRET",
-     "retention": "7 years", "masking": "SIU-only; Secret tier"},
+     "retention": "7 years", "masking": "SIU-only; Secret tier",
+     "used_for": "Triage refer-to-SIU decisions and the Fraud agent's risk verdict."},
     {"source": "Weather feed", "table": "bronze_weather_raw / ref_weather_index",
      "fields": "flood / wind / freeze risk by district", "tier": "Public",
-     "retention": "indefinite", "masking": "none"},
+     "retention": "indefinite", "masking": "none",
+     "used_for": "Weather-risk composite for reserving and geographic concentration."},
     {"source": "Derived (silver)", "table": "silver_claims_enriched",
      "fields": "all enriched signals incl recovery, weather composite, ML labels",
-     "tier": "PII + SECRET", "retention": "7 years", "masking": "PII + Secret views"},
+     "tier": "PII + SECRET", "retention": "7 years", "masking": "PII + Secret views",
+     "used_for": "The single enriched record every model, agent and tile reads from."},
     {"source": "ML + workflow", "table": "gold_claim_disposition",
      "fields": "disposition, model decision/confidence, per-rule reasoning",
-     "tier": "Internal", "retention": "7 years", "masking": "decision audit"},
+     "tier": "Internal", "retention": "7 years", "masking": "decision audit",
+     "used_for": "Auto-close vs escalate; the slider re-segments this live; the audit of why."},
     {"source": "Agents (MLflow traces)", "table": "agent_reasoning_log",
      "fields": "agent, input, reasoning, output, timestamp", "tier": "Internal",
-     "retention": "7 years", "masking": "regulator-viewable decision reasoning"},
+     "retention": "7 years", "masking": "regulator-viewable decision reasoning",
+     "used_for": "The regulator-readable record of what each agent reasoned, per claim."},
     {"source": "Human-in-the-loop", "table": "gold_handler_decisions",
      "fields": "handler action, override flag/reason, attribution, timestamp",
-     "tier": "Internal", "retention": "7 years", "masking": "FCA / Consumer-Duty trail"},
+     "tier": "Internal", "retention": "7 years", "masking": "FCA / Consumer-Duty trail",
+     "used_for": "Proof a human decided — what the model advised and what the handler did."},
 ]
+
+
+_DOC_SETS = {
+    "motor": ["FNOL form", "Driving licence", "Incident photos", "Police reference",
+              "Third-party insurer details", "Repair estimate"],
+    "home": ["FNOL form", "Damage photos", "Proof of ownership", "Contractor quote",
+             "Schedule of loss", "Surveyor report"],
+}
+
+
+def _doc_status(cid: str, doc: str, clean: bool) -> str:
+    """Deterministic simulated document status. Clean claims (auto-close hero) have a
+    complete pack; others have realistic gaps a head of claims struggles to see today."""
+    import zlib
+    if doc in ("FNOL form",):
+        return "received"
+    if clean:
+        return "received"
+    h = zlib.crc32(f"{cid}|{doc}".encode()) % 10
+    return "received" if h <= 5 else ("awaited" if h <= 7 else "missing")
+
+
+async def claim_track(cid: str) -> dict:
+    """The end-to-end track for one claim: lifecycle timeline, the documents that came
+    with it (received / awaited / missing — simulated), and what was done. Built for a
+    head of claims who today has to stitch this together across systems by hand."""
+    rows = await execute_query(f"""
+        SELECT peril_type, product, total_incurred, claim_status,
+               cast(loss_date AS string) loss_date, cast(report_date AS string) report_date,
+               report_channel, reporting_lag_days, postcode_district, handler_id, handler_grade,
+               fraud_score, triage_decision, reserve_bracket, cast(settlement_date AS string) settlement_date,
+               days_to_settle, recovery_flag, recoverable_amount, description_text
+        FROM {_fq('silver_claims_enriched')} WHERE claim_public_id = '{_esc(cid)}'""")
+    if not rows:
+        return {"found": False, "claim_public_id": cid}
+    c = rows[0]
+    disp = await claim_disposition(cid)
+    reasoning = await claim_reasoning(cid)
+    try:
+        decisions = await execute_query(f"""
+            SELECT handler_action, override_flag, override_reason, handler_id,
+                   cast(decision_ts AS string) decision_ts
+            FROM {_fq('gold_handler_decisions')} WHERE claim_public_id = '{_esc(cid)}'
+            ORDER BY decision_ts DESC LIMIT 1""")
+    except Exception:
+        decisions = []
+
+    auto = (disp.get("disposition") == "auto_closed")
+    product = (c.get("product") or "home")
+    docs = [{"name": d, "status": _doc_status(cid, d, auto)} for d in _DOC_SETS.get(product, _DOC_SETS["home"])]
+    received = sum(1 for d in docs if d["status"] == "received")
+
+    # Lifecycle timeline — derived from the real claim facts + disposition.
+    lc = []
+    lc.append({"stage": "FNOL received", "when": c["report_date"],
+               "detail": f"Reported via {c['report_channel']}, {c['reporting_lag_days']} days after the incident.", "status": "done"})
+    lc.append({"stage": "Documents intake", "when": c["report_date"],
+               "detail": f"{received} of {len(docs)} expected documents received.",
+               "status": "done" if received == len(docs) else "partial"})
+    lc.append({"stage": "Triage", "when": c["report_date"],
+               "detail": f"Model recommended {disp.get('model_decision') or c.get('triage_decision')} "
+                         f"({disp.get('model_confidence','—')}% confidence).", "status": "done"})
+    lc.append({"stage": "Reserve set", "when": c["report_date"],
+               "detail": f"Reserve bracket {c.get('reserve_bracket') or '—'}.", "status": "done"})
+    lc.append({"stage": "Fraud screen", "when": c["report_date"],
+               "detail": f"Fraud score {c.get('fraud_score')}/100.", "status": "done"})
+    if auto:
+        lc.append({"stage": "Auto-closed & paid", "when": c["report_date"],
+                   "detail": f"Straight-through: all risk-appetite rules passed. {gbp_note(c['total_incurred'])} paid (simulated).", "status": "done"})
+    else:
+        lc.append({"stage": "Escalated to handler", "when": c["report_date"],
+                   "detail": f"Routed to {c.get('handler_id') or 'a handler'} ({c.get('handler_grade') or '—'}).", "status": "done"})
+        if decisions:
+            d = decisions[0]
+            lc.append({"stage": "Handler decision", "when": d.get("decision_ts"),
+                       "detail": f"{'Override' if d.get('override_flag') else 'Accepted'}"
+                                 f"{(' — ' + d['override_reason']) if d.get('override_reason') else ''}.", "status": "done"})
+        else:
+            lc.append({"stage": "Awaiting handler decision", "when": None,
+                       "detail": "No human decision logged yet — outstanding.", "status": "awaited"})
+    if c.get("recovery_flag"):
+        lc.append({"stage": "Recovery identified", "when": None,
+                   "detail": f"Subrogation potential — up to {gbp_note(c.get('recoverable_amount'))} recoverable from the third party.", "status": "awaited"})
+    if c.get("settlement_date"):
+        lc.append({"stage": "Settled", "when": c["settlement_date"],
+                   "detail": f"Closed in {c.get('days_to_settle')} days.", "status": "done"})
+
+    actions = [{"actor": r["agent_name"], "detail": (r["reasoning_text"] or "")[:240]} for r in reasoning]
+    gaps = [f"{d['name']} — {d['status']}" for d in docs if d["status"] != "received"]
+    if not auto and not decisions:
+        gaps.append("Handler decision outstanding")
+    if c.get("recovery_flag"):
+        gaps.append(f"Recovery not yet pursued ({gbp_note(c.get('recoverable_amount'))})")
+
+    return {"found": True, "claim_public_id": cid,
+            "claim": {k: c[k] for k in c if k != "description_text"},
+            "disposition": disp.get("disposition"), "documents": docs,
+            "doc_complete_pct": round(100 * received / len(docs)),
+            "lifecycle": lc, "actions": actions, "gaps": gaps}
+
+
+def gbp_note(v) -> str:
+    try:
+        return "£{:,.0f}".format(float(v))
+    except Exception:
+        return "£—"
+
+
+def _agent_roster_sync() -> dict:
+    """Resolve the live agent/model/Genie endpoints so every card clicks through to
+    the actual Databricks artefact. DAB dev mode truncates/prefixes names → substring."""
+    from server.sql import _client
+    w = _client()
+    host = w.config.host.rstrip("/")
+    try:
+        eps = [e.name for e in w.serving_endpoints.list()]
+    except Exception:
+        eps = []
+
+    def find(sub):
+        return next((n for n in eps if sub in n), None)
+
+    def ep(name):
+        return {"endpoint": name, "url": f"{host}/ml/endpoints/{name}" if name else None}
+
+    # agents.deploy auto-names each agent endpoint
+    # `agents_<catalog>-<schema>-agent_<first4>`. Resolve from the live list when the
+    # app SP can see it, else construct the conventional name (portable + survives the
+    # SP not having list-visibility on every endpoint).
+    cat, sch = config.CATALOG, config.SCHEMA
+
+    def agent_ep(tok):
+        return ep(find(f"agent_{tok}") or f"agents_{cat}-{sch}-agent_{tok}")
+
+    sup = config.ENDPOINT_SUPERVISOR or find("supervisor")
+    agents = [
+        {"name": "Claim 360 / Dossier", "color": "amber", "kind": "agent",
+         "desc": "Assembles policy, history, FNOL, enrichment, fraud and recovery into one handler-ready narrative — everything in one place.",
+         **agent_ep("cont")},
+        {"name": "Fraud", "color": "red", "kind": "agent",
+         "desc": "Returns a LOW / MEDIUM / HIGH fraud verdict with the specific signals behind it — fraud score, prior claims, reporting lag.",
+         **agent_ep("frau")},
+        {"name": "Challenge / Second-Opinion", "color": "violet", "kind": "agent",
+         "desc": "Argues the OPPOSITE of the current disposition — caution if a claim was auto-closed, the case to release if it was escalated. No decision authority.",
+         **agent_ep("chal")},
+        {"name": "Recovery / Subrogation", "color": "green", "kind": "agent",
+         "desc": "Flags recovery potential — whether money can be recovered from a third party (e.g. a not-at-fault motor loss) and the recoverable amount.",
+         **agent_ep("reco")},
+        {"name": "Audit / Reasoning", "color": "slate", "kind": "agent",
+         "desc": "Writes the regulator-readable explanation of how a claim's decision was reached — rules, values, and that no agent had pay authority.",
+         **agent_ep("audi")},
+        {"name": "Triage model", "color": "blue", "kind": "tool",
+         "desc": "A UC function scoring the FNOL triage classifier — pay_direct / escalate / refer_siu with a confidence %.",
+         **ep(find("claims-workbench-triage"))},
+        {"name": "Reserve model", "color": "blue", "kind": "tool",
+         "desc": "A UC function scoring the reserve-bracket model — LOW / MEDIUM / HIGH / LARGE LOSS with an indicative £ range.",
+         **ep(find("claims-workbench-reserve"))},
+    ]
+    genie = [
+        {"name": "Ask the Book", "color": "teal", "kind": "genie",
+         "desc": "Portfolio analytics in natural language — reserve development, settlement speed, geographic clustering, handler performance.",
+         "endpoint": "genie", "url": f"{host}/genie/rooms/{config.GENIE_SPACE_ID}" if config.GENIE_SPACE_ID else None},
+        {"name": "Ask Pricing + Claims", "color": "teal", "kind": "genie",
+         "desc": "Cross-domain questions spanning claims and the policy/pricing population — loss ratio, premium adequacy, leakage vs premium.",
+         "endpoint": "genie", "url": None},
+    ]
+    return {"supervisor": {"name": "Claims AI Supervisor", **ep(sup),
+                           "desc": "Reads the question, classifies it against the specialist catalogue in a single Foundation-Model call, dispatches to the right one, synthesises the answer with source citations, and writes the routing decision to the audit log.",
+                           "present": bool(config.ENDPOINT_SUPERVISOR)},
+            "agents": agents, "genie": genie}
+
+
+async def agent_roster() -> dict:
+    return await asyncio.to_thread(_agent_roster_sync)
 
 
 async def governance_inventory() -> dict:

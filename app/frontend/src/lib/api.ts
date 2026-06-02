@@ -44,6 +44,13 @@ export const api = {
     fetchJson<any>(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`),
   ask: (question: string, cid?: string | null) =>
     fetchJson<any>('/ask', { method: 'POST', body: JSON.stringify({ question, cid: cid ?? null }) }),
+
+  // Phase 11 Stage C / redesign
+  getDisposition: (cid: string) => fetchJson<any>(`/claim/disposition?cid=${encodeURIComponent(cid)}`),
+  getClaimReasoning: (cid: string) => fetchJson<any[]>(`/claim/reasoning?cid=${encodeURIComponent(cid)}`),
+  getClaimTrack: (cid: string) => fetchJson<any>(`/claim/track?cid=${encodeURIComponent(cid)}`),
+  getInventory: () => fetchJson<any>('/governance/inventory'),
+  getAgents: () => fetchJson<any>('/agents'),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

@@ -5,434 +5,398 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Claims Intelligence Workbench — Bricksurance SE</title>
 <style>
-  :root { --slate:#1e293b; --blue:#2563eb; --bg:#f3f4f6; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:#1e293b; }
-  .app { display:flex; min-height:100vh; }
-  .side { width:236px; background:var(--slate); color:#fff; display:flex; flex-direction:column; flex-shrink:0; }
-  .brand { padding:18px 16px; border-bottom:1px solid rgba(255,255,255,.1); display:flex; gap:10px; align-items:center; }
-  .brand b { font-size:14px; } .brand small { color:#94a3b8; font-size:10px; display:block; }
-  .nav { flex:1; padding:10px 8px; overflow:auto; } .nav a { display:flex; gap:8px; align-items:center; padding:8px 12px; border-radius:8px; color:#94a3b8; text-decoration:none; font-size:14px; cursor:pointer; }
-  .nav a.on { background:rgba(37,99,235,.2); color:#fff; font-weight:600; } .nav a:hover { color:#fff; background:rgba(255,255,255,.05); }
-  .nav .navhd { color:#475569; font-size:10px; text-transform:uppercase; letter-spacing:.08em; padding:12px 12px 4px; }
-  .foot { padding:12px; border-top:1px solid rgba(255,255,255,.1); display:flex; flex-direction:column; gap:8px; }
-  .foot .fbtn { width:100%; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.04); color:#cbd5e1; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; display:flex; gap:8px; align-items:center; justify-content:center; }
-  .foot .fbtn:disabled { opacity:.4; cursor:not-allowed; }
-  .foot .fbtn.cached { background:rgba(180,83,9,.25); color:#fcd34d; border-color:#b45309; } .foot .fbtn.live { background:rgba(4,120,87,.25); color:#6ee7b7; border-color:#047857; }
-  .foot .fmsg { color:#94a3b8; font-size:10px; min-height:12px; } .foot .ftag { color:#475569; font-size:10px; }
-  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  .top { background:#fff; border-bottom:1px solid #e2e8f0; padding:10px 24px; }
-  .top .ctx { color:#94a3b8; font-size:11px; } .top .desc { color:#334155; font-size:13px; margin-top:2px; }
-  .content { padding:24px; overflow:auto; } .wrap { max-width:1180px; margin:0 auto; }
-  h1 { font-size:20px; margin:0 0 2px; } .sub { color:#64748b; font-size:12px; margin:0 0 18px; }
-  .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; } .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; } .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  @media(max-width:1000px){ .grid4{grid-template-columns:1fr 1fr;} .grid3,.grid2{ grid-template-columns:1fr; } }
-  .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
-  .card h2 { font-size:13px; margin:0 0 12px; display:flex; gap:6px; align-items:center; }
-  .row { display:flex; justify-content:space-between; gap:12px; font-size:14px; padding:4px 0; border-bottom:1px solid #f1f5f9; }
-  .row:last-child { border:0; } .row .k { color:#64748b; } .row .v { text-align:right; }
-  .badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; }
-  .b-blue { background:#dbeafe; color:#1d4ed8; } .b-green { background:#d1fae5; color:#047857; } .b-slate { background:#f1f5f9; color:#475569; } .b-amber { background:#fef3c7; color:#b45309; } .b-red { background:#fee2e2; color:#b91c1c; }
-  .tile { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; }
-  .tile .l { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.03em; } .tile .n { font-size:24px; font-weight:800; margin-top:2px; } .tile .s { font-size:11px; color:#94a3b8; }
-  .tile.hero { background:linear-gradient(135deg,#1e3a8a,#2563eb); color:#fff; } .tile.hero .l { color:#bfdbfe; } .tile.hero .s { color:#bfdbfe; }
-  .decision { color:#fff; border-radius:10px; padding:12px; text-align:center; margin-bottom:12px; }
-  .decision .d { font-size:20px; font-weight:800; letter-spacing:.03em; } .decision .c { font-size:13px; opacity:.9; }
-  .reasons li { font-size:14px; color:#334155; margin:2px 0; } .reasons { padding-left:18px; margin:6px 0; }
-  .bar { height:8px; border-radius:999px; background:#f1f5f9; overflow:hidden; } .bar > div { height:100%; }
-  .synth { border:1px solid #bfdbfe; background:rgba(239,246,255,.5); border-radius:12px; padding:16px; margin-top:16px; }
-  .synth p { white-space:pre-wrap; line-height:1.55; font-size:14px; color:#334155; }
-  .pill { font-size:11px; padding:2px 8px; border-radius:999px; } .pill.hit{ background:#fef3c7; color:#b45309;} .pill.live{ background:#d1fae5; color:#047857;}
-  .actions { border:1px solid #e2e8f0; background:#fff; border-radius:12px; padding:16px; margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .primary { background:var(--blue); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
-  .ghost { border:1px solid #fbbf24; color:#b45309; background:#fff; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
-  .ok { color:#047857; font-weight:600; } select,input,textarea { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-size:14px; font-family:inherit; }
-  table { width:100%; border-collapse:collapse; font-size:13px; } th { text-align:left; color:#64748b; border-bottom:1px solid #f1f5f9; padding:6px 4px; }
-  td { padding:6px 4px; border-bottom:1px solid #f8fafc; } .mono { font-family: ui-monospace, monospace; font-size:12px; }
-  .spacer { flex:1; } a.link { color:var(--blue); font-size:12px; text-decoration:none; } a.link:hover { text-decoration:underline; }
-  .muted { color:#94a3b8; font-size:12px; }
-  .disclaimer { background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:12px 16px; font-size:12px; color:#92400e; line-height:1.5; margin-bottom:18px; }
-  .slider { width:100%; } .slider-row { display:flex; gap:8px; align-items:center; margin:8px 0; } .slider-row label { width:120px; font-size:12px; color:#64748b; } .slider-row .val { width:96px; text-align:right; font-weight:700; font-size:13px; }
-  .lens li { font-size:13px; color:#334155; margin:6px 0; line-height:1.45; }
-  .ph { background:repeating-linear-gradient(45deg,#f8fafc,#f8fafc 10px,#f1f5f9 10px,#f1f5f9 20px); border:1px dashed #cbd5e1; border-radius:10px; padding:12px; color:#94a3b8; }
-  .ph b { color:#64748b; display:block; font-size:13px; margin-bottom:2px; } .ph .uc { font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#b45309; background:#fef3c7; border-radius:999px; padding:1px 7px; }
-  .askbox { display:flex; gap:8px; } .askbox textarea { flex:1; min-height:46px; resize:vertical; }
-  .qchip { display:inline-block; font-size:12px; color:#334155; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px; padding:5px 11px; margin:3px; cursor:pointer; } .qchip:hover { background:#dbeafe; border-color:#bfdbfe; }
-  .qgrp { margin:8px 0; } .qgrp .gl { font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.03em; }
-  .diagram { display:flex; flex-direction:column; align-items:center; gap:10px; padding:8px 0; }
-  .sup { background:#1e3a8a; color:#fff; border-radius:10px; padding:10px 18px; font-weight:700; font-size:14px; }
-  .agents { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
-  .agbox { background:#fff; border:1px solid #cbd5e1; border-radius:10px; padding:8px 12px; width:200px; } .agbox b { font-size:12px; } .agbox span { font-size:11px; color:#64748b; display:block; }
-  .agbox.tool { border-color:#bfdbfe; background:#eff6ff; } .agbox.genie { border-color:#a7f3d0; background:#ecfdf5; }
+  :root{ --v:#7c3aed; --v7:#6d28d9; --v50:#f5f3ff; --v100:#ede9fe; --ink:#0f172a; --muted:#64748b;
+         --line:#e6e8ec; --bg:#f6f7f9; --card:#fff; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; }
+  .app{ display:flex; min-height:100vh; }
+  /* sidebar */
+  .side{ width:248px; background:#0b1220; color:#fff; display:flex; flex-direction:column; flex-shrink:0; position:sticky; top:0; height:100vh; }
+  .brand{ padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; gap:11px; align-items:center; }
+  .brand .logo{ width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#a855f7);display:flex;align-items:center;justify-content:center;font-size:18px; }
+  .brand b{ font-size:14px; letter-spacing:-.01em; } .brand small{ color:#8b95a7; font-size:10px; display:block; margin-top:1px; }
+  .nav{ flex:1; padding:12px 10px; overflow:auto; } .navhd{ color:#566177; font-size:10px; text-transform:uppercase; letter-spacing:.1em; padding:14px 12px 5px; font-weight:700; }
+  .nav a{ display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:9px; color:#aeb6c6; text-decoration:none; font-size:13.5px; cursor:pointer; font-weight:500; }
+  .nav a.on{ background:rgba(124,58,237,.22); color:#fff; font-weight:600; box-shadow:inset 0 0 0 1px rgba(124,58,237,.4); } .nav a:hover{ color:#fff; background:rgba(255,255,255,.05); }
+  .foot{ padding:12px; border-top:1px solid rgba(255,255,255,.08); display:flex; flex-direction:column; gap:8px; }
+  .fbtn{ width:100%; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.04); color:#cbd2de; border-radius:9px; padding:9px 10px; font-size:12px; font-weight:600; cursor:pointer; display:flex; gap:8px; align-items:center; justify-content:center; }
+  .fbtn:disabled{ opacity:.45; cursor:not-allowed; }
+  .fbtn.cached{ background:rgba(124,58,237,.22); color:#c4b5fd; border-color:rgba(124,58,237,.5);} .fbtn.live{ background:rgba(16,185,129,.18); color:#6ee7b7; border-color:rgba(16,185,129,.5);}
+  .fmsg{ color:#8b95a7; font-size:10px; min-height:12px; } .ftag{ color:#566177; font-size:10px; line-height:1.4; }
+  /* main */
+  .main{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .content{ padding:32px 40px 60px; overflow:auto; } .wrap{ max-width:1180px; margin:0 auto; }
+  .eyebrow{ color:var(--v7); font-size:11px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; margin-bottom:6px; }
+  h1.big{ font-size:30px; font-weight:800; letter-spacing:-.02em; margin:0 0 8px; line-height:1.12; }
+  .lead{ color:#475569; font-size:14.5px; max-width:760px; line-height:1.55; margin:0 0 26px; }
+  .pagedesc{ background:#fff; border:1px solid var(--line); border-left:3px solid var(--v); border-radius:10px; padding:11px 15px; font-size:13px; color:#475569; margin-bottom:24px; }
+  .grid4{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; } .grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; } .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:1040px){ .grid4{grid-template-columns:1fr 1fr;} .grid3,.grid2{grid-template-columns:1fr;} }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+  .card h2{ font-size:14px; margin:0 0 14px; display:flex; gap:8px; align-items:center; letter-spacing:-.01em; }
+  .row{ display:flex; justify-content:space-between; gap:12px; font-size:14px; padding:6px 0; border-bottom:1px solid #f1f3f6; } .row:last-child{border:0;}
+  .row .k{ color:var(--muted); } .row .v{ text-align:right; font-weight:500; }
+  .badge{ font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .b-blue{background:#dbeafe;color:#1d4ed8;} .b-green{background:#d1fae5;color:#047857;} .b-slate{background:#f1f5f9;color:#475569;} .b-amber{background:#fef3c7;color:#b45309;} .b-red{background:#fee2e2;color:#b91c1c;} .b-violet{background:var(--v100);color:var(--v7);}
+  .tile{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+  .tile .l{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:700; } .tile .n{ font-size:25px; font-weight:800; margin-top:3px; letter-spacing:-.02em; } .tile .s{ font-size:11px; color:#94a3b8; margin-top:1px; }
+  .tile.hero{ background:linear-gradient(135deg,#5b21b6,#7c3aed); color:#fff; border:0; } .tile.hero .l{color:#ddd6fe;} .tile.hero .s{color:#ddd6fe;}
+  .btnv{ background:var(--v); color:#fff; border:0; border-radius:9px; padding:10px 18px; font-weight:700; font-size:14px; cursor:pointer; } .btnv:disabled{opacity:.5;cursor:not-allowed;}
+  .ghost{ border:1px solid #f59e0b; color:#b45309; background:#fff; border-radius:9px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
+  input,select,textarea{ border:1px solid #cbd5e1; border-radius:9px; padding:10px 12px; font-size:14px; font-family:inherit; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; } th{ text-align:left; color:var(--muted); border-bottom:1px solid var(--line); padding:8px 6px; font-weight:600; }
+  td{ padding:8px 6px; border-bottom:1px solid #f4f5f8; vertical-align:top; } .mono{ font-family:ui-monospace,SFMono-Regular,monospace; font-size:12px; }
+  a.link{ color:var(--v7); text-decoration:none; font-weight:600; } a.link:hover{ text-decoration:underline; } .muted{ color:#94a3b8; font-size:12px; } .spacer{flex:1;}
+  /* tabs */
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:22px; } .tab{ padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.on{ color:var(--v7); border-bottom-color:var(--v); }
+  /* ask card */
+  .ask{ border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#fff; box-shadow:0 1px 3px rgba(16,24,40,.05); }
+  .ask .hd{ background:var(--v50); border-bottom:1px solid var(--v100); padding:13px 18px; display:flex; align-items:center; justify-content:space-between; }
+  .ask .hd b{ color:var(--v7); font-size:14px; display:flex; gap:8px; align-items:center; } .ask .hd .ro{ color:var(--v7); font-size:11px; font-weight:800; letter-spacing:.08em; }
+  .ask .bd{ padding:18px; }
+  .qgrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0 16px; } @media(max-width:820px){ .qgrid{grid-template-columns:1fr;} }
+  .qcell{ border:1px solid var(--line); border-radius:11px; padding:12px 14px; cursor:pointer; background:#fff; } .qcell:hover{ border-color:#c4b5fd; background:var(--v50); }
+  .qcell .q{ font-size:13.5px; color:var(--ink); font-weight:500; } .qcell .r{ font-size:12px; color:var(--v7); font-weight:600; margin-top:3px; }
+  .askbox{ display:flex; gap:10px; } .askbox input{ flex:1; }
+  /* agent cards */
+  .agwrap{ max-width:920px; margin:0 auto; }
+  .supcard{ max-width:430px; margin:0 auto 18px; border:1.5px solid var(--v); border-radius:16px; padding:20px; text-align:center; background:linear-gradient(160deg,#faf5ff,#f5f3ff); }
+  .supcard .e{ color:var(--v7); font-size:10px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; } .supcard h3{ color:var(--v7); font-size:20px; margin:4px 0 10px; }
+  .supcard p{ color:#5b21b6; font-size:13px; line-height:1.55; margin:0 0 12px; } .supcard .ep{ border-top:1px solid var(--v100); padding-top:10px; font-size:12px; color:var(--v7); }
+  .agcard{ border:1.5px solid var(--line); border-radius:14px; padding:16px; background:#fff; display:flex; flex-direction:column; }
+  .agcard .top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; } .agcard .nm{ font-size:14px; font-weight:700; display:flex; gap:8px; align-items:center; }
+  .agtag{ font-size:10px; font-weight:800; letter-spacing:.05em; border:1px solid currentColor; border-radius:6px; padding:1px 7px; opacity:.8; }
+  .agcard p{ font-size:12.5px; color:#475569; line-height:1.5; margin:0 0 12px; flex:1; }
+  .agcard .ep{ border-top:1px solid #f1f3f6; padding-top:9px; font-size:11.5px; color:var(--muted); }
+  .ac-amber{ border-color:#fcd34d; background:#fffdf5;} .ac-amber .nm{color:#b45309;} .ac-red{border-color:#fca5a5;background:#fffafa;} .ac-red .nm{color:#b91c1c;}
+  .ac-violet{border-color:#c4b5fd;background:#fbfaff;} .ac-violet .nm{color:var(--v7);} .ac-green{border-color:#6ee7b7;background:#f6fffb;} .ac-green .nm{color:#047857;}
+  .ac-slate{border-color:#cbd5e1;background:#fcfcfd;} .ac-slate .nm{color:#334155;} .ac-blue{border-color:#93c5fd;background:#f8fbff;} .ac-blue .nm{color:#1d4ed8;}
+  .ac-teal{border-color:#5eead4;background:#f5fffd;} .ac-teal .nm{color:#0f766e;}
+  /* decision + synth */
+  .decision{ color:#fff; border-radius:11px; padding:13px; text-align:center; margin-bottom:12px; } .decision .d{ font-size:20px; font-weight:800; } .decision .c{ font-size:13px; opacity:.92; }
+  .reasons{ padding-left:18px; margin:6px 0; } .reasons li{ font-size:13.5px; color:#334155; margin:3px 0; }
+  .bar{ height:8px; border-radius:999px; background:#eef1f5; overflow:hidden; } .bar>div{ height:100%; }
+  .synth{ border:1px solid #ddd6fe; background:#faf8ff; border-radius:13px; padding:16px; margin-top:16px; } .synth p{ white-space:pre-wrap; line-height:1.6; font-size:14px; color:#334155; }
+  .pill{ font-size:11px; padding:2px 9px; border-radius:999px; font-weight:600; } .pill.hit{background:#ede9fe;color:#6d28d9;} .pill.live{background:#d1fae5;color:#047857;}
+  .actions{ border:1px solid var(--line); background:#fff; border-radius:13px; padding:16px; margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .ok{ color:#047857; font-weight:600; font-size:13px; }
+  /* slider */
+  .srow{ display:flex; gap:10px; align-items:center; margin:10px 0; } .srow label{ width:120px; font-size:12px; color:var(--muted); } .srow .val{ width:96px; text-align:right; font-weight:700; font-size:13px; } input[type=range]{ flex:1; accent-color:var(--v); }
+  /* timeline */
+  .tl{ position:relative; padding-left:26px; } .tl:before{ content:''; position:absolute; left:8px; top:4px; bottom:4px; width:2px; background:var(--line); }
+  .tlitem{ position:relative; padding:6px 0 14px; } .tldot{ position:absolute; left:-22px; top:8px; width:13px; height:13px; border-radius:50%; border:2px solid #fff; }
+  .tlitem b{ font-size:13.5px; } .tlitem .w{ font-size:11px; color:#94a3b8; } .tlitem p{ font-size:13px; color:#475569; margin:2px 0 0; }
+  .doc{ display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 0; border-bottom:1px solid #f4f5f8; } .doc:last-child{border:0;}
+  .dot{ width:9px;height:9px;border-radius:50%; flex-shrink:0; }
+  .ph{ background:repeating-linear-gradient(45deg,#fafbfc,#fafbfc 10px,#f1f3f6 10px,#f1f3f6 20px); border:1px dashed #cbd5e1; border-radius:11px; padding:14px; color:#94a3b8; } .ph b{ color:#64748b; display:block; font-size:13px; margin-bottom:3px; } .uc{ font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#b45309; background:#fef3c7; border-radius:999px; padding:1px 7px; }
+  .disclaimer{ background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:13px 16px; font-size:12px; color:#92400e; line-height:1.5; margin-bottom:22px; }
+  .fab{ position:fixed; bottom:22px; right:22px; background:var(--v); color:#fff; border:0; border-radius:999px; padding:12px 18px; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 8px 24px rgba(124,58,237,.4); display:flex; gap:8px; align-items:center; }
 </style>
 </head>
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><span style="font-size:22px">🛡️</span><div><b>Claims Intelligence</b><small>Bricksurance SE</small></div></div>
+    <div class="brand"><div class="logo">🛡️</div><div><b>Claims Workbench</b><small>Bricksurance SE</small></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="foot">
       <button class="fbtn" id="cacheBtn" onclick="toggleCache()">AI: …</button>
       <button class="fbtn" id="resetBtn" onclick="resetDemo()">↺ Reset demo</button>
       <div class="fmsg" id="resetMsg"></div>
-      <div class="ftag">Synthetic demo accelerator — not a Databricks product</div>
+      <div class="ftag">Synthetic demo accelerator — not a Databricks product.</div>
     </div>
   </aside>
-  <div class="main">
-    <div class="top"><div class="ctx">Bricksurance SE · Claims Intelligence Workbench</div><div class="desc" id="pagedesc"></div></div>
-    <div class="content"><div class="wrap" id="view"></div></div>
-  </div>
+  <div class="main"><div class="content"><div class="wrap" id="view"></div></div></div>
 </div>
+<button class="fab" onclick="go('claimsai')">🤖 Claims AI</button>
 <script>
-const SECTIONS = [
-  {id:'control', label:'🎛️ Control Tower', grp:'Operate'},
-  {id:'claimsai', label:'✨ Claims AI', grp:'Operate'},
-  {id:'ingestion', label:'📥 Ingestion', grp:'Pipeline'},
-  {id:'transformation', label:'🧩 Transformation', grp:'Pipeline'},
-  {id:'governance', label:'🛡️ Governance & Portfolio', grp:'Pipeline'},
-  {id:'learn', label:'🎓 Learn', grp:'Reference'},
-  {id:'roadmap', label:'🚧 Roadmap', grp:'Reference'},
+const SECTIONS=[
+  {id:'control',label:'🎛️ Control Tower',grp:'Operate'},
+  {id:'claimsai',label:'🤖 Claims AI',grp:'Operate'},
+  {id:'claim',label:'📋 Work a claim',grp:'Operate'},
+  {id:'ingestion',label:'📥 Ingestion',grp:'Pipeline'},
+  {id:'enrichment',label:'🧩 Enrichment',grp:'Pipeline'},
+  {id:'governance',label:'🛡️ Governance',grp:'Govern'},
+  {id:'learn',label:'🎓 Learn',grp:'Reference'},
+  {id:'roadmap',label:'🚧 Roadmap',grp:'Reference'},
 ];
-const DESC = {
-  control:'This page is the demo home: portfolio health at a glance — how many claims are open, escalated or auto-closed, what needs attention, and a live auto-close threshold slider.',
-  claimsai:'This page is the unified Claims AI window: ask any question and it routes through the managed supervisor to the right agent. Below, pick a claim to see triage, reserve, fraud and the orchestrated brief.',
-  ingestion:'This page shows your Guidewire data landing in Databricks and the quality gate that quarantines bad records — nothing is silently dropped.',
-  transformation:'This page shows the silver enrichment for one claim — everything we know before a handler picks up the phone.',
-  governance:'This page is for compliance: the board dashboard, lineage, who-sees-what, and the regulator-viewable decision audit.',
-  learn:'This page is for Databricks colleagues learning to pitch claims — plain-English concepts, an insurance glossary, and the flow through company systems.',
-  governance:'This page is for compliance: the board dashboard, what data is collected and its sensitivity tier, lineage, and the regulator-viewable agent-reasoning audit.',
-  roadmap:'This page shows what is intentionally NOT built yet — the roadmap of intake, integration, downstream and specialty capabilities.',
-};
-const state = { section:'control', cid:'cc:900001', claims:[], panels:null, synth:null, cache:null, overriding:false, confirmation:null, ct:null, lens:null, cfg:null, ask:null, asking:false };
-const gbp = v => { const n=parseFloat(v); return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0}); };
-const num = v => { const n=parseFloat(v); return isNaN(n)?'—':n.toLocaleString('en-GB'); };
-const pct = v => { const n=parseFloat(v); return isNaN(n)?'—':n.toFixed(1)+'%'; };
-const DLABEL = { pay_direct:'PAY DIRECT', escalate:'ESCALATE', refer_siu:'REFER TO SIU' };
-const PERIL = { motor_tp:'Motor Third Party', home_escape_water:'Home — Escape of Water', home_storm:'Home — Storm', home_fire:'Home — Fire' };
-const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function J(path, opts){ const r=await fetch('/api'+path, {headers:{'Content-Type':'application/json'}, ...opts}); if(!r.ok) throw new Error(r.status); return r.json(); }
+const state={ section:'control', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
+  ct:null, lens:null, cfg:null, ask:null, asking:false, roster:null, govtab:'collected', gcid:'cc:900001', track:null, trackCid:'cc:900001' };
+const gbp=v=>{const n=parseFloat(v);return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0});};
+const num=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toLocaleString('en-GB');};
+const pct=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toFixed(1)+'%';};
+const DLABEL={pay_direct:'PAY DIRECT',escalate:'ESCALATE',refer_siu:'REFER TO SIU'};
+const PERIL={motor_tp:'Motor Third Party',home_escape_water:'Home — Escape of Water',home_storm:'Home — Storm',home_fire:'Home — Fire'};
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function J(p,o){const r=await fetch('/api'+p,{headers:{'Content-Type':'application/json'},...o});if(!r.ok)throw new Error(r.status);return r.json();}
 
-function renderNav(){
-  let html='', grp='';
-  for(const s of SECTIONS){ if(s.grp!==grp){ grp=s.grp; html+=`<div class="navhd">${grp}</div>`; }
-    html+=`<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`; }
-  document.getElementById('nav').innerHTML = html;
-}
-function go(s){ state.section=s; renderNav(); document.getElementById('pagedesc').textContent=DESC[s]||''; render(); }
-
-async function initFoot(){
-  try{ const d=await J('/cache-mode'); state.cache=d.use_cache; }catch(e){ state.cache=true; }
+function renderNav(){ let h='',g=''; for(const s of SECTIONS){ if(s.grp!==g){g=s.grp;h+=`<div class="navhd">${g}</div>`;} h+=`<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`; } document.getElementById('nav').innerHTML=h; }
+function go(s){ state.section=s; renderNav(); render(); window.scrollTo(0,0); }
+async function initFoot(){ try{const d=await J('/cache-mode');state.cache=d.use_cache;}catch(e){state.cache=true;}
   const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live');
-  try{ const r=await J('/reset-status'); const rb=document.getElementById('resetBtn'); if(!r.available){ rb.disabled=true; rb.textContent='↺ Reset (Phase 9)'; } }catch(e){}
-}
+  try{const r=await J('/reset-status');const rb=document.getElementById('resetBtn');if(!r.available){rb.disabled=true;rb.textContent='↺ Reset (Phase 9)';}}catch(e){} }
 async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
-let _resetTimer=null;
-async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…';
-  try{ const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){ m.textContent=d.message||'unavailable'; return; }
-    document.getElementById('resetBtn').disabled=true; pollReset(d.run_id, Date.now());
-  }catch(e){ m.textContent='unavailable'; } }
-function pollReset(rid, t0){ const m=document.getElementById('resetMsg'); clearInterval(_resetTimer);
-  const tick=async()=>{ try{ const r=await J('/reset-run?run_id='+rid); const mins=Math.round((Date.now()-t0)/60000);
-      if((r.life_cycle||'').includes('TERMINATED')){ clearInterval(_resetTimer); document.getElementById('resetBtn').disabled=false;
-        m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed'; if((r.result||'').includes('SUCCESS')) location.reload(); }
-      else { m.textContent=`Reset running… ${mins}m`; }
-    }catch(e){} };
-  tick(); _resetTimer=setInterval(tick, 15000); }
+let _rt=null;
+async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…'; try{const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){m.textContent=d.message||'unavailable';return;} document.getElementById('resetBtn').disabled=true; pollReset(d.run_id,Date.now());}catch(e){m.textContent='unavailable';} }
+function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000); if((r.life_cycle||'').includes('TERMINATED')){clearInterval(_rt);document.getElementById('resetBtn').disabled=false;m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed';if((r.result||'').includes('SUCCESS'))location.reload();}else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
+function render(){ const f={control:renderControl,claimsai:renderClaimsAI,claim:renderClaim,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function page(eyebrow,title,lead,desc){ return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
 
-function render(){
-  const r={ control:renderControl, claimsai:renderClaimsAI, ingestion:renderIngestion, transformation:renderTransformation, governance:renderGovernance, learn:renderLearn, roadmap:renderRoadmap }[state.section];
-  if(r) r();
-}
-
-// ---------- Control Tower ----------
-const DISCLAIMER = "About this demonstration — Bricksurance SE is a synthetic insurer. All data shown is generated; there is no real Guidewire integration and no real customer data. Figures illustrate the Databricks platform, not a real book of business. Decisions are model and workflow outputs with a human in the loop; the AI agents provide reasoning and second opinions and have no payment authority. This is a demo accelerator, not a Databricks product.";
-async function renderControl(){
-  const v=document.getElementById('view'); v.innerHTML='<h1>🎛️ Control Tower</h1><p class="sub">Loading portfolio…</p>';
-  try{ state.ct=await J('/control-tower'); }catch(e){ v.innerHTML='<h1>Control Tower</h1><p class="muted">Unavailable.</p>'; return; }
-  try{ state.lens=await J('/monitoring-lens'); }catch(e){ state.lens=null; }
-  try{ state.cfg=await J('/auto-close/config'); }catch(e){ state.cfg={conf_threshold:85,amount_cap:2000,fraud_floor:20}; }
-  const t=state.ct;
-  const tile=(l,n,s,cls)=>`<div class="tile ${cls||''}"><div class="l">${l}</div><div class="n">${n}</div><div class="s">${s||''}</div></div>`;
-  v.innerHTML = `<h1>🎛️ Control Tower</h1><p class="sub">Bricksurance SE claims book — health at a glance.</p>
-    <div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
+// ============ CONTROL TOWER ============
+const DISCLAIMER="Bricksurance SE is a synthetic insurer. All data is generated — there is no real Guidewire integration and no real customer data. Figures illustrate the Databricks platform, not a real book. Decisions are model and workflow outputs with a human in the loop; the AI agents reason and give a second opinion and have no payment authority.";
+async function renderControl(){ const v=document.getElementById('view'); v.innerHTML=page('Control Tower','Your claims book, at a glance','The demo home — open vs auto-closed vs escalated, what needs attention, and a live auto-close risk-appetite slider.','Loading portfolio…');
+  try{state.ct=await J('/control-tower');}catch(e){v.innerHTML=page('Control Tower','Control Tower','')+'<p class="muted">Unavailable.</p>';return;}
+  try{state.lens=await J('/monitoring-lens');}catch(e){state.lens=null;}
+  try{state.cfg=await J('/auto-close/config');}catch(e){state.cfg={conf_threshold:85,amount_cap:2000,fraud_floor:20};}
+  const t=state.ct; const tile=(l,n,s,cls)=>`<div class="tile ${cls||''}"><div class="l">${l}</div><div class="n">${n}</div><div class="s">${s||''}</div></div>`;
+  v.innerHTML=page('Control Tower','Your claims book, at a glance','The demo home — open vs auto-closed vs escalated, what needs attention, and a live auto-close risk-appetite slider.')
+    +`<div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
     <div class="grid4" style="margin-bottom:14px">
-      ${tile('% Auto-closed', pct(t.pct_auto_closed), num(t.auto_closed)+' straight-through', 'hero')}
-      ${tile('Open', num(t.open), 'first notice / in progress')}
-      ${tile('Escalated', num(t.escalated), 'routed to a handler')}
-      ${tile('Outstanding', num(t.outstanding), 'not yet settled')}
-    </div>
+      ${tile('% Auto-closed',pct(t.pct_auto_closed),num(t.auto_closed)+' straight-through','hero')}
+      ${tile('Open',num(t.open),'first notice / in progress')}
+      ${tile('Escalated',num(t.escalated),'routed to a handler')}
+      ${tile('Outstanding',num(t.outstanding),'not yet settled')}</div>
     <div class="grid4" style="margin-bottom:14px">
-      ${tile('Aged / SLA risk', num(t.aged), '>30 days open', 'tile')}
-      ${tile('Large losses', num(t.large_losses), 'over £50,000')}
-      ${tile('Total reserves', gbp(t.total_reserves), 'outstanding')}
-      ${tile('Fraud-refer rate', pct(t.fraud_refer_rate), 'elevated signals')}
-    </div>
-    <div class="grid4" style="margin-bottom:16px">
-      ${tile('Closed', num(t.closed), 'settled')}
-      ${tile('Declined', num(t.declined), '')}
-      ${tile('Leakage rate', pct(t.leakage_rate), 'overpayment proxy')}
-      ${tile('Avg settlement', (t.avg_settle_days??'—')+' d', 'days to settle')}
-    </div>
+      ${tile('Aged / SLA risk',num(t.aged),'>30 days open')}
+      ${tile('Large losses',num(t.large_losses),'over £50,000')}
+      ${tile('Total reserves',gbp(t.total_reserves),'outstanding')}
+      ${tile('Fraud-refer rate',pct(t.fraud_refer_rate),'elevated signals')}</div>
+    <div class="grid4" style="margin-bottom:24px">
+      ${tile('Closed',num(t.closed),'settled')}${tile('Declined',num(t.declined),'')}
+      ${tile('Leakage rate',pct(t.leakage_rate),'overpayment proxy')}${tile('Avg settlement',(t.avg_settle_days??'—')+' d','days to settle')}</div>
     <div class="grid2">
-      <div class="card"><h2>👁️ Monitoring lens — what needs your attention</h2>
-        ${state.lens&&state.lens.items?`<ul class="lens">${state.lens.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`:'<p class="muted">Lens unavailable.</p>'}
-        <p class="muted" style="margin-top:6px">Computed from the live book; can be narrated by the Claims AI supervisor.</p></div>
-      <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2>
-        <p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
-        <div class="slider-row"><label>Min confidence</label><input class="slider" type="range" id="s_conf" min="50" max="99" value="${t.pct_auto_closed!=null?Math.round(state.cfg.conf_threshold):85}" oninput="segChange()"><span class="val" id="v_conf">${Math.round(state.cfg.conf_threshold)}%</span></div>
-        <div class="slider-row"><label>Max amount</label><input class="slider" type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
-        <div class="slider-row"><label>Max fraud score</label><input class="slider" type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
-        <div style="margin-top:10px;text-align:center"><div style="font-size:30px;font-weight:800;color:#2563eb" id="seg_pct">${pct(t.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(t.auto_closed)} auto-closed · ${num(t.escalated)} escalated</div></div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}
-      <p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>`;
+      <div class="card"><h2>👁️ Monitoring lens — what needs your attention</h2>${state.lens&&state.lens.items?`<ul style="margin:0;padding-left:18px">${state.lens.items.map(i=>`<li style="font-size:13.5px;color:#334155;margin:7px 0;line-height:1.45">${esc(i)}</li>`).join('')}</ul>`:'<p class="muted">Lens unavailable.</p>'}<p class="muted" style="margin-top:8px">Computed from the live book; can be narrated by the Claims AI supervisor.</p></div>
+      <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
+        <div class="srow"><label>Min confidence</label><input type="range" id="s_conf" min="50" max="99" value="${Math.round(state.cfg.conf_threshold)}" oninput="segChange()"><span class="val" id="v_conf">${Math.round(state.cfg.conf_threshold)}%</span></div>
+        <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
+        <div class="srow"><label>Max fraud score</label><input type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
+        <div style="margin-top:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:var(--v)" id="seg_pct">${pct(t.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(t.auto_closed)} auto-closed · ${num(t.escalated)} escalated</div></div></div></div>
+    <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}<p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>`;
 }
-let _segTimer=null;
-function segChange(){
-  const conf=+document.getElementById('s_conf').value, cap=+document.getElementById('s_cap').value, fraud=+document.getElementById('s_fraud').value;
-  document.getElementById('v_conf').textContent=conf+'%'; document.getElementById('v_cap').textContent=gbp(cap); document.getElementById('v_fraud').textContent=fraud;
-  clearTimeout(_segTimer); _segTimer=setTimeout(async()=>{
-    try{ const r=await J(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`);
-      document.getElementById('seg_pct').textContent=pct(r.pct_auto_closed);
-      document.getElementById('seg_n').textContent=`${num(r.auto_closed)} auto-closed · ${num(r.escalated)} escalated`;
-    }catch(e){}
-  }, 250);
-}
-const ROADMAP = {
-  'Intake & documents':['Document classification','Email → structured extraction','Translation','Damage-photo analysis'],
-  'System integration':['CMS write-back','Lakebase-as-CMS','Zero-copy to underwriting'],
-  'Downstream':['Compliance / finance checks','Payment execution','Litigation routing'],
-  'Specialty':['Marine contagion','Parametric / satellite payout','IoT verification','SDI'],
-  'Enrichment':['D&B / S&P / Moody’s','Telematics'],
-};
-function roadmapStrip(){ return `<div class="grid3">${Object.entries(ROADMAP).map(([g,items])=>`<div class="ph"><b>${esc(g)} <span class="uc">soon</span></b>${items.map(i=>`<div>• ${esc(i)}</div>`).join('')}</div>`).join('')}</div>`; }
+let _st=null;
+function segChange(){ const conf=+s_conf.value,cap=+s_cap.value,fraud=+s_fraud.value; v_conf.textContent=conf+'%'; v_cap.textContent=gbp(cap); v_fraud.textContent=fraud;
+  clearTimeout(_st); _st=setTimeout(async()=>{try{const r=await J(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`); seg_pct.textContent=pct(r.pct_auto_closed); seg_n.textContent=`${num(r.auto_closed)} auto-closed · ${num(r.escalated)} escalated`;}catch(e){}},250); }
+const ROADMAP={'Intake & documents':['Document classification','Email → structured extraction','Translation','Damage-photo analysis'],'System integration':['CMS write-back','Lakebase-as-CMS','Zero-copy to underwriting'],'Downstream':['Compliance / finance checks','Payment execution','Litigation routing'],'Specialty':['Marine contagion','Parametric / satellite payout','IoT verification','SDI'],'Enrichment':['D&B / S&P / Moody’s','Telematics']};
+function roadmapStrip(){ return `<div class="grid3">${Object.entries(ROADMAP).map(([g,it])=>`<div class="ph"><b>${esc(g)} <span class="uc">soon</span></b>${it.map(i=>`<div>• ${esc(i)}</div>`).join('')}</div>`).join('')}</div>`; }
 
-// ---------- Claims AI (unified ask-window + claim triage) ----------
-const AGENT_QS = [
-  ['Claim 360 / Dossier', ['Give me the full Claim 360 dossier for cc:900001']],
-  ['Challenge / Second-Opinion', ['Give me a second opinion on cc:900002 — argue the opposite of the disposition']],
-  ['Fraud', ['What is the fraud risk on cc:900001 and why?']],
-  ['Recovery / Subrogation', ['Is there any recovery or subrogation potential on cc:900001?']],
-  ['Audit / Reasoning', ['Explain for a regulator why cc:900002 was auto-closed']],
-  ['Genie analytics', ['Which districts have the worst escape-of-water leakage?','What is the loss ratio by product?']],
+// ============ CLAIMS AI (matches the Solvency-2 supervisor page) ============
+const ASK_QS=[
+  ['How should I handle claim cc:900001?','Claims AI Supervisor','cc:900001'],
+  ['Why did claim cc:900002 auto-close?','Audit / Reasoning','cc:900002'],
+  ['Give me the full dossier for cc:900001','Claim 360 / Dossier','cc:900001'],
+  ['What is the fraud risk on cc:900001?','Fraud','cc:900001'],
+  ['Argue the opposite of the disposition for cc:900002','Challenge / Second-Opinion','cc:900002'],
+  ['Is there recovery potential on cc:900001?','Recovery / Subrogation','cc:900001'],
+  ['Which districts have the worst escape-of-water leakage?','Ask the Book',''],
+  ['What is the loss ratio by product?','Ask Pricing + Claims',''],
 ];
-const ROSTER = [
-  ['Claim 360 / Dossier','Everything in one place — policy, history, fraud, recovery, enrichment','agbox'],
-  ['Challenge / Second-Opinion','Argues the opposite of the disposition','agbox'],
-  ['Fraud','LOW / MEDIUM / HIGH risk with the signals behind it','agbox'],
-  ['Recovery / Subrogation','Recovery potential + recoverable £','agbox'],
-  ['Audit / Reasoning','Regulator-readable explanation of the decision','agbox'],
-  ['Triage & Reserve (model tools)','UC functions scoring the ML models','agbox tool'],
-  ['Ask the Book (Genie)','Portfolio analytics in natural language','agbox genie'],
-  ['Ask Pricing + Claims (Genie)','Cross-domain: loss ratio, premium adequacy','agbox genie'],
-];
-async function loadClaims(){ try{ state.claims=await J('/claims'); }catch(e){ state.claims=[]; } }
-async function doAsk(q, cid){ state.ask={q, loading:true}; state.asking=true; renderClaimsAI();
-  try{ const r=await J('/ask',{method:'POST',body:JSON.stringify({question:q, cid:cid||null})}); state.ask={q, ...r}; }
-  catch(e){ state.ask={q, __err:true}; } state.asking=false; renderClaimsAI(); }
-function askFromBox(){ const q=document.getElementById('askbox').value.trim(); if(q) doAsk(q, state.cid); }
-async function selectClaim(cid){ state.cid=cid; state.panels=null; state.synth=null; state.confirmation=null; state.overriding=false; state.disp=null; state.reason=null; renderClaimsAI();
-  try{ state.panels=await J('/claim/panels?cid='+encodeURIComponent(cid)); }catch(e){ state.panels={__err:true}; }
-  try{ state.disp=await J('/claim/disposition?cid='+encodeURIComponent(cid)); }catch(e){ state.disp=null; }
-  renderClaimsAI();
-  try{ state.reason=await J('/claim/reasoning?cid='+encodeURIComponent(cid)); }catch(e){ state.reason=[]; }
-  try{ state.synth=await J('/claim/synthesis?cid='+encodeURIComponent(cid)); }catch(e){ state.synth={__err:true}; }
-  renderClaimsAI();
+async function renderClaimsAI(){ const v=document.getElementById('view');
+  if(!state.roster){ try{state.roster=await J('/agents');}catch(e){state.roster={agents:[],genie:[],supervisor:{}};} }
+  renderClaimsAIView();
 }
-function renderClaimsAI(){
-  const v=document.getElementById('view');
-  // --- ask-window ---
-  const a=state.ask;
-  let askHtml=`<div class="card" style="margin-bottom:16px"><h2>✨ Ask Claims AI</h2>
-    <div class="askbox"><textarea id="askbox" placeholder="Ask anything — e.g. how should I handle cc:900001? Which districts leak most?">${a&&!a.loading?esc(a.q):''}</textarea>
-      <button class="primary" onclick="askFromBox()" ${state.asking?'disabled':''}>${state.asking?'Asking…':'Ask'}</button></div>`;
-  if(a){ askHtml += a.loading?'<p class="muted" style="margin-top:10px">Routing through the supervisor…</p>'
-      : a.__err?'<p class="muted" style="margin-top:10px">Ask unavailable.</p>'
-      : `<div class="synth" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><p>${esc(a.text)}</p>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:6px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
-  askHtml += `<div style="margin-top:12px">${AGENT_QS.map(([g,qs])=>`<div class="qgrp"><span class="gl">${esc(g)}</span><br>${qs.map(q=>`<span class="qchip" onclick="doAsk('${esc(q).replace(/'/g,"\\'")}', state.cid)">${esc(q)}</span>`).join('')}</div>`).join('')}</div></div>`;
-  // --- claim triage panels ---
-  const p=state.panels;
-  const opts = state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)} · ${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
-  let body='';
-  if(!p){ body='<p class="muted">Loading claim…</p>'; }
-  else if(p.__err){ body='<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c">Could not load this claim.</div>'; }
-  else {
-    const s=p.summary||{}, t=p.triage||{}, r=p.reserve||{}, f=p.fraud||{}, pol=p.policy||{}, x=p.extra||{};
-    const motor = s.peril_type==='motor_tp';
-    const dcol = t.decision==='refer_siu'?'#dc2626':t.decision==='escalate'?'#f59e0b':'#059669';
-    const fs = parseFloat(f.fraud_score); const fcol = fs>70?'#ef4444':fs>=40?'#f59e0b':'#10b981';
-    body = `<div class="grid3">
-      <div class="card"><h2>📄 Claim Summary</h2>
-        <div class="row"><span class="k">Policy</span><span class="v">${esc(x.policy_number||'—')}</span></div>
+function renderClaimsAIView(){ const v=document.getElementById('view'); const a=state.ask, r=state.roster||{};
+  let ans=''; if(a){ ans = a.loading?'<p class="muted" style="margin-top:12px">Routing through the supervisor…</p>'
+      : a.__err?'<p class="muted" style="margin-top:12px">Ask unavailable.</p>'
+      : `<div class="synth" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><p>${esc(a.text)}</p>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:8px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
+  const agc=ag=>`<div class="agcard ac-${ag.color}"><div class="top"><div class="nm">${ag.icon||'•'} ${esc(ag.name)}</div><span class="agtag">${ag.kind.toUpperCase()}</span></div><p>${esc(ag.desc)}</p><div class="ep">Endpoint: <span class="mono">${esc(ag.endpoint||'—')}</span>${ag.url?` <a class="link" href="${ag.url}" target="_blank">↗</a>`:''}</div></div>`;
+  const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge / Second-Opinion':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾','Triage model':'🎯','Reserve model':'💰','Ask the Book':'📊','Ask Pricing + Claims':'📈'};
+  const agents=(r.agents||[]).map(x=>({...x,icon:ICON[x.name]})); const genie=(r.genie||[]).map(x=>({...x,icon:ICON[x.name]}));
+  const sup=r.supervisor||{};
+  v.innerHTML=page('Claims AI','One supervisor. Five specialists. Every claim audited.',
+    'Type a question — the supervisor classifies it, dispatches to the right specialist, and writes a routing trace. Architecture below; every node clicks through to the actual Databricks artefact.')
+    +`<div class="ask"><div class="hd"><b>🤖 Ask the supervisor</b><span class="ro">${state.cache?'CACHE: CACHED':'CACHE: LIVE'}</span></div><div class="bd">
+      <p class="muted" style="margin:0 0 4px">The supervisor classifies your question and dispatches to the specialist best positioned to answer. Try one:</p>
+      <div class="qgrid">${ASK_QS.map(q=>`<div class="qcell" onclick="doAsk('${esc(q[0]).replace(/'/g,"\\'")}','${q[2]}')"><div class="q">💬 ${esc(q[0])}</div><div class="r">→ ${esc(q[1])}</div></div>`).join('')}</div>
+      <div class="askbox"><input id="askbox" placeholder="Ask the supervisor anything…" onkeydown="if(event.key==='Enter')askFromBox()" value="${a&&!a.loading?esc(a.q):''}"><button class="btnv" onclick="askFromBox()" ${state.asking?'disabled':''}>${state.asking?'…':'➤ Send'}</button></div>
+      ${ans}</div></div>
+    <div class="eyebrow" style="margin:30px 0 4px">What Claims AI fronts</div>
+    <p class="lead">Five specialist agents, two model tools and two Genie spaces — one address. Each is a Unity-Catalog-registered MLflow agent with tracing, independently deployable and auditable. The supervisor classifies the question and dispatches.</p>
+    <div class="agwrap">
+      <div class="supcard"><div class="e">Claims AI</div><h3>Supervisor</h3><p>${esc(sup.desc||'')}</p><div class="ep">Endpoint: <span class="mono">${esc(sup.endpoint||'(managed supervisor — RUNBOOK Stage C)')}</span>${sup.url?` <a class="link" href="${sup.url}" target="_blank">↗</a>`:''}</div></div>
+      <div class="grid3">${agents.map(agc).join('')}</div>
+      <div class="grid3" style="margin-top:16px">${genie.map(agc).join('')}</div>
+    </div>
+    <p class="muted" style="text-align:center;margin-top:18px">Models + workflow decide · agents reason &amp; give a second opinion · the human acts.</p>`;
+}
+async function doAsk(q,cid){ state.ask={q,loading:true}; state.asking=true; renderClaimsAIView();
+  try{const r=await J('/ask',{method:'POST',body:JSON.stringify({question:q,cid:cid||null})}); state.ask={q,...r};}catch(e){state.ask={q,__err:true};} state.asking=false; renderClaimsAIView(); }
+function askFromBox(){ const q=document.getElementById('askbox').value.trim(); if(q)doAsk(q,null); }
+
+// ============ WORK A CLAIM (per-claim triage hero) ============
+async function loadClaims(){ try{state.claims=await J('/claims');}catch(e){state.claims=[];} }
+async function renderClaim(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();
+  if(!state.panels) selectClaim(state.cid, true);
+  renderClaimView();
+}
+async function selectClaim(cid,first){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.overriding=false; if(!first)renderClaimView();
+  try{state.panels=await J('/claim/panels?cid='+encodeURIComponent(cid));}catch(e){state.panels={__err:true};}
+  try{state.disp=await J('/claim/disposition?cid='+encodeURIComponent(cid));}catch(e){state.disp=null;}
+  renderClaimView();
+  try{state.reason=await J('/claim/reasoning?cid='+encodeURIComponent(cid));}catch(e){state.reason=[];}
+  try{state.synth=await J('/claim/synthesis?cid='+encodeURIComponent(cid));}catch(e){state.synth={__err:true};}
+  renderClaimView();
+}
+function renderClaimView(){ const v=document.getElementById('view'); const p=state.panels;
+  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)} · ${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
+  let body=''; if(!p){body='<p class="muted">Loading claim…</p>';}
+  else if(p.__err){body='<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c">Could not load this claim.</div>';}
+  else{ const s=p.summary||{},t=p.triage||{},r=p.reserve||{},f=p.fraud||{},pol=p.policy||{},x=p.extra||{};
+    const motor=s.peril_type==='motor_tp'; const dcol=t.decision==='refer_siu'?'#dc2626':t.decision==='escalate'?'#f59e0b':'#059669'; const fs=parseFloat(f.fraud_score); const fcol=fs>70?'#ef4444':fs>=40?'#f59e0b':'#10b981';
+    body=dispBanner()+`<div class="grid3">
+      <div class="card"><h2>📄 Claim summary</h2><div class="row"><span class="k">Policy</span><span class="v">${esc(x.policy_number||'—')}</span></div>
         <div style="margin:8px 0"><span class="badge ${motor?'b-blue':'b-green'}">${esc(PERIL[s.peril_type]||s.peril_type)}</span> <span class="badge b-slate">${esc(s.report_channel)}</span></div>
         <div class="row"><span class="k">Reported amount</span><span class="v" style="font-size:18px;font-weight:700">${gbp(s.total_incurred)}</span></div>
         <div class="row"><span class="k">Status</span><span class="v">${esc(s.claim_status)}</span></div>
-        <p style="font-size:13px;color:#475569;font-style:italic;margin-top:10px">“${esc(s.incident_description)}”</p>
-      </div>
-      <div class="card"><h2>✨ AI Recommendation</h2>
-        <div class="decision" style="background:${dcol}"><div class="d">${DLABEL[t.decision]||esc(t.decision)||'—'}</div><div class="c">confidence ${pct(t.confidence)}</div></div>
-        <div class="muted" style="text-transform:uppercase;font-weight:600;font-size:11px">Why</div>
-        <ul class="reasons">${(t.top_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><b style="font-size:14px">Reserve: ${esc(r.bracket)||'—'}</b><div class="muted">${esc(r.estimated_range)}</div></div>
-      </div>
-      <div class="card"><h2>🛡️ Risk Signals</h2>
-        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted" style="text-transform:uppercase;font-size:11px;font-weight:600">Fraud score</span><span style="font-size:18px;font-weight:800;color:${fcol}">${isNaN(fs)?'—':fs}<span class="muted" style="font-size:11px">/100</span></span></div>
-        <div class="bar" style="margin:4px 0 8px"><div style="width:${isNaN(fs)?0:Math.min(100,fs)}%;background:${fcol}"></div></div>
+        <p style="font-size:13px;color:#475569;font-style:italic;margin-top:10px">“${esc(s.incident_description)}”</p></div>
+      <div class="card"><h2>✨ AI recommendation</h2><div class="decision" style="background:${dcol}"><div class="d">${DLABEL[t.decision]||esc(t.decision)||'—'}</div><div class="c">confidence ${pct(t.confidence)}</div></div>
+        <div class="muted" style="text-transform:uppercase;font-weight:700;font-size:11px">Why</div><ul class="reasons">${(t.top_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+        <div style="background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:9px"><b style="font-size:14px">Reserve: ${esc(r.bracket)||'—'}</b><div class="muted">${esc(r.estimated_range)}</div></div></div>
+      <div class="card"><h2>🛡️ Risk &amp; recovery</h2><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted" style="text-transform:uppercase;font-size:11px;font-weight:700">Fraud score</span><span style="font-size:18px;font-weight:800;color:${fcol}">${isNaN(fs)?'—':fs}<span class="muted" style="font-size:11px">/100</span></span></div>
+        <div class="bar" style="margin:5px 0 9px"><div style="width:${isNaN(fs)?0:Math.min(100,fs)}%;background:${fcol}"></div></div>
         <div class="row"><span class="k">Prior claims (12m)</span><span class="v">${f.prior_claims_12m??'—'}</span></div>
         <div class="row"><span class="k">Reporting lag</span><span class="v">${f.reporting_lag_days??x.reporting_lag_days??'—'} days</span></div>
         <div class="row"><span class="k">Recovery</span><span class="v">${recoveryLabel(p.recovery)}</span></div>
-        <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div>
-      </div></div>`;
-    body = dispBanner() + body;
-    body += `<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
-    body += `<div class="actions">${actionBar()}</div>`;
-    body += reasoningTrail();
+        <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
+    body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
+    body+=`<div class="actions">${actionBar()}</div>`+reasoningTrail();
   }
-  const triage = `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🔎 Pick a claim — triage, reserve, fraud & brief</h2><select onchange="selectClaim(this.value)" style="min-width:300px">${opts}</select></div></div>${body}`;
-  // --- agent roster diagram ---
-  const diagram = `<div class="card" style="margin-top:16px"><h2>🧠 The agent roster behind Claims AI</h2>
-    <div class="diagram"><div class="sup">Claims AI — managed Supervisor</div><div style="color:#94a3b8">▼ routes to ▼</div>
-      <div class="agents">${ROSTER.map(([n,d,c])=>`<div class="${c}"><b>${esc(n)}</b><span>${esc(d)}</span></div>`).join('')}</div></div>
-    <p class="muted" style="margin-top:6px">Models + workflow decide; agents reason and give a second opinion; the human acts.</p></div>`;
-  v.innerHTML = `<h1>✨ Claims AI</h1><p class="sub">Ask the supervisor anything, or work a claim end-to-end.</p>${askHtml}${triage}${diagram}`;
+  v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision. Pick a hero: ★ cc:900001 (escalated) or ★ cc:900002 (auto-closed).')
+    +`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">Select a claim</b><select onchange="selectClaim(this.value)" style="min-width:320px">${opts}</select></div>${body}`;
 }
-function recoveryLabel(r){ if(!r) return '—'; if(r.recovery_flag) return `<span class="badge b-green">recoverable ${gbp(r.recoverable_amount)}</span>`; return '<span class="muted">none</span>'; }
-function dispBanner(){ const d=state.disp; if(!d||!d.disposition) return '';
-  const auto=d.disposition==='auto_closed';
-  const col=auto?'#059669':'#f59e0b';
+function recoveryLabel(r){ if(!r)return '—'; if(r.recovery_flag)return `<span class="badge b-green">recoverable ${gbp(r.recoverable_amount)}</span>`; return '<span class="muted">none</span>'; }
+function dispBanner(){ const d=state.disp; if(!d||!d.disposition)return ''; const auto=d.disposition==='auto_closed'; const col=auto?'#059669':'#f59e0b';
   const head=auto?`✅ AUTO-CLOSED &amp; PAID (simulated ${gbp(d.total_incurred)})`:'⚠️ ESCALATED — routed to a handler';
-  const passed=(d.rules_passed||[]).map(r=>`<span class="badge b-green" style="margin:2px">✓ ${esc(r)}</span>`).join('');
-  const failed=(d.rules_failed||[]).map(r=>`<span class="badge b-red" style="margin:2px">✗ ${esc(r)}</span>`).join('');
-  return `<div class="card" style="border-color:${col};margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:${col}">${head}</b><span class="muted">model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} · ${pct(d.model_confidence)}</span></div>
-    <div style="margin:8px 0">${passed} ${failed}</div>
-    <p style="font-size:13px;color:#334155;margin:4px 0 0">${esc(d.reasoning||'')}</p>
-    <p class="muted" style="margin-top:6px">The model + workflow decided. No agent has pay authority.</p></div>`;
-}
-function reasoningTrail(){ const rs=state.reason;
-  if(rs===null) return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">Loading…</p></div>';
-  if(!rs.length) return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">No persisted reasoning for this claim yet.</p></div>';
-  const order=['Claim 360 / Dossier','Fraud','Challenge','Recovery / Subrogation','Audit / Reasoning'];
-  const sorted=[...rs].sort((a,b)=>order.indexOf(a.agent_name)-order.indexOf(b.agent_name));
+  const passed=(d.rules_passed||[]).map(x=>`<span class="badge b-green" style="margin:2px">✓ ${esc(x)}</span>`).join('');
+  const failed=(d.rules_failed||[]).map(x=>`<span class="badge b-red" style="margin:2px">✗ ${esc(x)}</span>`).join('');
+  return `<div class="card" style="border-color:${col};border-left:4px solid ${col};margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:${col}">${head}</b><span class="muted">model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} · ${pct(d.model_confidence)}</span></div><div style="margin:8px 0">${passed} ${failed}</div><p style="font-size:13px;color:#334155;margin:4px 0 0">${esc(d.reasoning||'')}</p><p class="muted" style="margin-top:6px">The model + workflow decided. No agent has pay authority.</p></div>`; }
+function reasoningTrail(){ const rs=state.reason; if(rs===null)return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">Loading…</p></div>';
+  if(!rs.length)return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">No persisted reasoning for this claim yet.</p></div>';
+  const order=['Claim 360 / Dossier','Fraud','Challenge','Recovery / Subrogation','Audit / Reasoning']; const sorted=[...rs].sort((a,b)=>order.indexOf(a.agent_name)-order.indexOf(b.agent_name));
   const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾'};
-  return `<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail — regulator-viewable</h2>
-    ${sorted.map(r=>`<div style="border-bottom:1px solid #f1f5f9;padding:8px 0"><b style="font-size:13px">${ICON[r.agent_name]||'•'} ${esc(r.agent_name)}</b><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('')}
-    <p class="muted" style="margin-top:8px">Persisted to agent_reasoning_log — the Audit agent and the Governance page read this.</p></div>`;
-}
-function synthPill(){ const s=state.synth; if(!s||s.__err) return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
-function synthBody(){ const s=state.synth; if(!s) return '<p class="muted">Synthesising…</p>'; if(s.__err) return '<p class="muted">Synthesis unavailable.</p>'; return `<p>${esc(s.text)}</p>${s.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:6px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}`; }
-function actionBar(){
-  const c=state.confirmation, t=(state.panels&&state.panels.triage)||{};
-  if(c){ return `<span class="ok">✓ Decision logged · ${esc(c.decision_id)} · ${DLABEL[c.model_recommendation]||esc(c.model_recommendation)} · ${c.override_flag?('OVERRIDE ('+esc(c.override_reason)+')'):'ACCEPTED'} · ${esc(c.time)}</span><span class="spacer"></span><a class="link" onclick="selectClaim(state.cid)">Next claim</a>`; }
-  if(state.overriding){ const reasons=['Insufficient evidence','Customer relationship','Local knowledge','Other'];
-    return `<span>⚠️ Override reason:</span><select id="ovr">${reasons.map(r=>`<option>${r}</option>`).join('')}</select><button class="ghost" onclick="decide('override')">Confirm Override</button><a class="link" onclick="state.overriding=false;renderClaimsAI()">Cancel</a>`; }
-  return `<span class="muted">Human-in-the-loop — record the handler's decision:</span><span class="spacer"></span><button class="primary" onclick="decide('accept')">✓ Accept AI Recommendation</button><button class="ghost" onclick="state.overriding=true;renderClaimsAI()">Override</button>`;
-}
-async function decide(action){
-  const t=(state.panels&&state.panels.triage)||{}; const reason = action==='override'?(document.getElementById('ovr')||{}).value||'Other':'';
-  try{ state.confirmation = await J('/decision',{method:'POST',body:JSON.stringify({claim_public_id:state.cid,model_recommendation:t.decision||'',model_confidence:t.confidence??null,handler_action:action,override_flag:action==='override',override_reason:reason})}); state.overriding=false; }catch(e){ alert('Decision failed'); }
-  renderClaimsAI();
-}
+  return `<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail — regulator-viewable</h2>${sorted.map(r=>`<div style="border-bottom:1px solid #f4f5f8;padding:9px 0"><b style="font-size:13px">${ICON[r.agent_name]||'•'} ${esc(r.agent_name)}</b><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('')}<p class="muted" style="margin-top:8px">Persisted to agent_reasoning_log — the Audit agent and the Governance page read this.</p></div>`; }
+function synthPill(){ const s=state.synth; if(!s||s.__err)return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
+function synthBody(){ const s=state.synth; if(!s)return '<p class="muted">Synthesising…</p>'; if(s.__err)return '<p class="muted">Synthesis unavailable.</p>'; return `<p>${esc(s.text)}</p>`; }
+function actionBar(){ const c=state.confirmation,t=(state.panels&&state.panels.triage)||{};
+  if(c)return `<span class="ok">✓ Decision logged · ${esc(c.decision_id)} · ${DLABEL[c.model_recommendation]||esc(c.model_recommendation)} · ${c.override_flag?('OVERRIDE ('+esc(c.override_reason)+')'):'ACCEPTED'} · ${esc(c.time)}</span><span class="spacer"></span><a class="link" onclick="selectClaim(state.cid)">Refresh</a>`;
+  if(state.overriding){ const rs=['Insufficient evidence','Customer relationship','Local knowledge','Other']; return `<span>⚠️ Override reason:</span><select id="ovr">${rs.map(r=>`<option>${r}</option>`).join('')}</select><button class="ghost" onclick="decide('override')">Confirm override</button><a class="link" onclick="state.overriding=false;renderClaimView()">Cancel</a>`; }
+  return `<span class="muted">Human-in-the-loop — record the handler's decision:</span><span class="spacer"></span><button class="btnv" onclick="decide('accept')">✓ Accept</button><button class="ghost" onclick="state.overriding=true;renderClaimView()">Override</button>`; }
+async function decide(action){ const t=(state.panels&&state.panels.triage)||{}; const reason=action==='override'?(document.getElementById('ovr')||{}).value||'Other':'';
+  try{state.confirmation=await J('/decision',{method:'POST',body:JSON.stringify({claim_public_id:state.cid,model_recommendation:t.decision||'',model_confidence:t.confidence??null,handler_action:action,override_flag:action==='override',override_reason:reason})});state.overriding=false;}catch(e){alert('Decision failed');} renderClaimView(); }
 
-// ---------- Ingestion ----------
-async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML='<h1>📥 Ingestion</h1><p class="sub">Loading pipeline status…</p>';
-  let d; try{ d=await J('/ingestion'); }catch(e){ v.innerHTML='<h1>Ingestion</h1><p class="muted">Unavailable.</p>'; return; }
+// ============ INGESTION ============
+async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML=page('Pipeline','Ingestion — Guidewire CDA → governed bronze','Your ClaimCenter feed lands in Databricks and passes a quality gate. Bad records are quarantined and visible — never silently dropped.','Loading pipeline status…');
+  let d; try{d=await J('/ingestion');}catch(e){v.innerHTML=page('Pipeline','Ingestion','')+'<p class="muted">Unavailable.</p>';return;}
   const q=(Number(d.quarantined_claims)||0)+(Number(d.quarantined_fraud)||0);
-  v.innerHTML=`<h1>📥 Ingestion — Guidewire CDA → governed bronze</h1><p class="sub">The DLT pipeline enforces quality rules and quarantines bad records — nothing is silently dropped.</p>
+  const chain=['Guidewire CDA','landing','bronze (DLT + quality)','silver (enriched)','gold (analytics + ML)'];
+  v.innerHTML=page('Pipeline','Ingestion — Guidewire CDA → governed bronze','Your ClaimCenter feed lands in Databricks and passes a quality gate. Bad records are quarantined and visible — never silently dropped.')
+    +`<div class="card" style="margin-bottom:16px"><h2>🔗 The medallion path</h2><div style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${chain.map((c,i)=>`<span class="badge ${i<2?'b-slate':i<3?'b-amber':i<4?'b-blue':'b-green'}">${esc(c)}</span>${i<chain.length-1?'<span class="muted">→</span>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Three channels feed in — digital, phone, broker. Lakeflow DLT enforces the contract on the way to bronze.</p></div>
     <div class="grid3" style="margin-bottom:16px">
       <div class="tile"><div class="l">Records passing all rules</div><div class="n" style="color:#059669">${d.pass_rate}%</div><div class="s">${(d.total_evaluated||0).toLocaleString()} evaluated</div></div>
       <div class="tile"><div class="l">Quarantined (not dropped)</div><div class="n" style="color:#b45309">${q.toLocaleString()}</div><div class="s">${d.quarantined_claims||0} claims · ${d.quarantined_fraud||0} fraud</div></div>
-      <div class="tile"><div class="l">Pipeline state</div><div class="n" style="color:#334155;font-size:20px">${esc(d.state||'—')}</div><div class="s">${esc(d.pipeline_name||'')}</div></div></div>
-    <div class="card" style="border-color:#a7f3d0;background:#ecfdf5;margin-bottom:16px"><b>No claims data lost.</b> Failed records are routed to quarantine tables and stay inspectable — held back, not deleted.</div>
+      <div class="tile"><div class="l">Pipeline state</div><div class="n" style="font-size:20px">${esc(d.state||'—')}</div><div class="s">${esc(d.pipeline_name||'')}</div></div></div>
+    <div class="card" style="border-color:#6ee7b7;background:#f6fffb;margin-bottom:16px"><b>No claims data lost.</b> Failed records route to quarantine tables and stay inspectable — held back, not deleted. Your data team sees exactly what failed and why.</div>
     <div class="card"><div style="display:flex;justify-content:space-between"><h2>Data-quality expectations</h2>${d.pipeline_url?`<a class="link" href="${d.pipeline_url}" target="_blank">Open pipeline ↗</a>`:''}</div>
-      <table><tr><th>Rule</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th></tr>
-      ${(d.expectations||[]).map(e=>`<tr><td class="mono">${esc(e.name)}</td><td style="text-align:right;color:#047857">${e.passed.toLocaleString()}</td><td style="text-align:right;color:${e.failed?'#b45309':'#94a3b8'}">${e.failed.toLocaleString()}</td></tr>`).join('')}</table></div>`;
+      <table><tr><th>Rule</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th></tr>${(d.expectations||[]).map(e=>`<tr><td class="mono">${esc(e.name)}</td><td style="text-align:right;color:#047857">${e.passed.toLocaleString()}</td><td style="text-align:right;color:${e.failed?'#b45309':'#94a3b8'}">${e.failed.toLocaleString()}</td></tr>`).join('')}</table></div>`;
 }
 
-// ---------- Transformation ----------
-async function renderTransformation(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();
+// ============ ENRICHMENT (was Transformation) ============
+async function renderEnrichment(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();
   const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)}</option>`).join('');
-  v.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div><h1>🧩 Transformation</h1><p class="sub">Silver enrichment — everything we know before the handler picks up the phone.</p></div><select onchange="state.cid=this.value;renderTransformation()" style="min-width:240px">${opts}</select></div><p class="muted" id="tload">Loading…</p>`;
-  let e; try{ e=await J('/claim/enrichment?cid='+encodeURIComponent(state.cid)); }catch(err){ document.getElementById('tload').textContent='Unavailable.'; return; }
+  v.innerHTML=page('Pipeline','Enrichment — the automatic 360° picture',"The silver layer assembles everything we know about a claim — policy, history, fraud, recovery, weather — <b>before a handler picks up the phone</b>. This is what turns a bare FNOL into a decision-ready record.")
+    +`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">Inspect a claim's enriched record</b><select onchange="state.cid=this.value;renderEnrichment()" style="min-width:260px">${opts}</select></div><p class="muted" id="tload">Loading…</p>`;
+  let e; try{e=await J('/claim/enrichment?cid='+encodeURIComponent(state.cid));}catch(err){document.getElementById('tload').textContent='Unavailable.';return;}
   const yn=x=>x===true||x==='true'?'Yes':x===false||x==='false'?'No':(x??'—');
-  const g=(title,rows)=>`<div class="card"><h2>${title}</h2>${rows.map(([k,val])=>`<div class="row"><span class="k">${k}</span><span class="v">${esc(val??'—')}</span></div>`).join('')}</div>`;
+  const g=(t,rows)=>`<div class="card"><h2>${t}</h2>${rows.map(([k,val])=>`<div class="row"><span class="k">${k}</span><span class="v">${esc(val??'—')}</span></div>`).join('')}</div>`;
   v.querySelector('#tload')?.remove();
-  v.insertAdjacentHTML('beforeend', `<div class="grid2">
-    ${g('Claim & incident',[['Claim number',e.claim_number],['Peril',e.peril_type],['Loss cause',e.loss_cause],['Reported',e.report_date],['Channel',e.report_channel],['Reporting lag',e.reporting_lag_days+' days'],['Incident',e.description_text],['Status',e.claim_status]])}
+  v.insertAdjacentHTML('beforeend',`<div class="grid2">
+    ${g('Claim &amp; incident',[['Claim number',e.claim_number],['Peril',e.peril_type],['Loss cause',e.loss_cause],['Reported',e.report_date],['Channel',e.report_channel],['Reporting lag',e.reporting_lag_days+' days'],['Incident',e.description_text],['Status',e.claim_status]])}
     ${g('Policy',[['Policy number',e.policy_number],['Product',e.product],['Sum insured',gbp(e.sum_insured)],['Annual premium',gbp(e.annual_premium)],['Tenure (yrs)',e.policy_tenure_years],['Prior claims (12m)',e.prior_claims_12m]])}
-    ${g('Location & weather',[['Postcode district',e.postcode_district],['Third party',yn(e.third_party_involved)],['Flood',e.flood_risk_score+'/10'],['Wind',e.wind_risk_score+'/10'],['Freeze',e.freeze_risk_score+'/10'],['Composite',e.weather_risk_composite]])}
-    ${g('Recovery & lifecycle',[['Total incurred',gbp(e.total_incurred)],['Paid',gbp(e.paid_amount)],['Ultimate reserve',gbp(e.ultimate_reserve)],['Recovery flag',yn(e.recovery_flag)],['Recoverable',gbp(e.recoverable_amount)],['Leakage',yn(e.leakage_flag)]])}
-    ${g('Risk & ML labels',[['Fraud score',e.fraud_score+'/100'],['High value',yn(e.is_high_value)],['Potential fraud',yn(e.is_potential_fraud)],['At fault',yn(e.at_fault)],['Triage label',e.triage_decision],['Reserve bracket',e.reserve_bracket]])}
+    ${g('Location &amp; weather',[['Postcode district',e.postcode_district],['Third party',yn(e.third_party_involved)],['Flood',e.flood_risk_score+'/10'],['Wind',e.wind_risk_score+'/10'],['Freeze',e.freeze_risk_score+'/10'],['Composite',e.weather_risk_composite]])}
+    ${g('Recovery &amp; lifecycle',[['Total incurred',gbp(e.total_incurred)],['Paid',gbp(e.paid_amount)],['Ultimate reserve',gbp(e.ultimate_reserve)],['Recovery flag',yn(e.recovery_flag)],['Recoverable',gbp(e.recoverable_amount)],['Leakage',yn(e.leakage_flag)]])}
+    ${g('Risk &amp; ML labels',[['Fraud score',e.fraud_score+'/100'],['High value',yn(e.is_high_value)],['Potential fraud',yn(e.is_potential_fraud)],['At fault',yn(e.at_fault)],['Triage label',e.triage_decision],['Reserve bracket',e.reserve_bracket]])}
   </div>`);
 }
 
-// ---------- Governance ----------
-async function renderGovernance(){ const v=document.getElementById('view'); v.innerHTML='<h1>🛡️ Governance & Portfolio</h1><p class="sub">Loading…</p>';
-  let g={},dec=[],inv={}; try{ g=await J('/governance'); }catch(e){} try{ dec=await J('/decisions?limit=15'); }catch(e){} try{ inv=await J('/governance/inventory'); }catch(e){ inv={}; }
-  const tierBadge=t=>{ const c=/SECRET/.test(t)?'b-red':/PII/.test(t)?'b-amber':'b-slate'; return `<span class="badge ${c}">${esc(t)}</span>`; };
-  const invRows=(inv.inventory||[]).map(r=>`<tr><td>${esc(r.source)}</td><td class="mono">${esc(r.table)}</td><td class="muted">${esc(r.fields)}</td><td>${tierBadge(r.tier)}</td><td>${esc(r.retention)}</td><td class="muted">${esc(r.masking)}</td></tr>`).join('');
-  if(!state.gcid) state.gcid='cc:900001';
-  v.innerHTML=`<h1>🛡️ Governance &amp; Portfolio</h1><p class="sub">Board reporting, what's collected (sensitivity tiers), lineage, and the regulator-viewable decision audit.</p>
-    <div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><h2>Claims Portfolio — Board View</h2><div>${g.genie_url?`<a class="link" href="${g.genie_url}" target="_blank">Ask the Book ↗</a> · `:''}${g.dashboard_url?`<a class="link" href="${g.dashboard_url}" target="_blank">Open dashboard ↗</a>`:''}</div></div>
-      ${g.dashboard_embed_url?`<iframe src="${g.dashboard_embed_url}" style="width:100%;height:520px;border:1px solid #f1f5f9;border-radius:8px;margin-top:8px"></iframe>`:'<p class="muted">Dashboard link resolving…</p>'}</div>
-    <div class="card" style="margin-bottom:16px"><h2>🗂️ What's collected — data inventory & sensitivity</h2>
-      <table><tr><th>Source</th><th>Table</th><th>Fields</th><th>Tier</th><th>Retention</th><th>Masking / who sees what</th></tr>${invRows}</table>
-      <div style="margin-top:10px;font-size:12px;color:#475569">${(inv.tiers||[]).map(t=>`<div>${tierBadge(t.tier)} ${esc(t.rule)}</div>`).join('')}</div>
-      <p class="muted" style="margin-top:6px">SECRET tier (claim narrative / health) is withheld from non-privileged roles and should sit on Customer-Managed Keys (CMK).</p></div>
-    <div class="grid2">
-      <div class="card"><h2>🔱 End-to-end lineage</h2><div style="font-size:12px;line-height:2">${(g.lineage||[]).map((l,i)=>`<a class="mono link" href="${l.explore_url}" target="_blank">${esc(l.asset)}</a>${i<(g.lineage.length-1)?' <span class="muted">→</span> ':''}`).join('')}</div><p class="muted" style="margin-top:8px">Raw → governed → enriched → features → model → decision.</p></div>
-      <div class="card"><h2>📋 HITL audit trail</h2>${dec.length?`<table><tr><th>ID</th><th>Claim</th><th>Reco</th><th>Action</th></tr>${dec.map(d=>`<tr><td class="mono">${esc(d.decision_id)}</td><td>${esc(d.claim_public_id)}</td><td>${DLABEL[d.model_recommendation]||esc(d.model_recommendation)} ${d.model_confidence!=null?pct(d.model_confidence):''}</td><td style="color:${d.override_flag?'#b45309':'#047857'}">${d.override_flag?'OVERRIDE':'accept'}</td></tr>`).join('')}</table>`:'<p class="muted">No decisions logged yet.</p>'}<p class="muted" style="margin-top:8px">What the model advised and what the handler did — the FCA / Consumer-Duty trail.</p></div>
-    </div>
-    <div class="card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🧾 Agent-reasoning audit — regulator-viewable</h2>
-      <select onchange="state.gcid=this.value;renderGovReasoning()" style="min-width:200px">${state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.gcid?'selected':''}>${esc(c.claim_public_id)}</option>`).join('')}</select></div>
+// ============ GOVERNANCE (sub-tabs) ============
+function renderGovernance(){ const v=document.getElementById('view');
+  v.innerHTML=page('Govern','Governance &amp; control','Board reporting, what data is collected and how it is used, the AI agents, and a full track of any claim — the regulator-readable view.')
+    +`<div class="tabs">
+      <div class="tab ${state.govtab==='collected'?'on':''}" onclick="setGovTab('collected')">🗂️ What's collected &amp; how it's used</div>
+      <div class="tab ${state.govtab==='agents'?'on':''}" onclick="setGovTab('agents')">🤖 AI agents</div>
+      <div class="tab ${state.govtab==='track'?'on':''}" onclick="setGovTab('track')">📋 Claim track</div>
+    </div><div id="govbody"><p class="muted">Loading…</p></div>`;
+  renderGovBody();
+}
+function setGovTab(t){ state.govtab=t; document.querySelectorAll('.tab').forEach(el=>{}); renderGovernance(); }
+async function renderGovBody(){ const el=document.getElementById('govbody'); if(!el)return;
+  if(state.govtab==='collected') return renderGovCollected(el);
+  if(state.govtab==='agents') return renderGovAgents(el);
+  if(state.govtab==='track') return renderGovTrack(el);
+}
+async function renderGovCollected(el){ let inv={}; try{inv=await J('/governance/inventory');}catch(e){inv={};}
+  const tierBadge=t=>{const c=/SECRET/.test(t)?'b-red':/PII/.test(t)?'b-amber':'b-slate';return `<span class="badge ${c}">${esc(t)}</span>`;};
+  el.innerHTML=`<div class="card"><h2>🗂️ Data inventory — what's collected &amp; how it's used</h2>
+    <table><tr><th style="width:15%">Source</th><th style="width:18%">Table</th><th style="width:22%">Fields</th><th>How it's used</th><th style="width:8%">Tier</th><th style="width:13%">Who sees what</th></tr>
+    ${(inv.inventory||[]).map(r=>`<tr><td>${esc(r.source)}</td><td class="mono">${esc(r.table)}</td><td class="muted">${esc(r.fields)}</td><td style="color:#334155">${esc(r.used_for||'')}</td><td>${tierBadge(r.tier)}</td><td class="muted">${esc(r.masking)}</td></tr>`).join('')}</table>
+    <div style="margin-top:12px;font-size:12.5px;color:#475569;line-height:1.7">${(inv.tiers||[]).map(t=>`<div>${tierBadge(t.tier)} ${esc(t.rule)}</div>`).join('')}</div>
+    <p class="muted" style="margin-top:8px">SECRET tier (claim narrative / health) is withheld from non-privileged roles and should sit on Customer-Managed Keys (CMK). Retention per row above.</p></div>`;
+}
+async function renderGovAgents(el){ if(!state.roster){try{state.roster=await J('/agents');}catch(e){state.roster={agents:[],genie:[]};}}
+  let gcid=state.gcid; const r=state.roster;
+  const rowFor=ag=>`<tr><td><b>${esc(ag.name)}</b></td><td class="muted">${esc(ag.kind)}</td><td class="mono" style="font-size:11px">${esc(ag.endpoint||'—')} ${ag.url?`<a class="link" href="${ag.url}" target="_blank">↗</a>`:''}</td><td class="muted">${esc(ag.desc)}</td></tr>`;
+  el.innerHTML=`<div class="card" style="margin-bottom:16px"><h2>🤖 The governed agent roster</h2>
+    <table><tr><th>Agent</th><th>Kind</th><th>Endpoint (UC-registered, MLflow-traced)</th><th>Role</th></tr>${(r.agents||[]).concat(r.genie||[]).map(rowFor).join('')}</table>
+    <p class="muted" style="margin-top:8px">Each agent is independently deployable and auditable; the supervisor classifies and dispatches, writing the routing decision to the audit log.</p></div>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🧾 Agent-reasoning audit — by claim</h2>
+      <select onchange="state.gcid=this.value;renderGovReasoning()" style="min-width:200px">${state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===gcid?'selected':''}>${esc(c.claim_public_id)}</option>`).join('')}</select></div>
       <div id="govreason"><p class="muted">Loading…</p></div></div>`;
   renderGovReasoning();
 }
-async function renderGovReasoning(){ const el=document.getElementById('govreason'); if(!el) return; el.innerHTML='<p class="muted">Loading…</p>';
-  let rs=[]; try{ rs=await J('/claim/reasoning?cid='+encodeURIComponent(state.gcid)); }catch(e){}
-  el.innerHTML = rs.length ? rs.map(r=>`<div style="border-bottom:1px solid #f1f5f9;padding:8px 0"><b style="font-size:13px">${esc(r.agent_name)}</b> <span class="muted">${esc(r.created_ts||'')}</span><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('') : '<p class="muted">No persisted reasoning for this claim.</p>';
+async function renderGovReasoning(){ const el=document.getElementById('govreason'); if(!el)return; el.innerHTML='<p class="muted">Loading…</p>';
+  let rs=[]; try{rs=await J('/claim/reasoning?cid='+encodeURIComponent(state.gcid));}catch(e){}
+  el.innerHTML=rs.length?rs.map(r=>`<div style="border-bottom:1px solid #f4f5f8;padding:9px 0"><b style="font-size:13px">${esc(r.agent_name)}</b> <span class="muted">${esc(r.created_ts||'')}</span><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join(''):'<p class="muted">No persisted reasoning for this claim.</p>';
+}
+async function renderGovTrack(el){ if(!state.claims.length) await loadClaims();
+  el.innerHTML=`<div class="card" style="margin-bottom:16px"><h2>📋 Track a claim end-to-end</h2>
+    <p class="muted" style="margin-bottom:10px">The whole story in one place — what came in, what was decided, what documents arrived, and what's still outstanding. Today a head of claims stitches this together by hand across systems.</p>
+    <div style="display:flex;gap:8px"><input id="trackinput" placeholder="Claim number, e.g. cc:900001" value="${esc(state.trackCid)}" style="flex:1" onkeydown="if(event.key==='Enter')doTrack()"><button class="btnv" onclick="doTrack()">Track</button></div>
+    <div style="margin-top:8px">${state.claims.slice(0,6).map(c=>`<span class="badge b-violet" style="cursor:pointer;margin:2px" onclick="state.trackCid='${esc(c.claim_public_id)}';doTrack()">${esc(c.claim_public_id)}</span>`).join('')}</div></div>
+    <div id="trackbody"></div>`;
+  doTrack();
+}
+async function doTrack(){ const inp=document.getElementById('trackinput'); if(inp)state.trackCid=inp.value.trim()||state.trackCid; const b=document.getElementById('trackbody'); if(!b)return; b.innerHTML='<p class="muted">Loading…</p>';
+  let d; try{d=await J('/claim/track?cid='+encodeURIComponent(state.trackCid));}catch(e){b.innerHTML='<p class="muted">Unavailable.</p>';return;}
+  if(!d.found){b.innerHTML=`<div class="card">No claim <b>${esc(state.trackCid)}</b> found.</div>`;return;}
+  const c=d.claim||{}; const SC={done:'#10b981',partial:'#f59e0b',awaited:'#f59e0b',missing:'#ef4444',received:'#10b981'};
+  const tl=d.lifecycle.map(e=>`<div class="tlitem"><div class="tldot" style="background:${SC[e.status]||'#94a3b8'}"></div><b>${esc(e.stage)}</b> <span class="w">${esc(e.when||'')}</span><p>${esc(e.detail)}</p></div>`).join('');
+  const docs=d.documents.map(x=>`<div class="doc"><span class="dot" style="background:${SC[x.status]}"></span><span style="flex:1">${esc(x.name)}</span><span class="badge ${x.status==='received'?'b-green':x.status==='awaited'?'b-amber':'b-red'}">${esc(x.status)}</span></div>`).join('');
+  const acts=d.actions.length?d.actions.map(a=>`<div style="border-bottom:1px solid #f4f5f8;padding:7px 0"><b style="font-size:12.5px">${esc(a.actor)}</b><p style="font-size:12.5px;color:#475569;margin:2px 0 0">${esc(a.detail)}</p></div>`).join(''):'<p class="muted">No agent actions recorded.</p>';
+  const gaps=d.gaps.length?`<ul style="margin:6px 0 0;padding-left:18px">${d.gaps.map(g=>`<li style="font-size:13px;color:#b45309;margin:3px 0">${esc(g)}</li>`).join('')}</ul>`:'<p class="ok">✓ Nothing outstanding — a complete, clean file.</p>';
+  b.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div><div class="eyebrow">${esc(state.trackCid)}</div><div style="font-size:18px;font-weight:800">${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</div></div>
+      <span class="badge ${d.disposition==='auto_closed'?'b-green':'b-amber'}">${esc((d.disposition||'').replace('_',' ')||'—')}</span>
+      <span class="spacer"></span><div style="text-align:right"><div class="muted">Document completeness</div><div style="font-size:20px;font-weight:800;color:${d.doc_complete_pct===100?'#059669':'#b45309'}">${d.doc_complete_pct}%</div></div></div>
+    <div class="grid2">
+      <div class="card"><h2>🕒 Lifecycle</h2><div class="tl">${tl}</div></div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="card"><h2>📎 Documents received</h2>${docs}</div>
+        <div class="card" style="border-color:#fcd34d;background:#fffbeb"><h2>⚠️ What's outstanding</h2>${gaps}<p class="muted" style="margin-top:6px">The gaps a head of claims can't easily see today — surfaced in one view.</p></div>
+      </div></div>
+    <div class="card" style="margin-top:16px"><h2>🧾 What was done — agent reasoning</h2>${acts}</div>`;
 }
 
-// ---------- Learn ----------
-const GLOSSARY = [
-  ['FNOL','First Notice of Loss — the moment a claim is first reported (call, app, broker). The trigger for everything downstream.'],
-  ['Triage','Deciding how to handle a claim at FNOL: pay directly, escalate to a handler, or refer to the fraud unit (SIU).'],
-  ['Reserve','Money set aside for a claim before it is fully paid. Under-reserving means surprises later; the reserve model estimates the bracket.'],
-  ['Indemnity','Putting the policyholder back in the position they were in before the loss — the core promise of insurance.'],
-  ['Subrogation / Recovery','Recovering money from a third party (or their insurer) when they were at fault — e.g. a not-at-fault motor claim.'],
-  ['Leakage','Money paid out that need not have been — overpayment, missed recovery, or poor handling. A key efficiency metric.'],
-  ['SIU','Special Investigations Unit — the fraud team a claim is referred to when signals are elevated.'],
-  ['Peril','The cause of loss — e.g. motor third-party, escape of water, storm, fire.'],
-  ['Loss ratio','Claims incurred ÷ premium earned. The headline measure of underwriting profitability.'],
-  ['Straight-through processing (STP)','A clean, low-risk claim that is auto-closed and paid with no manual handling — the auto-close path here.'],
-  ['Ultimate / outstanding','Ultimate = total the claim will ever cost; outstanding = what is still reserved but unpaid.'],
-  ['Consumer Duty / FCA','UK regulatory expectations — fair, explainable, auditable treatment of customers. Why the decision trail matters.'],
-];
-const FLOW = [
-  ['FNOL','Claim reported','Guidewire ClaimCenter'],
-  ['Triage','Pay / escalate / refer','ML model + workflow'],
-  ['Reserve','Set money aside','Reserve model + finance'],
-  ['Settle','Pay the claim','ClaimCenter + finance / payments'],
-  ['Recover','Subrogate from third party','Recovery / SIU'],
-  ['Close','Audit & report','CMS + board reporting'],
-];
-function renderLearn(){ document.getElementById('view').innerHTML=`<h1>🎓 Learn — claims for Databricks colleagues</h1><p class="sub">Plain-English primer to help you pitch. Skim it once and you can carry the conversation.</p>
-  <div class="card" style="margin-bottom:16px"><h2>What is a claim, really?</h2>
-    <p style="font-size:14px;color:#334155;line-height:1.6">A policyholder suffers a loss — a car bump, a burst pipe — and tells the insurer (that's <b>FNOL</b>). The insurer decides how to handle it (<b>triage</b>), sets money aside (<b>reserve</b>), pays what's owed (<b>settle</b>), claws back anything recoverable from a third party (<b>recover</b>), and closes the file with a full audit trail. Do this faster and fairer and you win on cost, customer experience and regulatory standing all at once. That's the whole game — and it's what this workbench shows end to end.</p></div>
-  <div class="card" style="margin-bottom:16px"><h2>🔄 The flow through the company's systems</h2>
-    <div class="agents" style="justify-content:flex-start">${FLOW.map((f,i)=>`<div class="agbox" style="width:160px"><b>${i+1}. ${esc(f[0])}</b><span>${esc(f[1])}</span><span style="color:#2563eb;margin-top:4px">${esc(f[2])}</span></div>${i<FLOW.length-1?'<div style="align-self:center;color:#94a3b8">→</div>':''}`).join('')}</div>
-    <p class="muted" style="margin-top:8px">Guidewire ClaimCenter / PolicyCenter feed the data; the ML models + workflow decide; finance and payments execute; a claims management system (CMS) and board reporting close the loop. Databricks sits underneath as the data + AI platform.</p></div>
-  <div class="card"><h2>📖 Glossary — insurance 101</h2>
-    <div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:150px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span class="v" style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div>
-    <p class="muted" style="margin-top:8px">Drafted insurance-101 glossary — swap in your standard glossary text if you have one.</p></div>`; }
+// ============ LEARN ============
+const GLOSSARY=[['FNOL','First Notice of Loss — the moment a claim is first reported. The trigger for everything downstream.'],['Triage','Deciding how to handle a claim at FNOL: pay directly, escalate to a handler, or refer to the fraud unit (SIU).'],['Reserve','Money set aside for a claim before it is fully paid. Under-reserving means surprises later.'],['Indemnity','Putting the policyholder back where they were before the loss — the core promise of insurance.'],['Subrogation / Recovery','Recovering money from a third party (or their insurer) when they were at fault.'],['Leakage','Money paid out that need not have been — overpayment, missed recovery, or poor handling.'],['SIU','Special Investigations Unit — the fraud team a claim is referred to when signals are elevated.'],['Peril','The cause of loss — e.g. motor third-party, escape of water, storm, fire.'],['Loss ratio','Claims incurred ÷ premium earned. The headline measure of underwriting profitability.'],['Straight-through processing','A clean, low-risk claim auto-closed and paid with no manual handling — the auto-close path here.'],['Ultimate / outstanding','Ultimate = total the claim will ever cost; outstanding = what is still reserved but unpaid.'],['Consumer Duty / FCA','UK regulatory expectations — fair, explainable, auditable treatment of customers.']];
+const FLOW=[['FNOL','Claim reported','Guidewire ClaimCenter'],['Triage','Pay / escalate / refer','ML model + workflow'],['Reserve','Set money aside','Reserve model + finance'],['Settle','Pay the claim','ClaimCenter + payments'],['Recover','Subrogate from third party','Recovery / SIU'],['Close','Audit & report','CMS + board reporting']];
+function renderLearn(){ document.getElementById('view').innerHTML=page('Reference','Learn — claims for Databricks colleagues','A plain-English primer to help you pitch. Skim it once and you can carry the conversation.')
+  +`<div class="card" style="margin-bottom:16px"><h2>What is a claim, really?</h2><p style="font-size:14px;color:#334155;line-height:1.65">A policyholder suffers a loss — a car bump, a burst pipe — and tells the insurer (<b>FNOL</b>). The insurer decides how to handle it (<b>triage</b>), sets money aside (<b>reserve</b>), pays what's owed (<b>settle</b>), claws back anything recoverable (<b>recover</b>), and closes the file with a full audit trail. Do this faster and fairer and you win on cost, customer experience and regulatory standing at once. That's the whole game — and it's what this workbench shows end to end.</p></div>
+  <div class="card" style="margin-bottom:16px"><h2>🔄 The flow through the company's systems</h2><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">${FLOW.map((f,i)=>`<div class="agcard ac-violet" style="width:158px;padding:12px"><b style="font-size:12.5px">${i+1}. ${esc(f[0])}</b><span class="muted" style="display:block;margin-top:2px">${esc(f[1])}</span><span style="color:var(--v7);font-size:11px;display:block;margin-top:5px">${esc(f[2])}</span></div>${i<FLOW.length-1?'<div style="align-self:center;color:#cbd5e1;font-size:18px">→</div>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Guidewire feeds the data; the ML models + workflow decide; finance and payments execute; a CMS and board reporting close the loop. Databricks is the data + AI platform underneath.</p></div>
+  <div class="card"><h2>📖 Glossary — insurance 101</h2><div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:160px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div><p class="muted" style="margin-top:8px">Drafted insurance-101 glossary — swap in your standard text if you have one.</p></div>`; }
 
-// ---------- Roadmap ----------
-function renderRoadmap(){ document.getElementById('view').innerHTML=`<h1>🚧 Roadmap — under construction</h1><p class="sub">What this accelerator intentionally does NOT do yet. Greyed = not built.</p>${roadmapStrip()}
-  <p class="muted" style="margin-top:14px">These are the natural next capabilities — document intake, system integration, downstream execution, specialty lines and third-party enrichment — shown to frame the platform's reach without overstating what's live.</p>`; }
+// ============ ROADMAP ============
+function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform's reach honestly.')+roadmapStrip(); }
 
-// ---------- boot ----------
-(async function(){ renderNav(); document.getElementById('pagedesc').textContent=DESC[state.section]||''; await initFoot(); await loadClaims(); render(); })();
+// ============ boot ============
+(async function(){ renderNav(); try{const cfg=await J('/config');state.host=cfg.workspace_host||'';}catch(e){} await initFoot(); await loadClaims(); render(); })();
 </script>
 </body>
 </html>
