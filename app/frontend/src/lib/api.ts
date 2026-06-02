@@ -35,6 +35,15 @@ export const api = {
   getIngestion: () => fetchJson<any>('/ingestion'),
   getEnrichment: (cid: string) => fetchJson<any>(`/claim/enrichment?cid=${encodeURIComponent(cid)}`),
   getGovernance: () => fetchJson<any>('/governance'),
+
+  // Phase 11 Stage B
+  getControlTower: () => fetchJson<any>('/control-tower'),
+  getMonitoringLens: () => fetchJson<any>('/monitoring-lens'),
+  getAutoCloseConfig: () => fetchJson<any>('/auto-close/config'),
+  segmentAutoClose: (conf: number, cap: number, fraud: number) =>
+    fetchJson<any>(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`),
+  ask: (question: string, cid?: string | null) =>
+    fetchJson<any>('/ask', { method: 'POST', body: JSON.stringify({ question, cid: cid ?? null }) }),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

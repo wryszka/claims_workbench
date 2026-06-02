@@ -9,29 +9,33 @@
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:#1e293b; }
   .app { display:flex; min-height:100vh; }
-  .side { width:224px; background:var(--slate); color:#fff; display:flex; flex-direction:column; flex-shrink:0; }
+  .side { width:236px; background:var(--slate); color:#fff; display:flex; flex-direction:column; flex-shrink:0; }
   .brand { padding:18px 16px; border-bottom:1px solid rgba(255,255,255,.1); display:flex; gap:10px; align-items:center; }
   .brand b { font-size:14px; } .brand small { color:#94a3b8; font-size:10px; display:block; }
-  .nav { flex:1; padding:10px 8px; } .nav a { display:flex; gap:8px; align-items:center; padding:8px 12px; border-radius:8px; color:#94a3b8; text-decoration:none; font-size:14px; cursor:pointer; }
+  .nav { flex:1; padding:10px 8px; overflow:auto; } .nav a { display:flex; gap:8px; align-items:center; padding:8px 12px; border-radius:8px; color:#94a3b8; text-decoration:none; font-size:14px; cursor:pointer; }
   .nav a.on { background:rgba(37,99,235,.2); color:#fff; font-weight:600; } .nav a:hover { color:#fff; background:rgba(255,255,255,.05); }
-  .foot { padding:12px 16px; border-top:1px solid rgba(255,255,255,.1); color:#64748b; font-size:10px; }
+  .nav .navhd { color:#475569; font-size:10px; text-transform:uppercase; letter-spacing:.08em; padding:12px 12px 4px; }
+  .foot { padding:12px; border-top:1px solid rgba(255,255,255,.1); display:flex; flex-direction:column; gap:8px; }
+  .foot .fbtn { width:100%; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.04); color:#cbd5e1; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; display:flex; gap:8px; align-items:center; justify-content:center; }
+  .foot .fbtn:disabled { opacity:.4; cursor:not-allowed; }
+  .foot .fbtn.cached { background:rgba(180,83,9,.25); color:#fcd34d; border-color:#b45309; } .foot .fbtn.live { background:rgba(4,120,87,.25); color:#6ee7b7; border-color:#047857; }
+  .foot .fmsg { color:#94a3b8; font-size:10px; min-height:12px; } .foot .ftag { color:#475569; font-size:10px; }
   .main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  .top { height:48px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:10px; padding:0 20px; }
-  .top .ctx { color:#94a3b8; font-size:12px; } .spacer { flex:1; }
-  .btn { border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; gap:6px; align-items:center; }
-  .btn:disabled { opacity:.4; cursor:not-allowed; }
-  .btn.cached { background:#fffbeb; color:#b45309; border-color:#fcd34d; } .btn.live { background:#ecfdf5; color:#047857; border-color:#6ee7b7; }
-  .content { padding:24px; overflow:auto; } .wrap { max-width:1120px; margin:0 auto; }
+  .top { background:#fff; border-bottom:1px solid #e2e8f0; padding:10px 24px; }
+  .top .ctx { color:#94a3b8; font-size:11px; } .top .desc { color:#334155; font-size:13px; margin-top:2px; }
+  .content { padding:24px; overflow:auto; } .wrap { max-width:1180px; margin:0 auto; }
   h1 { font-size:20px; margin:0 0 2px; } .sub { color:#64748b; font-size:12px; margin:0 0 18px; }
-  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; } .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  @media(max-width:900px){ .grid3,.grid2{ grid-template-columns:1fr; } }
+  .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; } .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; } .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:1000px){ .grid4{grid-template-columns:1fr 1fr;} .grid3,.grid2{ grid-template-columns:1fr; } }
   .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
   .card h2 { font-size:13px; margin:0 0 12px; display:flex; gap:6px; align-items:center; }
   .row { display:flex; justify-content:space-between; gap:12px; font-size:14px; padding:4px 0; border-bottom:1px solid #f1f5f9; }
   .row:last-child { border:0; } .row .k { color:#64748b; } .row .v { text-align:right; }
   .badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; }
-  .b-blue { background:#dbeafe; color:#1d4ed8; } .b-green { background:#d1fae5; color:#047857; } .b-slate { background:#f1f5f9; color:#475569; }
-  .b-amber { background:#fef3c7; color:#b45309; }
+  .b-blue { background:#dbeafe; color:#1d4ed8; } .b-green { background:#d1fae5; color:#047857; } .b-slate { background:#f1f5f9; color:#475569; } .b-amber { background:#fef3c7; color:#b45309; } .b-red { background:#fee2e2; color:#b91c1c; }
+  .tile { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; }
+  .tile .l { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.03em; } .tile .n { font-size:24px; font-weight:800; margin-top:2px; } .tile .s { font-size:11px; color:#94a3b8; }
+  .tile.hero { background:linear-gradient(135deg,#1e3a8a,#2563eb); color:#fff; } .tile.hero .l { color:#bfdbfe; } .tile.hero .s { color:#bfdbfe; }
   .decision { color:#fff; border-radius:10px; padding:12px; text-align:center; margin-bottom:12px; }
   .decision .d { font-size:20px; font-weight:800; letter-spacing:.03em; } .decision .c { font-size:13px; opacity:.9; }
   .reasons li { font-size:14px; color:#334155; margin:2px 0; } .reasons { padding-left:18px; margin:6px 0; }
@@ -42,12 +46,24 @@
   .actions { border:1px solid #e2e8f0; background:#fff; border-radius:12px; padding:16px; margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   .primary { background:var(--blue); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
   .ghost { border:1px solid #fbbf24; color:#b45309; background:#fff; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
-  .ok { color:#047857; font-weight:600; } select { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-size:14px; }
+  .ok { color:#047857; font-weight:600; } select,input,textarea { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-size:14px; font-family:inherit; }
   table { width:100%; border-collapse:collapse; font-size:13px; } th { text-align:left; color:#64748b; border-bottom:1px solid #f1f5f9; padding:6px 4px; }
   td { padding:6px 4px; border-bottom:1px solid #f8fafc; } .mono { font-family: ui-monospace, monospace; font-size:12px; }
-  .stat { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; } .stat .n { font-size:26px; font-weight:800; } .stat .l { font-size:12px; color:#64748b; }
-  a.link { color:var(--blue); font-size:12px; text-decoration:none; } a.link:hover { text-decoration:underline; }
+  .spacer { flex:1; } a.link { color:var(--blue); font-size:12px; text-decoration:none; } a.link:hover { text-decoration:underline; }
   .muted { color:#94a3b8; font-size:12px; }
+  .disclaimer { background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:12px 16px; font-size:12px; color:#92400e; line-height:1.5; margin-bottom:18px; }
+  .slider { width:100%; } .slider-row { display:flex; gap:8px; align-items:center; margin:8px 0; } .slider-row label { width:120px; font-size:12px; color:#64748b; } .slider-row .val { width:96px; text-align:right; font-weight:700; font-size:13px; }
+  .lens li { font-size:13px; color:#334155; margin:6px 0; line-height:1.45; }
+  .ph { background:repeating-linear-gradient(45deg,#f8fafc,#f8fafc 10px,#f1f5f9 10px,#f1f5f9 20px); border:1px dashed #cbd5e1; border-radius:10px; padding:12px; color:#94a3b8; }
+  .ph b { color:#64748b; display:block; font-size:13px; margin-bottom:2px; } .ph .uc { font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#b45309; background:#fef3c7; border-radius:999px; padding:1px 7px; }
+  .askbox { display:flex; gap:8px; } .askbox textarea { flex:1; min-height:46px; resize:vertical; }
+  .qchip { display:inline-block; font-size:12px; color:#334155; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px; padding:5px 11px; margin:3px; cursor:pointer; } .qchip:hover { background:#dbeafe; border-color:#bfdbfe; }
+  .qgrp { margin:8px 0; } .qgrp .gl { font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.03em; }
+  .diagram { display:flex; flex-direction:column; align-items:center; gap:10px; padding:8px 0; }
+  .sup { background:#1e3a8a; color:#fff; border-radius:10px; padding:10px 18px; font-weight:700; font-size:14px; }
+  .agents { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
+  .agbox { background:#fff; border:1px solid #cbd5e1; border-radius:10px; padding:8px 12px; width:200px; } .agbox b { font-size:12px; } .agbox span { font-size:11px; color:#64748b; display:block; }
+  .agbox.tool { border-color:#bfdbfe; background:#eff6ff; } .agbox.genie { border-color:#a7f3d0; background:#ecfdf5; }
 </style>
 </head>
 <body>
@@ -55,26 +71,40 @@
   <aside class="side">
     <div class="brand"><span style="font-size:22px">🛡️</span><div><b>Claims Intelligence</b><small>Bricksurance SE</small></div></div>
     <nav class="nav" id="nav"></nav>
-    <div class="foot">Synthetic demo accelerator — not a Databricks product</div>
+    <div class="foot">
+      <button class="fbtn" id="cacheBtn" onclick="toggleCache()">AI: …</button>
+      <button class="fbtn" id="resetBtn" onclick="resetDemo()">↺ Reset demo</button>
+      <div class="fmsg" id="resetMsg"></div>
+      <div class="ftag">Synthetic demo accelerator — not a Databricks product</div>
+    </div>
   </aside>
   <div class="main">
-    <div class="top">
-      <span class="ctx">Bricksurance SE · Claims Intelligence Workbench</span>
-      <span class="spacer"></span>
-      <button class="btn" id="cacheBtn" onclick="toggleCache()">AI: …</button>
-      <button class="btn" id="resetBtn" onclick="resetDemo()">↺ Reset demo</button>
-      <span class="muted" id="resetMsg"></span>
-    </div>
+    <div class="top"><div class="ctx">Bricksurance SE · Claims Intelligence Workbench</div><div class="desc" id="pagedesc"></div></div>
     <div class="content"><div class="wrap" id="view"></div></div>
   </div>
 </div>
 <script>
 const SECTIONS = [
-  {id:'ingestion', label:'Ingestion'}, {id:'transformation', label:'Transformation'},
-  {id:'claimsai', label:'Claims AI'}, {id:'governance', label:'Governance & Portfolio'},
+  {id:'control', label:'🎛️ Control Tower', grp:'Operate'},
+  {id:'claimsai', label:'✨ Claims AI', grp:'Operate'},
+  {id:'ingestion', label:'📥 Ingestion', grp:'Pipeline'},
+  {id:'transformation', label:'🧩 Transformation', grp:'Pipeline'},
+  {id:'governance', label:'🛡️ Governance & Portfolio', grp:'Pipeline'},
+  {id:'learn', label:'🎓 Learn', grp:'Reference'},
+  {id:'roadmap', label:'🚧 Roadmap', grp:'Reference'},
 ];
-const state = { section:'claimsai', cid:'cc:900001', claims:[], panels:null, synth:null, cache:null, overriding:false, confirmation:null };
+const DESC = {
+  control:'This page is the demo home: portfolio health at a glance — how many claims are open, escalated or auto-closed, what needs attention, and a live auto-close threshold slider.',
+  claimsai:'This page is the unified Claims AI window: ask any question and it routes through the managed supervisor to the right agent. Below, pick a claim to see triage, reserve, fraud and the orchestrated brief.',
+  ingestion:'This page shows your Guidewire data landing in Databricks and the quality gate that quarantines bad records — nothing is silently dropped.',
+  transformation:'This page shows the silver enrichment for one claim — everything we know before a handler picks up the phone.',
+  governance:'This page is for compliance: the board dashboard, lineage, who-sees-what, and the regulator-viewable decision audit.',
+  learn:'This page is for Databricks colleagues learning to pitch claims — plain-English concepts and a glossary (built out in Stage C).',
+  roadmap:'This page shows what is intentionally NOT built yet — the roadmap of intake, integration, downstream and specialty capabilities.',
+};
+const state = { section:'control', cid:'cc:900001', claims:[], panels:null, synth:null, cache:null, overriding:false, confirmation:null, ct:null, lens:null, cfg:null, ask:null, asking:false };
 const gbp = v => { const n=parseFloat(v); return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0}); };
+const num = v => { const n=parseFloat(v); return isNaN(n)?'—':n.toLocaleString('en-GB'); };
 const pct = v => { const n=parseFloat(v); return isNaN(n)?'—':n.toFixed(1)+'%'; };
 const DLABEL = { pay_direct:'PAY DIRECT', escalate:'ESCALATE', refer_siu:'REFER TO SIU' };
 const PERIL = { motor_tp:'Motor Third Party', home_escape_water:'Home — Escape of Water', home_storm:'Home — Storm', home_fire:'Home — Fire' };
@@ -82,40 +112,125 @@ const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':
 async function J(path, opts){ const r=await fetch('/api'+path, {headers:{'Content-Type':'application/json'}, ...opts}); if(!r.ok) throw new Error(r.status); return r.json(); }
 
 function renderNav(){
-  document.getElementById('nav').innerHTML = SECTIONS.map(s =>
-    `<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`).join('');
+  let html='', grp='';
+  for(const s of SECTIONS){ if(s.grp!==grp){ grp=s.grp; html+=`<div class="navhd">${grp}</div>`; }
+    html+=`<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`; }
+  document.getElementById('nav').innerHTML = html;
 }
-function go(s){ state.section=s; renderNav(); render(); }
+function go(s){ state.section=s; renderNav(); document.getElementById('pagedesc').textContent=DESC[s]||''; render(); }
 
-async function initCache(){
+async function initFoot(){
   try{ const d=await J('/cache-mode'); state.cache=d.use_cache; }catch(e){ state.cache=true; }
-  const b=document.getElementById('cacheBtn'); b.className='btn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live');
-  try{ const r=await J('/reset-status'); const rb=document.getElementById('resetBtn'); if(!r.available){ rb.disabled=true; rb.textContent='↺ Reset demo (Phase 9)'; } }catch(e){}
+  const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live');
+  try{ const r=await J('/reset-status'); const rb=document.getElementById('resetBtn'); if(!r.available){ rb.disabled=true; rb.textContent='↺ Reset (Phase 9)'; } }catch(e){}
 }
-async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='btn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
+async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
 let _resetTimer=null;
 async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…';
   try{ const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){ m.textContent=d.message||'unavailable'; return; }
     document.getElementById('resetBtn').disabled=true; pollReset(d.run_id, Date.now());
   }catch(e){ m.textContent='unavailable'; } }
-function pollReset(rid, t0){ const m=document.getElementById('resetMsg');
-  clearInterval(_resetTimer);
+function pollReset(rid, t0){ const m=document.getElementById('resetMsg'); clearInterval(_resetTimer);
   const tick=async()=>{ try{ const r=await J('/reset-run?run_id='+rid); const mins=Math.round((Date.now()-t0)/60000);
       if((r.life_cycle||'').includes('TERMINATED')){ clearInterval(_resetTimer); document.getElementById('resetBtn').disabled=false;
-        m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete — dates current':'Reset failed'; if((r.result||'').includes('SUCCESS')) location.reload(); }
+        m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed'; if((r.result||'').includes('SUCCESS')) location.reload(); }
       else { m.textContent=`Reset running… ${mins}m`; }
     }catch(e){} };
   tick(); _resetTimer=setInterval(tick, 15000); }
 
 function render(){
-  if(state.section==='claimsai') return renderClaimsAI();
-  if(state.section==='ingestion') return renderIngestion();
-  if(state.section==='transformation') return renderTransformation();
-  if(state.section==='governance') return renderGovernance();
+  const r={ control:renderControl, claimsai:renderClaimsAI, ingestion:renderIngestion, transformation:renderTransformation, governance:renderGovernance, learn:renderLearn, roadmap:renderRoadmap }[state.section];
+  if(r) r();
 }
 
-// ---------- Claims AI ----------
+// ---------- Control Tower ----------
+const DISCLAIMER = "About this demonstration — Bricksurance SE is a synthetic insurer. All data shown is generated; there is no real Guidewire integration and no real customer data. Figures illustrate the Databricks platform, not a real book of business. Decisions are model and workflow outputs with a human in the loop; the AI agents provide reasoning and second opinions and have no payment authority. This is a demo accelerator, not a Databricks product.";
+async function renderControl(){
+  const v=document.getElementById('view'); v.innerHTML='<h1>🎛️ Control Tower</h1><p class="sub">Loading portfolio…</p>';
+  try{ state.ct=await J('/control-tower'); }catch(e){ v.innerHTML='<h1>Control Tower</h1><p class="muted">Unavailable.</p>'; return; }
+  try{ state.lens=await J('/monitoring-lens'); }catch(e){ state.lens=null; }
+  try{ state.cfg=await J('/auto-close/config'); }catch(e){ state.cfg={conf_threshold:85,amount_cap:2000,fraud_floor:20}; }
+  const t=state.ct;
+  const tile=(l,n,s,cls)=>`<div class="tile ${cls||''}"><div class="l">${l}</div><div class="n">${n}</div><div class="s">${s||''}</div></div>`;
+  v.innerHTML = `<h1>🎛️ Control Tower</h1><p class="sub">Bricksurance SE claims book — health at a glance.</p>
+    <div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
+    <div class="grid4" style="margin-bottom:14px">
+      ${tile('% Auto-closed', pct(t.pct_auto_closed), num(t.auto_closed)+' straight-through', 'hero')}
+      ${tile('Open', num(t.open), 'first notice / in progress')}
+      ${tile('Escalated', num(t.escalated), 'routed to a handler')}
+      ${tile('Outstanding', num(t.outstanding), 'not yet settled')}
+    </div>
+    <div class="grid4" style="margin-bottom:14px">
+      ${tile('Aged / SLA risk', num(t.aged), '>30 days open', 'tile')}
+      ${tile('Large losses', num(t.large_losses), 'over £50,000')}
+      ${tile('Total reserves', gbp(t.total_reserves), 'outstanding')}
+      ${tile('Fraud-refer rate', pct(t.fraud_refer_rate), 'elevated signals')}
+    </div>
+    <div class="grid4" style="margin-bottom:16px">
+      ${tile('Closed', num(t.closed), 'settled')}
+      ${tile('Declined', num(t.declined), '')}
+      ${tile('Leakage rate', pct(t.leakage_rate), 'overpayment proxy')}
+      ${tile('Avg settlement', (t.avg_settle_days??'—')+' d', 'days to settle')}
+    </div>
+    <div class="grid2">
+      <div class="card"><h2>👁️ Monitoring lens — what needs your attention</h2>
+        ${state.lens&&state.lens.items?`<ul class="lens">${state.lens.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`:'<p class="muted">Lens unavailable.</p>'}
+        <p class="muted" style="margin-top:6px">Computed from the live book; can be narrated by the Claims AI supervisor.</p></div>
+      <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2>
+        <p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
+        <div class="slider-row"><label>Min confidence</label><input class="slider" type="range" id="s_conf" min="50" max="99" value="${t.pct_auto_closed!=null?Math.round(state.cfg.conf_threshold):85}" oninput="segChange()"><span class="val" id="v_conf">${Math.round(state.cfg.conf_threshold)}%</span></div>
+        <div class="slider-row"><label>Max amount</label><input class="slider" type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
+        <div class="slider-row"><label>Max fraud score</label><input class="slider" type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
+        <div style="margin-top:10px;text-align:center"><div style="font-size:30px;font-weight:800;color:#2563eb" id="seg_pct">${pct(t.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(t.auto_closed)} auto-closed · ${num(t.escalated)} escalated</div></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}
+      <p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>`;
+}
+let _segTimer=null;
+function segChange(){
+  const conf=+document.getElementById('s_conf').value, cap=+document.getElementById('s_cap').value, fraud=+document.getElementById('s_fraud').value;
+  document.getElementById('v_conf').textContent=conf+'%'; document.getElementById('v_cap').textContent=gbp(cap); document.getElementById('v_fraud').textContent=fraud;
+  clearTimeout(_segTimer); _segTimer=setTimeout(async()=>{
+    try{ const r=await J(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`);
+      document.getElementById('seg_pct').textContent=pct(r.pct_auto_closed);
+      document.getElementById('seg_n').textContent=`${num(r.auto_closed)} auto-closed · ${num(r.escalated)} escalated`;
+    }catch(e){}
+  }, 250);
+}
+const ROADMAP = {
+  'Intake & documents':['Document classification','Email → structured extraction','Translation','Damage-photo analysis'],
+  'System integration':['CMS write-back','Lakebase-as-CMS','Zero-copy to underwriting'],
+  'Downstream':['Compliance / finance checks','Payment execution','Litigation routing'],
+  'Specialty':['Marine contagion','Parametric / satellite payout','IoT verification','SDI'],
+  'Enrichment':['D&B / S&P / Moody’s','Telematics'],
+};
+function roadmapStrip(){ return `<div class="grid3">${Object.entries(ROADMAP).map(([g,items])=>`<div class="ph"><b>${esc(g)} <span class="uc">soon</span></b>${items.map(i=>`<div>• ${esc(i)}</div>`).join('')}</div>`).join('')}</div>`; }
+
+// ---------- Claims AI (unified ask-window + claim triage) ----------
+const AGENT_QS = [
+  ['Claim 360 / Dossier', ['Give me the full Claim 360 dossier for cc:900001']],
+  ['Challenge / Second-Opinion', ['Give me a second opinion on cc:900002 — argue the opposite of the disposition']],
+  ['Fraud', ['What is the fraud risk on cc:900001 and why?']],
+  ['Recovery / Subrogation', ['Is there any recovery or subrogation potential on cc:900001?']],
+  ['Audit / Reasoning', ['Explain for a regulator why cc:900002 was auto-closed']],
+  ['Genie analytics', ['Which districts have the worst escape-of-water leakage?','What is the loss ratio by product?']],
+];
+const ROSTER = [
+  ['Claim 360 / Dossier','Everything in one place — policy, history, fraud, recovery, enrichment','agbox'],
+  ['Challenge / Second-Opinion','Argues the opposite of the disposition','agbox'],
+  ['Fraud','LOW / MEDIUM / HIGH risk with the signals behind it','agbox'],
+  ['Recovery / Subrogation','Recovery potential + recoverable £','agbox'],
+  ['Audit / Reasoning','Regulator-readable explanation of the decision','agbox'],
+  ['Triage & Reserve (model tools)','UC functions scoring the ML models','agbox tool'],
+  ['Ask the Book (Genie)','Portfolio analytics in natural language','agbox genie'],
+  ['Ask Pricing + Claims (Genie)','Cross-domain: loss ratio, premium adequacy','agbox genie'],
+];
 async function loadClaims(){ try{ state.claims=await J('/claims'); }catch(e){ state.claims=[]; } }
+async function doAsk(q, cid){ state.ask={q, loading:true}; state.asking=true; renderClaimsAI();
+  try{ const r=await J('/ask',{method:'POST',body:JSON.stringify({question:q, cid:cid||null})}); state.ask={q, ...r}; }
+  catch(e){ state.ask={q, __err:true}; } state.asking=false; renderClaimsAI(); }
+function askFromBox(){ const q=document.getElementById('askbox').value.trim(); if(q) doAsk(q, state.cid); }
 async function selectClaim(cid){ state.cid=cid; state.panels=null; state.synth=null; state.confirmation=null; state.overriding=false; renderClaimsAI();
   try{ state.panels=await J('/claim/panels?cid='+encodeURIComponent(cid)); }catch(e){ state.panels={__err:true}; }
   renderClaimsAI();
@@ -123,8 +238,19 @@ async function selectClaim(cid){ state.cid=cid; state.panels=null; state.synth=n
   renderClaimsAI();
 }
 function renderClaimsAI(){
-  const p=state.panels; const v=document.getElementById('view');
-  const opts = state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${c.claim_public_id==='cc:900001'?'★ ':''}${esc(c.claim_public_id)} · ${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
+  const v=document.getElementById('view');
+  // --- ask-window ---
+  const a=state.ask;
+  let askHtml=`<div class="card" style="margin-bottom:16px"><h2>✨ Ask Claims AI</h2>
+    <div class="askbox"><textarea id="askbox" placeholder="Ask anything — e.g. how should I handle cc:900001? Which districts leak most?">${a&&!a.loading?esc(a.q):''}</textarea>
+      <button class="primary" onclick="askFromBox()" ${state.asking?'disabled':''}>${state.asking?'Asking…':'Ask'}</button></div>`;
+  if(a){ askHtml += a.loading?'<p class="muted" style="margin-top:10px">Routing through the supervisor…</p>'
+      : a.__err?'<p class="muted" style="margin-top:10px">Ask unavailable.</p>'
+      : `<div class="synth" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><p>${esc(a.text)}</p>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:6px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
+  askHtml += `<div style="margin-top:12px">${AGENT_QS.map(([g,qs])=>`<div class="qgrp"><span class="gl">${esc(g)}</span><br>${qs.map(q=>`<span class="qchip" onclick="doAsk('${esc(q).replace(/'/g,"\\'")}', state.cid)">${esc(q)}</span>`).join('')}</div>`).join('')}</div></div>`;
+  // --- claim triage panels ---
+  const p=state.panels;
+  const opts = state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)} · ${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
   let body='';
   if(!p){ body='<p class="muted">Loading claim…</p>'; }
   else if(p.__err){ body='<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c">Could not load this claim.</div>'; }
@@ -136,7 +262,6 @@ function renderClaimsAI(){
     body = `<div class="grid3">
       <div class="card"><h2>📄 Claim Summary</h2>
         <div class="row"><span class="k">Policy</span><span class="v">${esc(x.policy_number||'—')}</span></div>
-        <div class="row"><span class="k">Claimant</span><span class="v">${claimant(state.cid)} <span class="muted">(synthetic)</span></span></div>
         <div style="margin:8px 0"><span class="badge ${motor?'b-blue':'b-green'}">${esc(PERIL[s.peril_type]||s.peril_type)}</span> <span class="badge b-slate">${esc(s.report_channel)}</span></div>
         <div class="row"><span class="k">Reported amount</span><span class="v" style="font-size:18px;font-weight:700">${gbp(s.total_incurred)}</span></div>
         <div class="row"><span class="k">Status</span><span class="v">${esc(s.claim_status)}</span></div>
@@ -151,24 +276,21 @@ function renderClaimsAI(){
       <div class="card"><h2>🛡️ Risk Signals</h2>
         <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted" style="text-transform:uppercase;font-size:11px;font-weight:600">Fraud score</span><span style="font-size:18px;font-weight:800;color:${fcol}">${isNaN(fs)?'—':fs}<span class="muted" style="font-size:11px">/100</span></span></div>
         <div class="bar" style="margin:4px 0 8px"><div style="width:${isNaN(fs)?0:Math.min(100,fs)}%;background:${fcol}"></div></div>
-        ${f.fraud_flag===true?'<div style="color:#dc2626;font-size:11px;margin-bottom:6px">⚑ flagged by fraud rules</div>':''}
         <div class="row"><span class="k">Prior claims (12m)</span><span class="v">${f.prior_claims_12m??'—'}</span></div>
         <div class="row"><span class="k">Reporting lag</span><span class="v">${f.reporting_lag_days??x.reporting_lag_days??'—'} days</span></div>
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div>
-        <div style="margin-top:8px" class="muted">Weather risk</div>
-        ${weatherBar('Flood',x.flood_risk_score)}${weatherBar('Wind',x.wind_risk_score)}${weatherBar('Freeze',x.freeze_risk_score)}
       </div></div>`;
-    // synthesis
     body += `<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
-    // actions
     body += `<div class="actions">${actionBar()}</div>`;
   }
-  v.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-      <div><h1>✨ Claims AI — FNOL Triage</h1><p class="sub">Incoming first-notice-of-loss · decide, reserve, and brief in one screen</p></div>
-      <select onchange="selectClaim(this.value)" style="min-width:280px">${opts}</select></div>${body}`;
+  const triage = `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🔎 Pick a claim — triage, reserve, fraud & brief</h2><select onchange="selectClaim(this.value)" style="min-width:300px">${opts}</select></div></div>${body}`;
+  // --- agent roster diagram ---
+  const diagram = `<div class="card" style="margin-top:16px"><h2>🧠 The agent roster behind Claims AI</h2>
+    <div class="diagram"><div class="sup">Claims AI — managed Supervisor</div><div style="color:#94a3b8">▼ routes to ▼</div>
+      <div class="agents">${ROSTER.map(([n,d,c])=>`<div class="${c}"><b>${esc(n)}</b><span>${esc(d)}</span></div>`).join('')}</div></div>
+    <p class="muted" style="margin-top:6px">Models + workflow decide; agents reason and give a second opinion; the human acts.</p></div>`;
+  v.innerHTML = `<h1>✨ Claims AI</h1><p class="sub">Ask the supervisor anything, or work a claim end-to-end.</p>${askHtml}${triage}${diagram}`;
 }
-function claimant(cid){ const names=['A. Okafor','B. Lindqvist','C. Marchetti','D. Petrov','E. Nakamura','F. Dubois']; let h=0; for(const c of cid) h=(h*31+c.charCodeAt(0))|0; return names[Math.abs(h)%names.length]; }
-function weatherBar(l,v){ const n=parseFloat(v); return `<div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span class="muted" style="width:46px">${l}</span><div class="bar" style="flex:1"><div style="width:${isNaN(n)?0:(n/10*100)}%;background:#38bdf8"></div></div><span class="muted" style="width:22px;text-align:right">${isNaN(n)?'—':n}</span></div>`; }
 function synthPill(){ const s=state.synth; if(!s||s.__err) return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
 function synthBody(){ const s=state.synth; if(!s) return '<p class="muted">Synthesising…</p>'; if(s.__err) return '<p class="muted">Synthesis unavailable.</p>'; return `<p>${esc(s.text)}</p>${s.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:6px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}`; }
 function actionBar(){
@@ -190,9 +312,9 @@ async function renderIngestion(){ const v=document.getElementById('view'); v.inn
   const q=(Number(d.quarantined_claims)||0)+(Number(d.quarantined_fraud)||0);
   v.innerHTML=`<h1>📥 Ingestion — Guidewire CDA → governed bronze</h1><p class="sub">The DLT pipeline enforces quality rules and quarantines bad records — nothing is silently dropped.</p>
     <div class="grid3" style="margin-bottom:16px">
-      <div class="stat"><div class="l">Records passing all rules</div><div class="n" style="color:#059669">${d.pass_rate}%</div><div class="muted">${(d.total_evaluated||0).toLocaleString()} evaluated</div></div>
-      <div class="stat"><div class="l">Quarantined (not dropped)</div><div class="n" style="color:#b45309">${q.toLocaleString()}</div><div class="muted">${d.quarantined_claims||0} claims · ${d.quarantined_fraud||0} fraud</div></div>
-      <div class="stat"><div class="l">Pipeline state</div><div class="n" style="color:#334155;font-size:20px">${esc(d.state||'—')}</div><div class="muted">${esc(d.pipeline_name||'')}</div></div></div>
+      <div class="tile"><div class="l">Records passing all rules</div><div class="n" style="color:#059669">${d.pass_rate}%</div><div class="s">${(d.total_evaluated||0).toLocaleString()} evaluated</div></div>
+      <div class="tile"><div class="l">Quarantined (not dropped)</div><div class="n" style="color:#b45309">${q.toLocaleString()}</div><div class="s">${d.quarantined_claims||0} claims · ${d.quarantined_fraud||0} fraud</div></div>
+      <div class="tile"><div class="l">Pipeline state</div><div class="n" style="color:#334155;font-size:20px">${esc(d.state||'—')}</div><div class="s">${esc(d.pipeline_name||'')}</div></div></div>
     <div class="card" style="border-color:#a7f3d0;background:#ecfdf5;margin-bottom:16px"><b>No claims data lost.</b> Failed records are routed to quarantine tables and stay inspectable — held back, not deleted.</div>
     <div class="card"><div style="display:flex;justify-content:space-between"><h2>Data-quality expectations</h2>${d.pipeline_url?`<a class="link" href="${d.pipeline_url}" target="_blank">Open pipeline ↗</a>`:''}</div>
       <table><tr><th>Rule</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th></tr>
@@ -201,17 +323,17 @@ async function renderIngestion(){ const v=document.getElementById('view'); v.inn
 
 // ---------- Transformation ----------
 async function renderTransformation(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();
-  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${c.claim_public_id==='cc:900001'?'★ ':''}${esc(c.claim_public_id)}</option>`).join('');
+  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)}</option>`).join('');
   v.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div><h1>🧩 Transformation</h1><p class="sub">Silver enrichment — everything we know before the handler picks up the phone.</p></div><select onchange="state.cid=this.value;renderTransformation()" style="min-width:240px">${opts}</select></div><p class="muted" id="tload">Loading…</p>`;
   let e; try{ e=await J('/claim/enrichment?cid='+encodeURIComponent(state.cid)); }catch(err){ document.getElementById('tload').textContent='Unavailable.'; return; }
   const yn=x=>x===true||x==='true'?'Yes':x===false||x==='false'?'No':(x??'—');
   const g=(title,rows)=>`<div class="card"><h2>${title}</h2>${rows.map(([k,val])=>`<div class="row"><span class="k">${k}</span><span class="v">${esc(val??'—')}</span></div>`).join('')}</div>`;
-  document.getElementById('view').querySelector('#tload')?.remove();
+  v.querySelector('#tload')?.remove();
   v.insertAdjacentHTML('beforeend', `<div class="grid2">
     ${g('Claim & incident',[['Claim number',e.claim_number],['Peril',e.peril_type],['Loss cause',e.loss_cause],['Reported',e.report_date],['Channel',e.report_channel],['Reporting lag',e.reporting_lag_days+' days'],['Incident',e.description_text],['Status',e.claim_status]])}
     ${g('Policy',[['Policy number',e.policy_number],['Product',e.product],['Sum insured',gbp(e.sum_insured)],['Annual premium',gbp(e.annual_premium)],['Tenure (yrs)',e.policy_tenure_years],['Prior claims (12m)',e.prior_claims_12m]])}
     ${g('Location & weather',[['Postcode district',e.postcode_district],['Third party',yn(e.third_party_involved)],['Flood',e.flood_risk_score+'/10'],['Wind',e.wind_risk_score+'/10'],['Freeze',e.freeze_risk_score+'/10'],['Composite',e.weather_risk_composite]])}
-    ${g('Reserves & lifecycle',[['Total incurred',gbp(e.total_incurred)],['Paid',gbp(e.paid_amount)],['Initial reserve',gbp(e.initial_reserve)],['Ultimate reserve',gbp(e.ultimate_reserve)],['Leakage',yn(e.leakage_flag)],['Handler',e.handler_id+' ('+e.handler_grade+')']])}
+    ${g('Recovery & lifecycle',[['Total incurred',gbp(e.total_incurred)],['Paid',gbp(e.paid_amount)],['Ultimate reserve',gbp(e.ultimate_reserve)],['Recovery flag',yn(e.recovery_flag)],['Recoverable',gbp(e.recoverable_amount)],['Leakage',yn(e.leakage_flag)]])}
     ${g('Risk & ML labels',[['Fraud score',e.fraud_score+'/100'],['High value',yn(e.is_high_value)],['Potential fraud',yn(e.is_potential_fraud)],['At fault',yn(e.at_fault)],['Triage label',e.triage_decision],['Reserve bracket',e.reserve_bracket]])}
   </div>`);
 }
@@ -224,12 +346,20 @@ async function renderGovernance(){ const v=document.getElementById('view'); v.in
       ${g.dashboard_embed_url?`<iframe src="${g.dashboard_embed_url}" style="width:100%;height:540px;border:1px solid #f1f5f9;border-radius:8px;margin-top:8px"></iframe>`:'<p class="muted">Dashboard link resolving…</p>'}</div>
     <div class="grid2">
       <div class="card"><h2>🔱 End-to-end lineage</h2><div style="font-size:12px;line-height:2">${(g.lineage||[]).map((l,i)=>`<a class="mono link" href="${l.explore_url}" target="_blank">${esc(l.asset)}</a>${i<(g.lineage.length-1)?' <span class="muted">→</span> ':''}`).join('')}</div><p class="muted" style="margin-top:8px">Raw → governed → enriched → features → model → decision.</p></div>
-      <div class="card"><h2>📋 HITL audit trail</h2>${dec.length?`<table><tr><th>ID</th><th>Claim</th><th>Reco</th><th>Action</th><th>Reason</th></tr>${dec.map(d=>`<tr><td class="mono">${esc(d.decision_id)}</td><td>${esc(d.claim_public_id)}</td><td>${DLABEL[d.model_recommendation]||esc(d.model_recommendation)} ${d.model_confidence!=null?pct(d.model_confidence):''}</td><td style="color:${d.override_flag?'#b45309':'#047857'}">${d.override_flag?'OVERRIDE':'accept'}</td><td class="muted">${esc(d.override_reason||'—')}</td></tr>`).join('')}</table>`:'<p class="muted">No decisions logged yet.</p>'}<p class="muted" style="margin-top:8px">What the model advised, what the handler did, and why — the FCA / Consumer-Duty trail.</p></div>
+      <div class="card"><h2>📋 HITL audit trail</h2>${dec.length?`<table><tr><th>ID</th><th>Claim</th><th>Reco</th><th>Action</th><th>Reason</th></tr>${dec.map(d=>`<tr><td class="mono">${esc(d.decision_id)}</td><td>${esc(d.claim_public_id)}</td><td>${DLABEL[d.model_recommendation]||esc(d.model_recommendation)} ${d.model_confidence!=null?pct(d.model_confidence):''}</td><td style="color:${d.override_flag?'#b45309':'#047857'}">${d.override_flag?'OVERRIDE':'accept'}</td><td class="muted">${esc(d.override_reason||'—')}</td></tr>`).join('')}</table>`:'<p class="muted">No decisions logged yet.</p>'}<p class="muted" style="margin-top:8px">What the model advised, what the handler did, and why — the FCA / Consumer-Duty trail. (Stage C adds the data inventory + sensitivity tiers + agent-reasoning audit.)</p></div>
     </div>`;
 }
 
+// ---------- Learn (built out in Stage C) ----------
+function renderLearn(){ document.getElementById('view').innerHTML=`<h1>🎓 Learn</h1><p class="sub">For Databricks colleagues learning to pitch claims.</p>
+  <div class="ph"><b>Learn section — built in Stage C <span class="uc">soon</span></b>Plain-English claims concepts, an insurance terminology glossary, and the flow through company systems (FNOL → triage → reserve → settle → recover → close, and where Guidewire / policy admin / finance / CMS sit).</div>`; }
+
+// ---------- Roadmap ----------
+function renderRoadmap(){ document.getElementById('view').innerHTML=`<h1>🚧 Roadmap — under construction</h1><p class="sub">What this accelerator intentionally does NOT do yet. Greyed = not built.</p>${roadmapStrip()}
+  <p class="muted" style="margin-top:14px">These are the natural next capabilities — document intake, system integration, downstream execution, specialty lines and third-party enrichment — shown to frame the platform's reach without overstating what's live.</p>`; }
+
 // ---------- boot ----------
-(async function(){ renderNav(); await initCache(); await loadClaims(); render(); if(state.section==='claimsai') selectClaim(state.cid); })();
+(async function(){ renderNav(); document.getElementById('pagedesc').textContent=DESC[state.section]||''; await initFoot(); await loadClaims(); render(); })();
 </script>
 </body>
 </html>

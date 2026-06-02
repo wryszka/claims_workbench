@@ -292,3 +292,110 @@ def reset_available() -> bool:
         return find_reset_job() is not None
     except Exception:
         return False
+
+
+# --------------------------------------------------------------------------
+# Phase 11 Stage B — Control Tower, auto-close slider, monitoring lens, ask-window
+# --------------------------------------------------------------------------
+async def control_tower() -> dict:
+    """All the landing-page status tiles in a few queries over silver + disposition."""
+    s = _fq("silver_claims_enriched")
+    d = _fq("gold_claim_disposition")
+    # Claims by status + book-level money/quality metrics.
+    base = (await execute_query(f"""
+        SELECT
+          count(*) total,
+          sum(CASE WHEN claim_status='open' THEN 1 ELSE 0 END) open,
+          sum(CASE WHEN claim_status IN ('open','under_investigation','reopened') THEN 1 ELSE 0 END) outstanding,
+          sum(CASE WHEN claim_status='settled' THEN 1 ELSE 0 END) closed,
+          sum(CASE WHEN claim_status='declined' THEN 1 ELSE 0 END) declined,
+          sum(CASE WHEN claim_status IN ('open','under_investigation','reopened')
+                    AND datediff(current_date(), report_date) > 30 THEN 1 ELSE 0 END) aged,
+          sum(CASE WHEN total_incurred > 50000 THEN 1 ELSE 0 END) large_losses,
+          round(sum(CASE WHEN claim_status IN ('open','under_investigation','reopened')
+                         THEN ultimate_reserve ELSE 0 END)) total_reserves,
+          round(100.0 * avg(CASE WHEN leakage_flag THEN 1 ELSE 0 END), 1) leakage_rate,
+          round(avg(CASE WHEN days_to_settle IS NOT NULL THEN days_to_settle END), 1) avg_settle_days,
+          round(100.0 * avg(CASE WHEN coalesce(is_potential_fraud,false) THEN 1 ELSE 0 END), 1) fraud_refer_rate
+        FROM {s}"""))[0]
+    # Disposition split (auto-closed / escalated) — guarded if the table is absent.
+    try:
+        disp = (await execute_query(f"""
+            SELECT sum(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END) auto_closed,
+                   sum(CASE WHEN disposition='escalated' THEN 1 ELSE 0 END) escalated,
+                   round(100.0 * avg(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END), 1) pct_auto_closed
+            FROM {d}"""))[0]
+    except Exception:
+        disp = {"auto_closed": 0, "escalated": 0, "pct_auto_closed": 0}
+    # Geo snapshot — top NW escape-of-water districts.
+    try:
+        geo = await execute_query(f"""
+            SELECT postcode_district, claim_count, round(claims_per_1000_policies,1) per_1000
+            FROM {_fq('gold_geo_clustering')} WHERE peril_type='home_escape_water'
+            ORDER BY claims_per_1000_policies DESC LIMIT 5""")
+    except Exception:
+        geo = []
+    return {**{k: base[k] for k in base}, **{k: disp[k] for k in disp}, "geo": geo}
+
+
+async def segment_auto_close(conf: float, cap: float, fraud: float) -> dict:
+    """Re-segment % auto-closed LIVE for the slider — pure SQL over the stored
+    raw decision inputs in gold_claim_disposition (no model re-score)."""
+    d = _fq("gold_claim_disposition")
+    r = (await execute_query(f"""
+        SELECT count(*) total,
+          sum(CASE WHEN model_decision='pay_direct' AND model_confidence >= {float(conf)}
+                    AND total_incurred <= {float(cap)} AND fraud_score <= {float(fraud)}
+                    AND data_complete THEN 1 ELSE 0 END) auto_closed
+        FROM {d}"""))[0]
+    total = int(r["total"]) or 1
+    ac = int(r["auto_closed"])
+    return {"conf_threshold": conf, "amount_cap": cap, "fraud_floor": fraud,
+            "total": int(r["total"]), "auto_closed": ac, "escalated": int(r["total"]) - ac,
+            "pct_auto_closed": round(100.0 * ac / total, 1)}
+
+
+async def auto_close_config() -> dict:
+    try:
+        r = (await execute_query(
+            f"SELECT conf_threshold, amount_cap, fraud_floor FROM {_fq('auto_close_config')} "
+            f"WHERE config_key='default'"))[0]
+        return {"conf_threshold": float(r["conf_threshold"]), "amount_cap": float(r["amount_cap"]),
+                "fraud_floor": float(r["fraud_floor"])}
+    except Exception:
+        return {"conf_threshold": 85.0, "amount_cap": 2000.0, "fraud_floor": 20.0}
+
+
+async def monitoring_lens() -> dict:
+    """"What needs your attention and why" — a deterministic portfolio lens built
+    from the control-tower tiles (always works; can be supervisor-enriched later)."""
+    t = await control_tower()
+    items = []
+    if int(t.get("aged") or 0):
+        items.append(f"{int(t['aged']):,} outstanding claims have passed 30 days since notification — SLA-breach risk; prioritise these.")
+    if int(t.get("large_losses") or 0):
+        items.append(f"{int(t['large_losses']):,} large losses (over £50,000) warrant senior review and reserve scrutiny.")
+    if t.get("pct_auto_closed") is not None:
+        items.append(f"{t['pct_auto_closed']}% of claims auto-closed straight-through, freeing handlers for the {int(t.get('escalated') or 0):,} escalated cases.")
+    if t.get("fraud_refer_rate") is not None:
+        items.append(f"{t['fraud_refer_rate']}% of claims carry elevated fraud signals — the Fraud agent and SIU referrals focus here.")
+    if t.get("geo"):
+        top = t["geo"][0]
+        items.append(f"Escape-of-water concentration is highest in {top['postcode_district']} ({top['per_1000']} per 1,000 policies) — a pricing/claims feedback signal.")
+    return {"headline": "What needs your attention", "items": items}
+
+
+async def ask(question: str, cid: str | None = None, use_cache: bool | None = None) -> dict:
+    """Unified ask-window — route a free-text question through the Claims AI
+    supervisor (or Context fallback) via the cache-first wrapper."""
+    if use_cache is None:
+        use_cache = _use_cache
+    endpoint, is_supervisor = _synthesis_endpoint()
+    custom = {"claim_public_id": cid} if cid else {}
+    payload = {"messages": [{"role": "user", "content": question}], "custom_inputs": custom}
+    out = await asyncio.to_thread(get_agent_response, endpoint, payload, use_cache)
+    resp = out.get("response", {})
+    msgs = resp.get("messages", [])
+    text = msgs[-1].get("content", "") if msgs else ""
+    return {"text": text, "cache": out.get("cache"), "endpoint": endpoint,
+            "supervisor": is_supervisor, "use_cache": use_cache, "question": question, "cid": cid}

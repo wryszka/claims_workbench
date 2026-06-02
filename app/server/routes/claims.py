@@ -81,6 +81,37 @@ async def governance():
     return await svc.governance_links()
 
 
+@router.get("/control-tower")
+async def control_tower():
+    return await svc.control_tower()
+
+
+@router.get("/auto-close/config")
+async def auto_close_config():
+    return await svc.auto_close_config()
+
+
+@router.get("/auto-close/segment")
+async def auto_close_segment(conf: float = 85.0, cap: float = 2000.0, fraud: float = 20.0):
+    return await svc.segment_auto_close(conf, cap, fraud)
+
+
+@router.get("/monitoring-lens")
+async def monitoring_lens():
+    return await svc.monitoring_lens()
+
+
+class AskIn(BaseModel):
+    question: str
+    cid: str | None = None
+    use_cache: bool | None = None
+
+
+@router.post("/ask")
+async def ask(a: AskIn):
+    return await svc.ask(a.question, a.cid, a.use_cache)
+
+
 @router.get("/reset-status")
 async def reset_status():
     import asyncio
