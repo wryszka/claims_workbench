@@ -28,9 +28,9 @@ resources:
             permission: CAN_QUERY
         - name: fraud_agent
           serving_endpoint:
-            name: agents_lr_serverless_aws_us_catalog-claims_workbench-agent_frau
+            name: agents_lr_dev_aws_us_catalog-claims_workbench-agent_fraud
             permission: CAN_QUERY
         - name: context_agent
           serving_endpoint:
-            name: agents_lr_serverless_aws_us_catalog-claims_workbench-agent_cont
+            name: agents_lr_dev_aws_us_catalog-claims_workbench-agent_context
             permission: CAN_QUERY

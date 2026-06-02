@@ -2,22 +2,22 @@
 command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 env:
   - name: CATALOG_NAME
-    value: "lr_serverless_aws_us_catalog"
+    value: "lr_dev_aws_us_catalog"
   - name: SCHEMA_NAME
     value: "claims_workbench"
   - name: WAREHOUSE_ID
-    value: "ab79eced8207d29b"
+    value: "a3b61648ea4809e3"
   - name: USE_CACHE
     value: "true"
   - name: CLAIMS_EP_FRAUD
-    value: "agents_lr_serverless_aws_us_catalog-claims_workbench-agent_frau"
+    value: "agents_lr_dev_aws_us_catalog-claims_workbench-agent_fraud"
   - name: CLAIMS_EP_CONTEXT
-    value: "agents_lr_serverless_aws_us_catalog-claims_workbench-agent_cont"
+    value: "agents_lr_dev_aws_us_catalog-claims_workbench-agent_context"
   # Set once the managed Supervisor is created (RUNBOOK Stage C); blank => Context fallback.
   - name: CLAIMS_EP_SUPERVISOR
     value: ""
   - name: GENIE_SPACE_ID
-    value: "01f15e4e509f1410b5596f5c90b20ca4"
+    value: "01f15eb364831515a59b63ce49d23e9a"
   - name: DASHBOARD_ID
     value: ""
   - name: RESET_JOB_NAME

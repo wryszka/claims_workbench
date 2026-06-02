@@ -39,6 +39,11 @@ schema         = dbutils.widgets.get("schema").strip() or "claims_workbench"
 fm_endpoint    = dbutils.widgets.get("fm_endpoint").strip()
 warehouse_id   = dbutils.widgets.get("warehouse_id").strip()
 genie_space_id = dbutils.widgets.get("genie_space_id").strip()
+# The local pre-deploy smoke test runs the UC-function tools via _run_sql, which reads
+# AGENT_WAREHOUSE_ID — set it to this run's warehouse so it works on any workspace
+# (otherwise it falls back to a hardcoded id that won't exist elsewhere).
+import os as _os
+_os.environ["AGENT_WAREHOUSE_ID"] = warehouse_id
 fqn            = f"{catalog}.{schema}"
 user           = spark.sql("select current_user()").collect()[0][0]
 

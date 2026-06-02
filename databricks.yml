@@ -59,14 +59,13 @@ targets:
   dev:
     mode: development
     default: true
-    # Portability: ship with a placeholder host so this bundle is workspace-agnostic.
-    # To run locally, set host to your dev workspace URL and uncomment `profile`.
+    # The dev workspace (fevm-lr-dev-aws-us). The serverless workspace is treated as
+    # prod and left untouched. For another workspace, override host/profile + the
+    # catalog/warehouse variables (the bundle is otherwise workspace-agnostic).
     workspace:
-      host: REPLACE-ME
-      # profile: DEFAULT
+      host: https://fevm-lr-dev-aws-us.cloud.databricks.com
+      profile: DEV
     variables:
-      # Phase 1 DLT needs an explicit catalog — pin your dev workspace catalog here.
-      catalog: lr_serverless_aws_us_catalog
+      catalog: lr_dev_aws_us_catalog
       schema: claims_workbench
-      # Phase 3 Lakeview dashboard — pin your dev SQL warehouse id here.
-      warehouse_id: ab79eced8207d29b
+      warehouse_id: a3b61648ea4809e3

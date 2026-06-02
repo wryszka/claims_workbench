@@ -26,7 +26,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install lightgbm xgboost shap databricks-feature-engineering scikit-learn matplotlib
+# MAGIC %pip install lightgbm xgboost databricks-feature-engineering scikit-learn matplotlib
 
 # COMMAND ----------
 
@@ -186,7 +186,13 @@ if len(vivid_row):
 # COMMAND ----------
 
 from xgboost import XGBClassifier
-import shap
+# SHAP is best-effort only (optional explainability plot, with a gain-importance
+# fallback below). Dropped from the env to avoid a numpy/matplotlib ABI clash on
+# serverless; import defensively so its absence never fails the run.
+try:
+    import shap
+except Exception:
+    shap = None
 
 labels_reserve = (
     silver.where("claim_status IN ('settled','declined','withdrawn')")

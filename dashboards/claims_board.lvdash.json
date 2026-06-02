@@ -9,7 +9,7 @@
         "  round(avg(days_to_settle), 1) AS avg_days_to_settle,\n",
         "  sum(CASE WHEN claim_status IN ('open','under_investigation') THEN ultimate_reserve ELSE 0 END) AS open_reserves,\n",
         "  round(100 * avg(CASE WHEN leakage_flag THEN 1 ELSE 0 END), 2) AS leakage_rate_pct\n",
-        "FROM `lr_serverless_aws_us_catalog`.`claims_workbench`.silver_claims_enriched"
+        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched"
       ]
     },
     {
@@ -18,7 +18,7 @@
       "queryLines": [
         "SELECT accident_qtr, peril_type,\n",
         "  round(sum(sum_ultimate_reserve) / nullif(sum(sum_initial_reserve), 0), 3) AS development_ratio\n",
-        "FROM `lr_serverless_aws_us_catalog`.`claims_workbench`.gold_reserve_development\n",
+        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_reserve_development\n",
         "GROUP BY accident_qtr, peril_type ORDER BY accident_qtr"
       ]
     },
@@ -29,7 +29,7 @@
         "SELECT report_channel,\n",
         "  round(sum(avg_days_to_settle * coalesce(claims,1)) / sum(coalesce(claims,1)), 1) AS avg_days_to_settle\n",
         "FROM (\n",
-        "  SELECT report_channel, avg_days_to_settle, 1 AS claims FROM `lr_serverless_aws_us_catalog`.`claims_workbench`.gold_settlement_performance\n",
+        "  SELECT report_channel, avg_days_to_settle, 1 AS claims FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_settlement_performance\n",
         ") GROUP BY report_channel ORDER BY report_channel"
       ]
     },
@@ -38,7 +38,7 @@
       "displayName": "ds_geo_eow",
       "queryLines": [
         "SELECT postcode_district, claim_count, claims_per_1000_policies, weather_risk_composite\n",
-        "FROM `lr_serverless_aws_us_catalog`.`claims_workbench`.gold_geo_clustering\n",
+        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_geo_clustering\n",
         "WHERE peril_type = 'home_escape_water'\n",
         "ORDER BY claims_per_1000_policies DESC LIMIT 20"
       ]
@@ -48,7 +48,7 @@
       "displayName": "ds_handler",
       "queryLines": [
         "SELECT handler_name, grade, team, caseload, avg_days_to_settle, leakage_rate_pct, customer_touchpoints_avg\n",
-        "FROM `lr_serverless_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard\n",
+        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard\n",
         "ORDER BY caseload DESC LIMIT 50"
       ]
     }

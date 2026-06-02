@@ -95,6 +95,17 @@ HOST = w.config.host.rstrip("/")
 import requests
 HDR = w.config._header_factory()
 
+# Resolve the fraud/context agent endpoints by substring so the test is portable
+# across workspaces (agents.deploy truncates the name on some, keeps it full on others;
+# 'agent_frau' is a substring of both 'agent_frau' and 'agent_fraud').
+try:
+    _eps = [e.name for e in w.serving_endpoints.list()]
+    FRAUD_EP = next((n for n in _eps if "agent_frau" in n), FRAUD_EP)
+    CONTEXT_EP = next((n for n in _eps if "agent_cont" in n), CONTEXT_EP)
+    print(f"resolved fraud={FRAUD_EP} context={CONTEXT_EP}")
+except Exception as e:
+    print(f"endpoint resolve note: {e}")
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -398,9 +409,10 @@ def step_reach():
     did = next((d.get("dashboard_id") for d in dash.get("dashboards", [])
                 if "Claims Portfolio" in (d.get("display_name") or "")), None)
     assert did, "Claims Portfolio dashboard not found"
-    # Genie space — resolve by configured id.
+    # Genie space — find a Claims space on THIS workspace (portable), else the config id.
     from utils import config as cfg
-    gid = cfg.GENIE_SPACE_ID
+    spaces = requests.get(f"{HOST}/api/2.0/genie/spaces?page_size=100", headers=HDR, timeout=60).json().get("spaces", [])
+    gid = next((s.get("space_id") for s in spaces if "Claims" in (s.get("title") or "")), cfg.GENIE_SPACE_ID)
     g = requests.get(f"{HOST}/api/2.0/genie/spaces/{gid}", headers=HDR, timeout=60)
     assert g.status_code == 200, f"genie space {gid} not reachable (HTTP {g.status_code})"
     return f"dashboard {did[:8]}… resolved; genie space {gid[:8]}… reachable"
