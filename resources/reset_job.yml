@@ -69,10 +69,25 @@ resources:
               schema: ${var.schema}
           environment_key: serverless
 
-        # 6 — CCO metrics snapshot (trends) — re-anchors the rolling history to today
+        # 6 — auto-close re-evaluation (refreshes the disposition + % auto-closed).
+        # Re-scores the champion models only — does NOT recreate UC functions, so the
+        # agents' EXECUTE grants stay intact across a reset.
+        - task_key: auto_close
+          depends_on:
+            - task_key: gold
+            - task_key: features
+          notebook_task:
+            notebook_path: ../notebooks/10_auto_close.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless
+
+        # 7 — CCO metrics snapshot (trends) — re-anchors the rolling history to today
         - task_key: cco_metrics
           depends_on:
             - task_key: gold
+            - task_key: auto_close
           notebook_task:
             notebook_path: ../notebooks/13_cco_metrics.py
             base_parameters:
