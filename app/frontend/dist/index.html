@@ -507,11 +507,50 @@ async function doTrack(){ const inp=document.getElementById('trackinput'); if(in
 
 // ============ LEARN ============
 const GLOSSARY=[['FNOL','First Notice of Loss — the moment a claim is first reported. The trigger for everything downstream.'],['Triage','Deciding how to handle a claim at FNOL: pay directly, escalate to a handler, or refer to the fraud unit (SIU).'],['Reserve','Money set aside for a claim before it is fully paid. Under-reserving means surprises later.'],['Indemnity','Putting the policyholder back where they were before the loss — the core promise of insurance.'],['Subrogation / Recovery','Recovering money from a third party (or their insurer) when they were at fault.'],['Leakage','Money paid out that need not have been — overpayment, missed recovery, or poor handling.'],['SIU','Special Investigations Unit — the fraud team a claim is referred to when signals are elevated.'],['Peril','The cause of loss — e.g. motor third-party, escape of water, storm, fire.'],['Loss ratio','Claims incurred ÷ premium earned. The headline measure of underwriting profitability.'],['Straight-through processing','A clean, low-risk claim auto-closed and paid with no manual handling — the auto-close path here.'],['Ultimate / outstanding','Ultimate = total the claim will ever cost; outstanding = what is still reserved but unpaid.'],['Consumer Duty / FCA','UK regulatory expectations — fair, explainable, auditable treatment of customers.']];
-const FLOW=[['FNOL','Claim reported','Guidewire ClaimCenter'],['Triage','Pay / escalate / refer','ML model + workflow'],['Reserve','Set money aside','Reserve model + finance'],['Settle','Pay the claim','ClaimCenter + payments'],['Recover','Subrogate from third party','Recovery / SIU'],['Close','Audit & report','CMS + board reporting']];
+// EY 7-stage claims value chain: [stage, what, systems, status]. status: live|partial|roadmap.
+const VALUE_CHAIN=[
+  ['FNOL','First notice of loss — digital / phone / broker','Guidewire ClaimCenter (CDA) → Databricks','live'],
+  ['Segmentation & assignment','Triage, auto-close routing, rule engine','ML triage model + workflow + R1–R5 rules','live'],
+  ['Coverage & investigation / SIU','Coverage check + fraud screen','Coverage Counsel + Fraud agent → SIU','live'],
+  ['Medical records','Injury / medical-record handling','Document extraction','roadmap'],
+  ['Litigation','Dispute & litigation routing','Litigation routing','roadmap'],
+  ['Subrogation & recovery','Recover from the third party','Recovery / Subrogation agent','live'],
+  ['Settlement','Pay, close, audit & board reporting','Finance / payments · CMS · Unity Catalog audit','partial'],
+];
+const PROV_FROM=[
+  ['Medallion ingestion → silver → gold','Databricks Smart Claims accelerator'],
+  ['Data model (telematics, accident/image, policy, claim, claim_insight)','Databricks Smart Claims accelerator'],
+  ['Damage-severity scoring from images','Databricks Smart Claims accelerator'],
+  ['Dynamic rule engine (routine vs investigate, consistency checks)','Databricks Smart Claims accelerator'],
+  ['Witness-vs-image discrepancy detection','Databricks Smart Claims accelerator'],
+  ['7-stage claims AI value chain (FNOL → … → settlement)','EY Future of Claims framework'],
+  ['CxO KPI framework (Efficiency / Effectiveness; Loss & Combined ratio, Reserve adequacy, Recovery, Leakage)','EY Future of Claims framework'],
+  ['FNOL efficiency / ROI business-case shape','EY Future of Claims framework'],
+  ['Stack: Unity Catalog, Mosaic AI, Feature Store, Model Serving, Genie, AI Functions','Databricks Smart Claims accelerator'],
+];
+const PROV_EXT=[
+  ['Guidewire ClaimCenter CDA-style ingestion','Legible to real Guidewire shops; Databricks as system of intelligence downstream of the system of record'],
+  ['Agent Bricks supervisor ("Claims AI") + specialist agents','From a single scoring model to a governed multi-agent reasoning system with a second opinion'],
+  ['Auto-close straight-through workflow + configurable risk-appetite threshold','Turns "routine vs investigate" into auto-close-and-pay with an explainable, configurable band'],
+  ['Reserving bracket model + reserve-adequacy story','Adds an actuarial dimension the accelerator doesn’t have'],
+  ['Agent-reasoning audit log + "what’s collected" governance','Makes governance the headline — lineage, sensitivity tiers (Secret/CMK), full reasoning trail'],
+  ['Persona surfaces — control tower, worklists, work-a-claim','Serves leadership, handler and intake personas, not just a notebook'],
+  ['Personal-lines scenario (motor + home), Bricksurance SE','Aligns with the EMEA personal-lines audience; consistent with the pricing & Solvency 2 demos'],
+];
+const VC_COL={live:'#10b981',partial:'#f59e0b',roadmap:'#cbd5e1'};
+const VC_TAG={live:'b-green',partial:'b-amber',roadmap:'b-slate'};
 function renderLearn(){ document.getElementById('view').innerHTML=page('Reference','Learn — claims for Databricks colleagues','A plain-English primer to help you pitch. Skim it once and you can carry the conversation.')
   +`<div class="card" style="margin-bottom:16px"><h2>What is a claim, really?</h2><p style="font-size:14px;color:#334155;line-height:1.65">A policyholder suffers a loss — a car bump, a burst pipe — and tells the insurer (<b>FNOL</b>). The insurer decides how to handle it (<b>triage</b>), sets money aside (<b>reserve</b>), pays what's owed (<b>settle</b>), claws back anything recoverable (<b>recover</b>), and closes the file with a full audit trail. Do this faster and fairer and you win on cost, customer experience and regulatory standing at once. That's the whole game — and it's what this workbench shows end to end.</p></div>
-  <div class="card" style="margin-bottom:16px"><h2>🔄 The flow through the company's systems</h2><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">${FLOW.map((f,i)=>`<div class="agcard ac-violet" style="width:158px;padding:12px"><b style="font-size:12.5px">${i+1}. ${esc(f[0])}</b><span class="muted" style="display:block;margin-top:2px">${esc(f[1])}</span><span style="color:var(--v7);font-size:11px;display:block;margin-top:5px">${esc(f[2])}</span></div>${i<FLOW.length-1?'<div style="align-self:center;color:#cbd5e1;font-size:18px">→</div>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Guidewire feeds the data; the ML models + workflow decide; finance and payments execute; a CMS and board reporting close the loop. Databricks is the data + AI platform underneath.</p></div>
-  <div class="card"><h2>📖 Glossary — insurance 101</h2><div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:160px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div><p class="muted" style="margin-top:8px">Drafted insurance-101 glossary — swap in your standard text if you have one.</p></div>`; }
+  <div class="card" style="margin-bottom:16px"><h2>🔄 The claims value chain (EY 7-stage) — and where this workbench lights up</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">${VALUE_CHAIN.map((f,i)=>`<div class="agcard" style="width:160px;padding:12px;border-color:${VC_COL[f[3]]}"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:12px">${i+1}. ${esc(f[0])}</b><span class="badge ${VC_TAG[f[3]]}" style="font-size:9px">${f[3]==='roadmap'?'soon':f[3]}</span></div><span class="muted" style="display:block;margin-top:3px">${esc(f[1])}</span><span style="color:var(--v7);font-size:11px;display:block;margin-top:5px">${esc(f[2])}</span></div>${i<VALUE_CHAIN.length-1?'<div style="align-self:center;color:#cbd5e1;font-size:18px">→</div>':''}`).join('')}</div>
+    <p class="muted" style="margin-top:8px">Green = live in this workbench · amber = partial · grey = roadmap. Guidewire is the system of record; Databricks is the system of intelligence; finance/payments and a CMS execute and close the loop.</p></div>
+  <div class="card" style="margin-bottom:16px"><div class="eyebrow">🏗️ Provenance & what we extended</div><h2 style="margin:4px 0 10px">Built on canonical assets, then advanced</h2>
+    <div class="grid2">
+      <div><div class="eyebrow" style="margin-bottom:6px">From the canonical assets</div><table><tr><th>Capability</th><th>Source</th></tr>${PROV_FROM.map(r=>`<tr><td style="color:#334155">${esc(r[0])}</td><td class="muted">${esc(r[1])}</td></tr>`).join('')}</table></div>
+      <div><div class="eyebrow" style="margin-bottom:6px">What we extended / added</div><table><tr><th>Extension</th><th>Why it advances the asset</th></tr>${PROV_EXT.map(r=>`<tr><td style="color:#334155">${esc(r[0])}</td><td class="muted">${esc(r[1])}</td></tr>`).join('')}</table></div>
+    </div>
+    <div class="synth" style="margin-top:12px"><p style="font-style:italic">“This isn't bespoke. It's built on Databricks' own Smart Claims accelerator and the EY claims framework — the same data model, value chain and KPIs you'd start from — extended with agentic AI, auto-close, and governance. The foundation is canonical; we advanced it.”</p></div></div>
+  <div class="card"><h2>📖 Glossary — insurance 101</h2><div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:160px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div></div>`; }
 
 // ============ ROADMAP ============
 function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform’s reach honestly.')+roadmapStrip(); }
