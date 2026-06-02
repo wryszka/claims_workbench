@@ -78,20 +78,38 @@ querying `gold_settlement_performance`.
 
 ## Stage B — LLM sub-agents (Fraud + Context)
 
-Run **`notebooks/06_agents.py`** once per agent (`agent` widget = `fraud`, then
-`context`). It logs a `ChatAgent` (Claude `databricks-claude-sonnet-4-6` tool-use
-loop calling the real UC functions / Genie), registers it in UC, and deploys via
-`agents.deploy()` (tracing auto-on). Each agent uses **its own MLflow experiment**.
+Run **`notebooks/06_agents.py`** once per agent (`agent` widget = `fraud`,
+`context`, `challenge`, `recovery`, `audit`). It logs a `ChatAgent` (Claude
+`databricks-claude-sonnet-4-6` tool-use loop calling the real UC functions / Genie),
+registers it in UC, and deploys via `agents.deploy()` (tracing auto-on). Each agent
+uses **its own MLflow experiment**. (Roster grew to **5 agents** in Phase 11.)
 
 | Agent | UC model | MLflow experiment | Serving endpoint (auto-named by agents.deploy) |
 |-------|----------|-------------------|-----------------------------------------------|
-| Fraud | `…claims_workbench.agent_fraud` | `/Users/<you>/claims_workbench_agent_fraud` | `agents_lr_serverless_aws_us_catalog-claims_workbench-agent_frau` |
-| Context | `…claims_workbench.agent_context` | `/Users/<you>/claims_workbench_agent_context` | `agents_lr_serverless_aws_us_catalog-claims_workbench-agent_cont` |
+| Fraud | `…claims_workbench.agent_fraud` | `/Users/<you>/claims_workbench_agent_fraud` | `agents_…claims_workbench-agent_frau` |
+| Claim 360 / Dossier | `…claims_workbench.agent_context` | `/Users/<you>/claims_workbench_agent_context` | `agents_…claims_workbench-agent_cont` |
+| Challenge / Second-Opinion | `…claims_workbench.agent_challenge` | `/Users/<you>/claims_workbench_agent_challenge` | `agents_…claims_workbench-agent_chal` |
+| Recovery / Subrogation | `…claims_workbench.agent_recovery` | `/Users/<you>/claims_workbench_agent_recovery` | `agents_…claims_workbench-agent_reco` |
+| Audit / Reasoning | `…claims_workbench.agent_audit` | `/Users/<you>/claims_workbench_agent_audit` | `agents_…claims_workbench-agent_audi` |
 
 - **Fraud** tools: `fn_fraud_signals`, `fn_claim_summary`. Returns a LOW/MEDIUM/HIGH
   risk level + 2-3 sentence narrative citing the specific signals.
-- **Context** tools: `fn_claim_summary`, `fn_policy_history`, and the **Genie space**
-  (`ask_the_book`). Returns the "before you pick up the phone" brief.
+- **Claim 360 / Dossier** (elevated Context) tools: `fn_claim_summary`,
+  `fn_policy_history`, `fn_fraud_signals`, `fn_recovery_signals`, and the **Genie space**
+  (`ask_the_book`). Assembles policy, history, fraud, recovery and enrichment into one brief.
+- **Challenge / Second-Opinion** tools: `fn_decision_reasoning`, `fn_triage_claim`,
+  `fn_fraud_signals`, `fn_claim_summary`. Argues the OPPOSITE of the current disposition
+  (caution if pay/auto-close; release if escalated). No decision authority.
+- **Recovery / Subrogation** tools: `fn_recovery_signals`, `fn_claim_summary`. Returns
+  NONE/POSSIBLE/LIKELY recovery potential + the recoverable £ amount.
+- **Audit / Reasoning** tools: `fn_decision_reasoning`, `fn_claim_summary`. Writes the
+  regulator-readable explanation of how a claim's decision was reached (reads the
+  `gold_claim_disposition` audit; reasoning is also persisted to `agent_reasoning_log`).
+
+> Prereqs for the 3 new agents: run `notebooks/06_agent_tools.py` (creates
+> `fn_recovery_signals` + `fn_decision_reasoning`) and `notebooks/10_auto_close.py`
+> (fills `gold_claim_disposition`) BEFORE deploying `challenge`/`audit`, so their
+> local smoke test can read a real disposition.
 
 > `agents.deploy()` auto-names the endpoint (`agents_<catalog>-<schema>-<model>`,
 > truncated to 63 chars) — it does not accept a custom endpoint name. Use the names
@@ -139,19 +157,30 @@ These steps recreate it on any workspace.
 | UC function | `{catalog}.claims_workbench.fn_triage_claim` | *Decide how to handle a new claim: pay directly, escalate, or refer to SIU. Returns the recommended decision, a confidence percentage and the top reasons. Input: a claim_public_id.* |
 | UC function | `{catalog}.claims_workbench.fn_reserve_claim` | *Predict the financial reserve bracket for a claim (LOW, MEDIUM, HIGH or LARGE LOSS) and an indicative £ range. Input: a claim_public_id.* |
 | Agent | `agents_…claims_workbench-agent_frau` (Fraud) | *Assess fraud risk for a claim and explain why — returns a LOW/MEDIUM/HIGH risk level with a plain-English narrative citing the specific signals (fraud score, prior claims, reporting lag). Input: a claim_public_id.* |
-| Agent | `agents_…claims_workbench-agent_cont` (Context) | *Produce a handler briefing on the policyholder and claim history — the "before you pick up the phone" brief. Input: a claim_public_id.* |
+| Agent | `agents_…claims_workbench-agent_cont` (Claim 360 / Dossier) | *Assemble the full dossier for a claim — policy, coverage, history, FNOL, enrichment, fraud and recovery — into one handler-ready narrative ("everything in one place"). Input: a claim_public_id.* |
+| Agent | `agents_…claims_workbench-agent_chal` (Challenge / Second-Opinion) | *Give a second opinion by arguing the OPPOSITE of the current disposition — caution if the claim was auto-closed/paid, or the case for releasing it if escalated. Input: a claim_public_id.* |
+| Agent | `agents_…claims_workbench-agent_reco` (Recovery / Subrogation) | *Assess recovery / subrogation potential — whether money can be recovered from a third party (e.g. a not-at-fault motor third-party loss) and the recoverable £ amount. Input: a claim_public_id.* |
+| Agent | `agents_…claims_workbench-agent_audi` (Audit / Reasoning) | *Explain, for a regulator, how a claim's decision was reached — the disposition, which auto-close rules passed/failed, the values, and that a model + workflow decided with no agent pay authority. Input: a claim_public_id.* |
 | Genie space | `01f15e4e509f1410b5596f5c90b20ca4` (Ask the Book) | *Answer portfolio / book-level analytics questions about the claims book — reserve development, settlement speed by channel, geographic risk clustering and handler performance.* |
+| Genie space | `<ASK_PRICING_CLAIMS_SPACE_ID>` (Ask Pricing + Claims) | *Answer cross-domain questions spanning claims and the policy/pricing population — loss ratio by product and peril, premium adequacy, leakage versus premium, recovery potential.* |
 
 **4. Grant access** — the supervisor cannot reach an unshared subagent. For EACH of the
-two sub-agent serving endpoints and the Genie space, grant the supervisor's service
-principal **CAN QUERY** (endpoints) / **CAN RUN** (Genie). UC functions: grant **EXECUTE**.
+**five** sub-agent serving endpoints and the **two** Genie spaces, grant the supervisor's
+service principal **CAN QUERY** (endpoints) / **CAN RUN** (Genie). UC functions: grant
+**EXECUTE** (including the Phase 11 `fn_recovery_signals` and `fn_decision_reasoning`).
 
 **5. Permissions + test** — give yourself/your team CAN MANAGE on the supervisor. Open
-**Playground** and test with the vivid claim:
+**Playground** and test with both heroes:
 > "I've got a new claim, cc:900001. How should I handle it — give me the triage decision,
-> the reserve bracket, the fraud risk, and a briefing before I call the policyholder."
-Expect it to route to `fn_triage_claim` (refer_siu), `fn_reserve_claim` (MEDIUM), the Fraud
-agent (HIGH) and the Context agent (brief).
+> the reserve bracket, the fraud risk, a recovery view, and a briefing before I call."
+Expect routing to `fn_triage_claim` (refer_siu), `fn_reserve_claim` (MEDIUM), the Fraud
+agent (HIGH), the Recovery agent, and the Claim 360 agent. Then try cc:900002 and ask
+"why was this auto-closed?" → the Audit agent explains; ask for a "second opinion" → the
+Challenge agent argues caution.
+
+> **Ask Pricing + Claims** Genie space: create with
+> `python3 scripts/create_genie_space.py --catalog <cat> --warehouse-id <id> --space joined`
+> then paste the printed `GENIE_SPACE_ID` into the supervisor (and `<ASK_PRICING_CLAIMS_SPACE_ID>` above).
 
 **6. Record the endpoint** — copy the deployed supervisor **endpoint name** into
 `app/utils/config.py` → `CLAIMS_EP_SUPERVISOR` (or set env `CLAIMS_EP_SUPERVISOR`), and here:

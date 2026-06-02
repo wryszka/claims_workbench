@@ -135,12 +135,47 @@ RETURN
   FROM {FQ}.silver_claims_enriched WHERE claim_public_id = p_claim_public_id
 """)
 
-print("5 UC functions created.")
+# fn_recovery_signals — subrogation / recovery potential (Phase 11, no model call)
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {FQ}.fn_recovery_signals(p_claim_public_id STRING)
+RETURNS STRUCT<recovery_flag BOOLEAN, third_party_at_fault BOOLEAN, recoverable_amount DECIMAL(12,2), at_fault BOOLEAN, third_party_involved BOOLEAN, peril_type STRING>
+COMMENT 'Assess recovery / subrogation potential for a claim: whether money can be recovered from a third party (e.g. a not-at-fault motor third-party loss), the recoverable GBP amount, and the fault signals behind it. Use to decide if a claim has recovery potential.'
+RETURN
+  SELECT named_struct('recovery_flag', any_value(recovery_flag),
+                      'third_party_at_fault', any_value(third_party_at_fault),
+                      'recoverable_amount', any_value(recoverable_amount),
+                      'at_fault', any_value(at_fault),
+                      'third_party_involved', any_value(third_party_involved),
+                      'peril_type', any_value(peril_type))
+  FROM {FQ}.silver_claims_enriched WHERE claim_public_id = p_claim_public_id
+""")
+
+# fn_decision_reasoning — the auto-close / triage disposition + full reasoning for a
+# claim (reads the gold_claim_disposition audit). Feeds the Audit / Reasoning agent.
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {FQ}.fn_decision_reasoning(p_claim_public_id STRING)
+RETURNS STRUCT<disposition STRING, model_decision STRING, model_confidence DOUBLE, total_incurred DECIMAL(12,2), fraud_score INT, data_complete BOOLEAN, rules_passed ARRAY<STRING>, rules_failed ARRAY<STRING>, reasoning STRING>
+COMMENT 'Return the workflow disposition (auto_closed / escalated) for a claim with the full reasoning: which auto-close rules passed or failed, the contributing values, and the model confidence. Use to explain WHY a claim was auto-closed or escalated, for a regulator-readable audit.'
+RETURN
+  SELECT named_struct('disposition', any_value(disposition), 'model_decision', any_value(model_decision),
+                      'model_confidence', any_value(model_confidence), 'total_incurred', any_value(total_incurred),
+                      'fraud_score', any_value(CAST(fraud_score AS INT)), 'data_complete', any_value(data_complete),
+                      'rules_passed', any_value(rules_passed), 'rules_failed', any_value(rules_failed),
+                      'reasoning', any_value(reasoning))
+  FROM {FQ}.gold_claim_disposition WHERE claim_public_id = p_claim_public_id
+""")
+
+print("7 UC functions created.")
 
 # COMMAND ----------
 
-# Smoke-test each for the vivid claim
+# Smoke-test each for the vivid claims
 import json
-for fn in ["fn_triage_claim", "fn_reserve_claim", "fn_fraud_signals", "fn_policy_history", "fn_claim_summary"]:
-    r = spark.sql(f"SELECT to_json({FQ}.{fn}('cc:900001')) AS r").collect()[0]["r"]
-    print(f"{fn}: {r}")
+for fn in ["fn_triage_claim", "fn_reserve_claim", "fn_fraud_signals", "fn_policy_history",
+           "fn_claim_summary", "fn_recovery_signals", "fn_decision_reasoning"]:
+    for cid in ["cc:900001", "cc:900002"]:
+        try:
+            r = spark.sql(f"SELECT to_json({FQ}.{fn}('{cid}')) AS r").collect()[0]["r"]
+            print(f"{fn}({cid}): {r}")
+        except Exception as e:
+            print(f"{fn}({cid}): [skipped — {str(e)[:80]}]")

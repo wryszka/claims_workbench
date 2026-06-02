@@ -12,7 +12,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("agent", "fraud", "agent: fraud | context")
+dbutils.widgets.text("agent", "fraud", "agent: fraud | context | challenge | recovery | audit")
 dbutils.widgets.text("catalog", "", "Catalog (blank = workspace current)")
 dbutils.widgets.text("schema", "claims_workbench", "Schema")
 dbutils.widgets.text("fm_endpoint", "databricks-claude-sonnet-4-6", "Foundation model endpoint")
@@ -52,20 +52,61 @@ Output, in plain English (no jargon):
 Guidance: a fraud score over 70 is a strong HIGH signal; 2+ prior claims plus a late
 report (over 14 days) is also elevated. Never invent signals the tools did not return."""
 
-CONTEXT_SYSTEM = """You are a claims context assistant. Produce the "before you pick up the
-phone" briefing for a handler about to call a policyholder. FIRST call get_claim_summary and
-get_policy_history for the claim under review. You may also call ask_the_book for portfolio
-context. Then write a concise, handler-facing brief:
-  - Who the policyholder is and the policy (product, sum insured, tenure, premium)
-  - The claim in one line (peril, amount, channel, status)
-  - Prior claims history and anything to watch for
-Keep it under ~150 words, plain English, money in GBP with commas. Do not give a fraud verdict."""
+# Claim 360 / Dossier — the elevated Context agent: "everything in one place".
+CONTEXT_SYSTEM = """You are the Claim 360 / Dossier assistant for Bricksurance SE. Assemble
+EVERYTHING about a claim into one narrative brief a handler can read in 30 seconds. FIRST call
+get_claim_summary, get_policy_history, get_fraud_signals and get_recovery_signals for the claim
+under review. You may call ask_the_book for portfolio context. Then write a structured dossier:
+  - Policyholder & policy: product, sum insured, tenure, annual premium
+  - The claim: peril, amount (GBP), channel, status, incident description
+  - History & risk: prior claims, fraud signals, reporting lag, weather/enrichment context
+  - Recovery: whether money is recoverable from a third party
+Keep it tight and skimmable, plain English, money in GBP with commas. Do not give a fraud
+verdict or a pay decision — you assemble context; the model and workflow decide."""
+
+CHALLENGE_SYSTEM = """You are the Challenge / Second-Opinion agent for a Bricksurance SE handler.
+Your job is to argue the OPPOSITE of the current disposition, so the handler hears the other side
+before acting. FIRST call get_decision_reasoning to learn the current disposition, then call
+get_triage, get_fraud_signals and get_claim_summary as needed.
+  - If the claim was AUTO-CLOSED / pay_direct: make the case for CAUTION — what could have been
+    missed, what would justify a second look.
+  - If the claim was ESCALATED: make the case for RELEASING it — why it might be safe to pay.
+Open with one line: "Challenge: <the opposite stance>." Then 2-3 sentences citing specific numbers.
+Be fair, not contrarian for its own sake. You do NOT decide and you have NO pay authority."""
+
+RECOVERY_SYSTEM = """You are the Recovery / Subrogation agent for Bricksurance SE. FIRST call
+get_recovery_signals and get_claim_summary for the claim under review. Then state, in plain English:
+  Recovery potential: one of NONE / POSSIBLE / LIKELY (on its own line)
+  Then 1-2 sentences explaining why, citing fault (who was at fault), third-party involvement,
+  the peril, and the recoverable amount in GBP with commas if any.
+Guidance: a motor third-party loss where OUR policyholder is NOT at fault is recoverable from the
+third party's insurer. Home perils and at-fault motor losses are generally not recoverable."""
+
+AUDIT_SYSTEM = """You are the Audit / Reasoning agent for Bricksurance SE — you write the
+regulator-readable explanation of how a claim's decision was reached. FIRST call
+get_decision_reasoning for the claim under review (it returns the disposition, which auto-close
+rules passed/failed, the contributing values and the model confidence), then get_claim_summary.
+Write a clear, factual explanation a compliance officer or regulator could read:
+  - The decision (auto-closed & paid, or escalated to a handler) and who/what made it
+  - The rules evaluated and their outcomes, with the actual values
+  - That a model + deterministic workflow decided — no agent had pay authority
+Plain English, money in GBP with commas. Do not speculate beyond the recorded reasoning."""
 
 AGENTS = {
-    "fraud":   {"uc_model": "agent_fraud", "experiment": "claims_workbench_agent_fraud",
-                "system": FRAUD_SYSTEM, "tools": ["get_fraud_signals", "get_claim_summary"], "genie": False},
-    "context": {"uc_model": "agent_context", "experiment": "claims_workbench_agent_context",
-                "system": CONTEXT_SYSTEM, "tools": ["get_claim_summary", "get_policy_history", "ask_the_book"], "genie": True},
+    "fraud":     {"uc_model": "agent_fraud", "experiment": "claims_workbench_agent_fraud",
+                  "system": FRAUD_SYSTEM, "tools": ["get_fraud_signals", "get_claim_summary"], "genie": False},
+    "context":   {"uc_model": "agent_context", "experiment": "claims_workbench_agent_context",
+                  "system": CONTEXT_SYSTEM,
+                  "tools": ["get_claim_summary", "get_policy_history", "get_fraud_signals",
+                            "get_recovery_signals", "ask_the_book"], "genie": True},
+    "challenge": {"uc_model": "agent_challenge", "experiment": "claims_workbench_agent_challenge",
+                  "system": CHALLENGE_SYSTEM,
+                  "tools": ["get_decision_reasoning", "get_triage", "get_fraud_signals", "get_claim_summary"],
+                  "genie": False},
+    "recovery":  {"uc_model": "agent_recovery", "experiment": "claims_workbench_agent_recovery",
+                  "system": RECOVERY_SYSTEM, "tools": ["get_recovery_signals", "get_claim_summary"], "genie": False},
+    "audit":     {"uc_model": "agent_audit", "experiment": "claims_workbench_agent_audit",
+                  "system": AUDIT_SYSTEM, "tools": ["get_decision_reasoning", "get_claim_summary"], "genie": False},
 }
 cfg = AGENTS[agent]
 agent_uc_name = f"{fqn}.{cfg['uc_model']}"
@@ -83,6 +124,12 @@ TOOL_SCHEMAS = {
         "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
     "ask_the_book": {"description": "Ask a portfolio/book-level analytics question in natural language over the gold tables.",
         "input_schema": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}},
+    "get_recovery_signals": {"description": "Return recovery/subrogation signals for a claim (recovery flag, third-party at fault, recoverable GBP amount, at-fault, third-party involved, peril).",
+        "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
+    "get_decision_reasoning": {"description": "Return the workflow disposition (auto_closed/escalated) for a claim with the full reasoning: which auto-close rules passed/failed, the values, and the model confidence.",
+        "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
+    "get_triage": {"description": "Score the triage model for a claim: recommended decision (pay_direct/escalate/refer_siu), confidence %, and top reasons.",
+        "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
 }
 
 
@@ -143,10 +190,13 @@ class ClaimsSubAgent(ChatAgent):
 
     def _tool(self, name, args):
         cid = (args or {}).get("claim_public_id", "")
-        if name == "get_fraud_signals":  return self._fn("fn_fraud_signals", cid)
-        if name == "get_claim_summary":  return self._fn("fn_claim_summary", cid)
-        if name == "get_policy_history": return self._fn("fn_policy_history", cid)
-        if name == "ask_the_book":       return _genie_ask(self.genie_space_id, (args or {}).get("question", ""))
+        if name == "get_fraud_signals":      return self._fn("fn_fraud_signals", cid)
+        if name == "get_claim_summary":      return self._fn("fn_claim_summary", cid)
+        if name == "get_policy_history":     return self._fn("fn_policy_history", cid)
+        if name == "get_recovery_signals":   return self._fn("fn_recovery_signals", cid)
+        if name == "get_decision_reasoning": return self._fn("fn_decision_reasoning", cid)
+        if name == "get_triage":             return self._fn("fn_triage_claim", cid)
+        if name == "ask_the_book":           return _genie_ask(self.genie_space_id, (args or {}).get("question", ""))
         return {"error": f"unknown tool {name}"}
 
     def predict(self, messages, context=None, custom_inputs=None) -> ChatAgentResponse:
@@ -205,12 +255,17 @@ from mlflow.models.resources import (DatabricksServingEndpoint, DatabricksFuncti
                                       DatabricksTable, DatabricksGenieSpace, DatabricksSQLWarehouse)
 
 fn_for_tool = {"get_fraud_signals": "fn_fraud_signals", "get_claim_summary": "fn_claim_summary",
-               "get_policy_history": "fn_policy_history"}
+               "get_policy_history": "fn_policy_history", "get_recovery_signals": "fn_recovery_signals",
+               "get_decision_reasoning": "fn_decision_reasoning", "get_triage": "fn_triage_claim"}
 resources = [DatabricksServingEndpoint(endpoint_name=fm_endpoint),
              DatabricksTable(table_name=f"{fqn}.silver_claims_enriched")]
+# fn_triage_claim / fn_decision_reasoning read other endpoints/tables; declaring the
+# function is enough for serving auth (the function's own grants cover its body).
 for t in cfg["tools"]:
     if t in fn_for_tool:
         resources.append(DatabricksFunction(function_name=f"{fqn}.{fn_for_tool[t]}"))
+if "get_decision_reasoning" in cfg["tools"]:
+    resources.append(DatabricksTable(table_name=f"{fqn}.gold_claim_disposition"))
 if cfg["genie"]:
     resources.append(DatabricksGenieSpace(genie_space_id=genie_space_id))
     resources.append(DatabricksSQLWarehouse(warehouse_id=warehouse_id))

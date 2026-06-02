@@ -216,6 +216,35 @@ print(f"gold_handler_decisions rows: {n_decisions:,} (audit shell — empty by d
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 6b · gold_claim_disposition — auto-close audit shell (Phase 11; 10_auto_close fills it)
+# MAGIC The auto-close workflow (`10_auto_close.py`) overwrites this with one row per
+# MAGIC claim carrying the disposition + full per-rule reasoning. Shell-created here so
+# MAGIC `fn_decision_reasoning` resolves even before the first auto-close run.
+
+# COMMAND ----------
+
+disposition_schema = T.StructType([
+    T.StructField("claim_public_id", T.StringType()),
+    T.StructField("disposition", T.StringType()),
+    T.StructField("model_decision", T.StringType()),
+    T.StructField("model_confidence", T.DoubleType()),
+    T.StructField("total_incurred", T.DecimalType(12, 2)),
+    T.StructField("fraud_score", T.IntegerType()),
+    T.StructField("data_complete", T.BooleanType()),
+    T.StructField("rules_passed", T.ArrayType(T.StringType())),
+    T.StructField("rules_failed", T.ArrayType(T.StringType())),
+    T.StructField("reasoning", T.StringType()),
+    T.StructField("evaluated_ts", T.TimestampType()),
+])
+if not spark.catalog.tableExists(tbl("gold_claim_disposition")):
+    n_disp = write_gold(spark.createDataFrame([], disposition_schema), "gold_claim_disposition")
+    print(f"gold_claim_disposition shell created ({n_disp} rows).")
+else:
+    print("gold_claim_disposition already exists — left intact for the auto-close run.")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 7 · Targeted check + headline numbers
 
 # COMMAND ----------

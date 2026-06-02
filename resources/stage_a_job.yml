@@ -1,0 +1,136 @@
+# Phase 11, Stage A — backend orchestration. One serverless multi-task job that
+# rebuilds the chain with the Phase 11 additions and deploys the new agents:
+#   data_gen (+cc:900002) -> bronze (full refresh) -> silver (+recovery fields) ->
+#   [gold (+disposition shell), features] -> auto_close -> agent_tools (+2 new fns) ->
+#   [join, governance] -> deploy {context*, challenge, recovery, audit} -> reasoning.
+# (* context is re-deployed as the elevated Claim 360 / Dossier agent. Fraud is
+# unchanged, so it is not re-deployed here.)
+#
+#   databricks bundle run claims_workbench_11_stage_a -t dev
+resources:
+  jobs:
+    claims_workbench_11_stage_a:
+      name: claims_workbench_11_stage_a
+      tags:
+        project: claims_workbench
+      environments:
+        - environment_key: serverless
+          spec:
+            client: "2"
+      tasks:
+        - task_key: data_gen
+          notebook_task:
+            notebook_path: ../notebooks/00_setup_and_data_generation.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        - task_key: bronze
+          depends_on: [{task_key: data_gen}]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.claims_workbench_01_bronze_dlt.id}
+            full_refresh: true
+
+        - task_key: silver
+          depends_on: [{task_key: bronze}]
+          notebook_task:
+            notebook_path: ../notebooks/02_silver_enrichment.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        - task_key: gold
+          depends_on: [{task_key: silver}]
+          notebook_task:
+            notebook_path: ../notebooks/03_gold_analytics.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        - task_key: features
+          depends_on: [{task_key: silver}]
+          notebook_task:
+            notebook_path: ../notebooks/04_feature_engineering.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        # Auto-close: batch-score champion triage → disposition + reasoning.
+        - task_key: auto_close
+          depends_on: [{task_key: gold}, {task_key: features}]
+          notebook_task:
+            notebook_path: ../notebooks/10_auto_close.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        # UC tools incl. fn_recovery_signals + fn_decision_reasoning (needs disposition).
+        - task_key: agent_tools
+          depends_on: [{task_key: auto_close}]
+          notebook_task:
+            notebook_path: ../notebooks/06_agent_tools.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        - task_key: join
+          depends_on: [{task_key: silver}]
+          notebook_task:
+            notebook_path: ../notebooks/12_pricing_claims_join.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        - task_key: governance
+          depends_on: [{task_key: silver}]
+          notebook_task:
+            notebook_path: ../notebooks/07_governance.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
+        # Deploy the elevated Dossier + the 3 new agents (parallel, ~12 min each).
+        - task_key: deploy_context
+          depends_on: [{task_key: agent_tools}]
+          notebook_task:
+            notebook_path: ../notebooks/06_agents.py
+            base_parameters:
+              agent: context
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+          environment_key: serverless
+        - task_key: deploy_challenge
+          depends_on: [{task_key: agent_tools}]
+          notebook_task:
+            notebook_path: ../notebooks/06_agents.py
+            base_parameters:
+              agent: challenge
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+          environment_key: serverless
+        - task_key: deploy_recovery
+          depends_on: [{task_key: agent_tools}]
+          notebook_task:
+            notebook_path: ../notebooks/06_agents.py
+            base_parameters:
+              agent: recovery
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+          environment_key: serverless
+        - task_key: deploy_audit
+          depends_on: [{task_key: agent_tools}]
+          notebook_task:
+            notebook_path: ../notebooks/06_agents.py
+            base_parameters:
+              agent: audit
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+          environment_key: serverless
+
+        # Populate the regulator-viewable reasoning log for the hero claims.
+        - task_key: reasoning
+          depends_on:
+            - {task_key: deploy_context}
+            - {task_key: deploy_challenge}
+            - {task_key: deploy_recovery}
+            - {task_key: deploy_audit}
+          notebook_task:
+            notebook_path: ../notebooks/11_agent_reasoning.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless

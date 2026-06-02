@@ -11,8 +11,9 @@ Design rules (do not break these — later phases depend on them):
                      so the demo never goes stale.
   * Idempotent:      all writes are mode="overwrite". Re-running never dupes.
   * Money:           whole-pound integers / decimals. No stray floats.
-  * Vivid claim:     cc:900001 is SACRED — fixed attributes, survives every
-                     reset, appended explicitly (never randomly generated).
+  * Vivid claims:    cc:900001 (escalated hero) and cc:900002 (auto-close hero)
+                     are SACRED — fixed attributes, survive every reset, appended
+                     explicitly (never randomly generated).
 
 Deliberately-seeded business signals (for later-phase stories):
   * 80% of claims report < £5k, with a long tail to £250k.
@@ -34,8 +35,10 @@ CLAIM_SEQ_START = 100_001          # bulk claim_public_ids: cc:100001 .. cc:2200
 N_HANDLERS = 80
 SEED = 42
 
-VIVID_CLAIM_ID = "cc:900001"       # SACRED — see module docstring
+VIVID_CLAIM_ID = "cc:900001"       # SACRED — the escalated hero (fraud 74, REFER SIU)
 VIVID_POLICY_NUMBER = "BSE-P-9009001"
+VIVID_CLAIM_ID_2 = "cc:900002"     # SACRED — the auto-close hero (clean, pay_direct)
+VIVID_POLICY_NUMBER_2 = "BSE-P-9009002"
 
 # Motor policy ids occupy 1..40000, home 40001..70000, so a claim's product is
 # recoverable from its policy id range and FK integrity is guaranteed.
@@ -321,6 +324,32 @@ def vivid_claim_row(spark, anchor=None):
     """)
 
 
+def vivid_claim_row_2(spark, anchor=None):
+    """The SACRED auto-close hero cc:900002 — small, clean home claim that the
+    workflow straight-through-processes: home escape-of-water, GBP 420, reported
+    next-day, low fraud, no prior claims -> triage pay_direct -> auto-closed & paid."""
+    a = _anchor_sql(anchor)
+    return spark.sql(f"""
+        SELECT
+            cast('{VIVID_CLAIM_ID_2}' as string)             AS claim_public_id,
+            900002L                                          AS claim_seq,
+            concat('BSE-CC-', cast(year(date_sub({a},1)) as string), '-900002') AS claim_number,
+            cast('{VIVID_POLICY_NUMBER_2}' as string)        AS policy_number,
+            900002L                                          AS policy_seq,
+            cast('home' as string)                           AS product,
+            cast('RG1' as string)                            AS postcode_district,
+            date_sub({a}, 1)                                 AS loss_date,
+            {a}                                              AS report_date,
+            cast('digital' as string)                        AS report_channel,
+            cast('waterdamage' as string)                    AS loss_cause,
+            cast('open' as string)                           AS claim_status,
+            420                                              AS total_incurred,
+            cast(date_sub({a},1) as timestamp) + make_interval(0,0,0,0,9,0,0) AS cda_batch_ts,
+            false                                            AS is_bad_policy,
+            0                                                AS report_lag_days
+    """)
+
+
 # --------------------------------------------------------------------------
 # Child / related tables — derived from the claims DataFrame (FK-safe)
 # --------------------------------------------------------------------------
@@ -506,6 +535,31 @@ def vivid_children(spark, anchor=None):
     return exposure, incident, contact, fraud
 
 
+def vivid_children_2(spark, anchor=None):
+    """Exposure / incident / contact / fraud rows for the auto-close hero cc:900002."""
+    cid = VIVID_CLAIM_ID_2
+    exposure = spark.sql(f"""
+        SELECT 'ec:900002' AS exposure_public_id, '{cid}' AS claim_public_id,
+               'home_buildings' AS coverage_type, 'indemnity' AS exposure_type,
+               420 AS reserve_amount, 0 AS paid_amount
+    """)
+    incident = spark.sql(f"""
+        SELECT 'in:900002' AS incident_public_id, '{cid}' AS claim_public_id,
+               'escape_of_water' AS incident_type, 'RG1 2024 detached' AS vehicle_or_property_ref,
+               'Minor escape of water from a kitchen appliance; limited floor damage.' AS description_text
+    """)
+    contact = spark.sql(f"""
+        SELECT 'ct:900002:1' AS contact_public_id, '{cid}' AS claim_public_id,
+               'claimant' AS contact_role, 'RG1' AS postcode_district
+    """)
+    fraud = spark.sql(f"""
+        SELECT '{cid}' AS claim_public_id, 8 AS fraud_score, false AS fraud_flag,
+               0 AS prior_claims_12m, 1 AS days_since_incident,
+               'internal_rules' AS signal_source
+    """)
+    return exposure, incident, contact, fraud
+
+
 # --------------------------------------------------------------------------
 # Policy / handler / weather tables
 # --------------------------------------------------------------------------
@@ -521,10 +575,11 @@ def build_policies(spark, claims, anchor=None):
         .select("policy_seq", "policy_number", "product")
         .distinct()
     )
-    # Append the vivid claim's policy.
+    # Append both vivid claims' policies (cc:900001 motor, cc:900002 home).
     vivid_pol = spark.sql(f"""
-        SELECT 900001L AS policy_seq, '{VIVID_POLICY_NUMBER}' AS policy_number,
-               'motor' AS product
+        SELECT 900001L AS policy_seq, '{VIVID_POLICY_NUMBER}' AS policy_number, 'motor' AS product
+        UNION ALL
+        SELECT 900002L AS policy_seq, '{VIVID_POLICY_NUMBER_2}' AS policy_number, 'home' AS product
     """)
     base = base.unionByName(vivid_pol)
 
@@ -704,32 +759,35 @@ def generate_all(spark, catalog, schema, anchor=None):
         .option("overwriteSchema", "true").saveAsTable(scratch))
     bulk = spark.table(scratch)
     vivid = vivid_claim_row(spark, anchor=anchor)
+    vivid2 = vivid_claim_row_2(spark, anchor=anchor)
 
     claims_public = (
         bulk.select(*CLAIM_PUBLIC_COLS)
             .unionByName(vivid.select(*CLAIM_PUBLIC_COLS))
+            .unionByName(vivid2.select(*CLAIM_PUBLIC_COLS))
     )
     counts["landing_gw_cc_claim"] = write_and_tag(
         spark, claims_public, catalog, schema, "landing_gw_cc_claim", "landing")
 
     # --- child tables (bulk derived + vivid rows) ---
     v_exp, v_inc, v_con, v_fraud = vivid_children(spark, anchor=anchor)
+    v2_exp, v2_inc, v2_con, v2_fraud = vivid_children_2(spark, anchor=anchor)
 
-    # vivid carries no u_*/report_lag helper cols, so derive children from the
-    # bulk frame only, then union the explicit vivid child rows.
-    exposures = build_exposures(bulk).unionByName(v_exp)
+    # vivid claims carry no u_*/report_lag helper cols, so derive children from
+    # the bulk frame only, then union the explicit vivid child rows.
+    exposures = build_exposures(bulk).unionByName(v_exp).unionByName(v2_exp)
     counts["landing_gw_cc_exposure"] = write_and_tag(
         spark, exposures, catalog, schema, "landing_gw_cc_exposure", "landing")
 
-    incidents = build_incidents(bulk).unionByName(v_inc)
+    incidents = build_incidents(bulk).unionByName(v_inc).unionByName(v2_inc)
     counts["landing_gw_cc_incident"] = write_and_tag(
         spark, incidents, catalog, schema, "landing_gw_cc_incident", "landing")
 
-    contacts = build_contacts(bulk).unionByName(v_con)
+    contacts = build_contacts(bulk).unionByName(v_con).unionByName(v2_con)
     counts["landing_gw_cc_contact"] = write_and_tag(
         spark, contacts, catalog, schema, "landing_gw_cc_contact", "landing")
 
-    fraud = build_fraud_signals(bulk).unionByName(v_fraud)
+    fraud = build_fraud_signals(bulk).unionByName(v_fraud).unionByName(v2_fraud)
     counts["landing_fraud_signals"] = write_and_tag(
         spark, fraud, catalog, schema, "landing_fraud_signals", "landing")
 

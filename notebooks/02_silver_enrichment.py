@@ -171,6 +171,23 @@ df = (
             END, 2)
         """),
     )
+    # Recovery / subrogation signals (Phase 11): a motor third-party loss where
+    # OUR policyholder is NOT at fault can be recovered from the third party's
+    # insurer. recoverable_amount ≈ 60% of the incurred for those claims.
+    .withColumn(
+        "third_party_at_fault",
+        F.expr("peril_type = 'motor_tp' AND coalesce(third_party_involved, false) "
+               "AND coalesce(at_fault, true) = false"),
+    )
+    .withColumn(
+        "recovery_flag",
+        F.expr("coalesce(third_party_at_fault, false)"),
+    )
+    .withColumn(
+        "recoverable_amount",
+        F.expr("CASE WHEN coalesce(third_party_at_fault, false) "
+               "THEN CAST(round(total_incurred * 0.6) AS decimal(12,2)) ELSE CAST(0 AS decimal(12,2)) END"),
+    )
 )
 
 # COMMAND ----------
@@ -394,6 +411,7 @@ OUTPUT_COLS = [
     "total_incurred", "paid_amount", "case_reserve", "initial_reserve", "ultimate_reserve",
     "fraud_score", "fraud_flag", "prior_claims_12m", "days_since_incident",
     "is_high_value", "is_potential_fraud", "at_fault",
+    "third_party_at_fault", "recovery_flag", "recoverable_amount",
     "claim_status", "settlement_date", "days_to_settle", "leakage_flag",
     "handler_id", "handler_grade",
     "triage_decision", "reserve_bracket", "triage_source",

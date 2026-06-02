@@ -6,6 +6,31 @@ Everything below is backed by genuine Unity Catalog / MLflow / DLT output — se
 
 > Synthetic demonstration. No real Guidewire integration and no real customer data.
 
+## Sensitivity tiers — PII and SECRET (Phase 11)
+
+The workbench classifies data in two protected tiers, each enforced by a dynamic
+masking view (works on any workspace, no governed tags required):
+
+| Tier | Examples | View | Privileged group | Non-privileged sees |
+|------|----------|------|------------------|---------------------|
+| **PII** | postcode district, handler name | `v_claims_masked` | `claims_workbench_pii_readers` | truncated / hashed |
+| **SECRET** | claim narrative (`description_text`), derived injury/health signal | `v_claims_secret` | `claims_workbench_secret_readers` | narrative withheld, health flag NULL |
+
+**Secret** sits a tier above PII: the free-text claim description can carry health /
+injury detail and other special-category data, so it is withheld from everyone except
+SIU / the Data Protection Officer.
+
+### CMK / Lakebase positioning note
+Secret-tier data warrants **Customer-Managed Keys (CMK)**: the customer holds the
+encryption key in their own KMS, so storage is encrypted under a key Databricks cannot
+use unilaterally — required for special-category data under many regulators. When this
+demo is productionised, the Secret-tier columns (and any operational store such as
+**Lakebase** used as the claims system-of-record / CMS) should be provisioned in a
+**CMK-enabled** workspace/store, with tighter audit logging than the PII tier. The
+masking views are the access-control layer; CMK is the encryption-at-rest layer beneath.
+The `agent_reasoning_log` (regulator-viewable decision reasoning) is governed at the PII
+tier — it records reasoning over claims, not raw narrative.
+
 - **End-to-end lineage** — every claim is traceable through the platform, from the raw
   Guidewire landing record → governed bronze → enriched silver → ML features → registered
   model → live decision, viewable in Unity Catalog's Lineage tab.

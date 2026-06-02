@@ -127,6 +127,46 @@ print("  Base tables (silver/ref) restricted to data-engineering; handlers query
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 2b · SECRET sensitivity tier (Phase 11) — claim narrative / health detail
+# MAGIC A tier ABOVE PII. The free-text claim description can carry health/injury detail
+# MAGIC and other special-category data, so it is classed **Secret** and withheld from
+# MAGIC everyone except the privileged group `claims_workbench_secret_readers` (SIU /
+# MAGIC DPO). Secret data should sit on **Customer-Managed Keys (CMK)** — see
+# MAGIC `GOVERNANCE_NOTES.md` for the CMK / Lakebase positioning.
+
+# COMMAND ----------
+
+spark.sql(f"""
+CREATE OR REPLACE VIEW {fqn}.v_claims_secret AS
+SELECT
+  s.claim_public_id, s.peril_type, s.total_incurred, s.claim_status,
+  -- Sensitivity tier of the narrative (drives who-sees-what in the governance page).
+  'Secret' AS narrative_sensitivity,
+  -- Derived health/injury signal over the narrative (itself Secret).
+  CASE WHEN is_account_group_member('claims_workbench_secret_readers')
+       THEN (lower(s.description_text) rlike '(injur|medical|hospital|whiplash|health|ambulance)')
+       ELSE NULL END AS injury_mentioned,
+  -- The claim narrative itself: Secret. Withheld unless privileged.
+  CASE WHEN is_account_group_member('claims_workbench_secret_readers')
+       THEN s.description_text
+       ELSE '[SECRET — claim narrative withheld; CMK-protected]' END AS description_text
+FROM {fqn}.silver_claims_enriched s
+""")
+try:
+    spark.sql(f"ALTER VIEW {fqn}.v_claims_secret SET TBLPROPERTIES "
+              f"('project'='claims_workbench','layer'='gov','sensitivity'='secret')")
+except Exception as e:
+    print(f"(view tblproperties note: {e})")
+
+print("SECRET view (as the current, non-privileged user) — cc:900001 narrative withheld:")
+spark.sql(f"SELECT claim_public_id, narrative_sensitivity, injury_mentioned, description_text "
+          f"FROM {fqn}.v_claims_secret WHERE claim_public_id='cc:900001'").show(truncate=False)
+print("Grants: GRANT SELECT ON VIEW {fqn}.v_claims_secret TO `claims_workbench_secret_readers`;")
+print("  Secret tier (narrative / health) -> CMK-encrypted storage; tighter audit than PII.")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 3 · Tag-visibility fallback (resolves the Phase 1 governed-tag gap)
 # MAGIC The governed `project`/`owner` UC tags were blocked on this workspace. We set
 # MAGIC `TBLPROPERTIES('project'='claims_workbench')` on every asset as a fallback that

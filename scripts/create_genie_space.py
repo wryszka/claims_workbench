@@ -19,6 +19,27 @@ import argparse, json, subprocess, sys
 GOLD = sorted(["gold_reserve_development", "gold_settlement_performance",
                "gold_geo_clustering", "gold_handler_scorecard"])
 
+# Phase 11 "Ask Pricing + Claims" — the joined cross-domain view (+ the gold book).
+JOINED = sorted(["gold_policy_claims_joined", "gold_reserve_development",
+                 "gold_settlement_performance", "gold_geo_clustering"])
+
+SPACES = {
+    "book": {
+        "title": "Claims AI - Ask the Book",
+        "description": "Ask portfolio/book-level analytics questions about Bricksurance SE claims: "
+                       "reserve development, settlement speed by channel, geographic risk clustering, "
+                       "and handler performance.",
+        "tables": GOLD,
+    },
+    "joined": {
+        "title": "Claims AI - Ask Pricing + Claims",
+        "description": "Ask CROSS-DOMAIN questions spanning the claims book and the policy/pricing "
+                       "population: loss ratio by product and peril, premium adequacy, leakage versus "
+                       "premium, and recovery potential. For actuaries and pricing analysts.",
+        "tables": JOINED,
+    },
+}
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -26,17 +47,18 @@ def main():
     ap.add_argument("--schema", default="claims_workbench")
     ap.add_argument("--warehouse-id", required=True)
     ap.add_argument("--profile", default="DEFAULT")
+    ap.add_argument("--space", default="book", choices=list(SPACES),
+                    help="book = Ask the Book (Phase 6); joined = Ask Pricing + Claims (Phase 11)")
     a = ap.parse_args()
 
+    spec = SPACES[a.space]
     user = json.loads(subprocess.run(
         ["databricks", "current-user", "me", "--profile", a.profile],
         capture_output=True, text=True).stdout)["userName"]
-    tables = [{"identifier": f"{a.catalog}.{a.schema}.{t}"} for t in GOLD]
+    tables = [{"identifier": f"{a.catalog}.{a.schema}.{t}"} for t in sorted(spec["tables"])]
     body = {
-        "title": "Claims AI - Ask the Book",
-        "description": "Ask portfolio/book-level analytics questions about Bricksurance SE claims: "
-                       "reserve development, settlement speed by channel, geographic risk clustering, "
-                       "and handler performance.",
+        "title": spec["title"],
+        "description": spec["description"],
         "warehouse_id": a.warehouse_id,
         "parent_path": f"/Workspace/Users/{user}",
         "serialized_space": json.dumps({"version": 2, "data_sources": {"tables": tables}}),
