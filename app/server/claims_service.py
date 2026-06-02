@@ -149,3 +149,135 @@ async def recent_decisions(limit: int = 20) -> list[dict]:
                cast(decision_ts AS string) AS decision_ts
         FROM {_fq('gold_handler_decisions')} ORDER BY decision_ts DESC LIMIT {int(limit)}
     """)
+
+
+# --------------------------------------------------------------------------
+# Stage B — Ingestion (DLT status + data-quality evidence)
+# --------------------------------------------------------------------------
+PIPELINE_NAME = "claims_workbench_01_bronze_dlt"
+
+
+def _ingestion_sync() -> dict:
+    import requests
+    from server.sql import _client
+    w = _client()
+    host = w.config.host.rstrip("/")
+    hdr = w.config._header_factory()
+    pid = pname = state = None
+    try:
+        # DAB dev mode prefixes the name (e.g. "[dev user] claims_workbench_01_bronze_dlt"),
+        # so match by substring rather than exact name.
+        pipes = list(w.pipelines.list_pipelines(filter=f"name LIKE '%{PIPELINE_NAME}%'"))
+        if not pipes:
+            pipes = [p for p in w.pipelines.list_pipelines() if PIPELINE_NAME in (p.name or "")]
+        if pipes:
+            pid, pname = pipes[0].pipeline_id, pipes[0].name
+            d = w.pipelines.get(pid)
+            state = str(d.state).replace("PipelineState.", "") if d.state else None
+    except Exception as e:
+        logger.warning("pipeline lookup failed: %s", e)
+    expectations = {}
+    if pid:
+        try:
+            evs = requests.get(f"{host}/api/2.0/pipelines/{pid}/events?max_results=250",
+                               headers=hdr, timeout=60).json().get("events", [])
+            for e in evs:
+                dq = (e.get("details", {}).get("flow_progress", {}) or {}).get("data_quality")
+                if not dq:
+                    continue
+                for ex in dq.get("expectations", []) or []:
+                    c = expectations.setdefault(ex.get("name"), {"passed": 0, "failed": 0})
+                    c["passed"] += int(ex.get("passed_records") or 0)
+                    c["failed"] += int(ex.get("failed_records") or 0)
+        except Exception as e:
+            logger.warning("event log failed: %s", e)
+    exp_list = [{"name": k, **v} for k, v in sorted(expectations.items())]
+    tp = sum(v["passed"] for v in expectations.values())
+    tf = sum(v["failed"] for v in expectations.values())
+    return {
+        "pipeline_name": pname or PIPELINE_NAME,
+        "pipeline_id": pid,
+        "state": state,
+        "pipeline_url": f"{host}/pipelines/{pid}" if pid else None,
+        "expectations": exp_list,
+        "pass_rate": round(100 * tp / max(tp + tf, 1), 2),
+        "total_evaluated": tp + tf,
+    }
+
+
+async def ingestion_status() -> dict:
+    out = await asyncio.to_thread(_ingestion_sync)
+    try:
+        qc = await execute_query(
+            f"SELECT (SELECT count(*) FROM {_fq('bronze_quarantine_claims')}) AS claims, "
+            f"(SELECT count(*) FROM {_fq('bronze_quarantine_fraud_signals')}) AS fraud")
+        out["quarantined_claims"] = int(qc[0]["claims"])
+        out["quarantined_fraud"] = int(qc[0]["fraud"])
+    except Exception:
+        out["quarantined_claims"] = out["quarantined_fraud"] = 0
+    return out
+
+
+# --------------------------------------------------------------------------
+# Stage B — Transformation (silver enrichment for the selected claim)
+# --------------------------------------------------------------------------
+async def enrichment(cid: str) -> dict:
+    rows = await execute_query(f"""
+        SELECT claim_public_id, claim_number, policy_number, peril_type, loss_cause,
+               cast(loss_date AS string) loss_date, cast(report_date AS string) report_date,
+               report_channel, reporting_lag_days, incident_type, description_text,
+               product, sum_insured, annual_premium, policy_tenure_years,
+               sum_insured_to_reported_ratio, postcode_district, third_party_involved,
+               flood_risk_score, wind_risk_score, freeze_risk_score, weather_risk_composite,
+               total_incurred, paid_amount, initial_reserve, ultimate_reserve,
+               fraud_score, prior_claims_12m, days_since_incident, is_high_value,
+               is_potential_fraud, at_fault, claim_status, days_to_settle, leakage_flag,
+               handler_id, handler_grade, triage_decision, reserve_bracket
+        FROM {_fq('silver_claims_enriched')} WHERE claim_public_id = '{_esc(cid)}'
+    """)
+    return rows[0] if rows else {}
+
+
+# --------------------------------------------------------------------------
+# Stage B — Governance & Portfolio (dashboard + genie + lineage links)
+# --------------------------------------------------------------------------
+def _governance_sync() -> dict:
+    import requests
+    from server.sql import _client
+    w = _client()
+    host = w.config.host.rstrip("/")
+    hdr = w.config._header_factory()
+    did = config.DASHBOARD_ID
+    if not did:
+        try:
+            r = requests.get(f"{host}/api/2.0/lakeview/dashboards?page_size=200", headers=hdr, timeout=60).json()
+            for d in r.get("dashboards", []):
+                if "Claims Portfolio" in (d.get("display_name") or ""):
+                    did = d.get("dashboard_id")
+                    break
+        except Exception as e:
+            logger.warning("dashboard lookup failed: %s", e)
+    gid = config.GENIE_SPACE_ID
+    chain = ["landing_gw_cc_claim", "bronze_gw_cc_claim", "silver_claims_enriched",
+             "feature_triage", "model_triage_classifier", "gold_handler_decisions"]
+    lineage = [{"asset": a, "explore_url": f"{host}/explore/data/{config.CATALOG}/{config.SCHEMA}/{a}"} for a in chain]
+    return {
+        "dashboard_id": did,
+        "dashboard_url": f"{host}/dashboardsv3/{did}" if did else None,
+        "dashboard_embed_url": f"{host}/embed/dashboardsv3/{did}" if did else None,
+        "genie_url": f"{host}/genie/rooms/{gid}" if gid else None,
+        "genie_embed_url": f"{host}/embed/genie/rooms/{gid}" if gid else None,
+        "lineage": lineage,
+    }
+
+
+async def governance_links() -> dict:
+    return await asyncio.to_thread(_governance_sync)
+
+
+def reset_available() -> bool:
+    from server.sql import _client
+    try:
+        return next((j for j in _client().jobs.list(name=config.RESET_JOB_NAME)), None) is not None
+    except Exception:
+        return False

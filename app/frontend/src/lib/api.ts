@@ -29,6 +29,11 @@ export const api = {
   postDecision: (body: any) => fetchJson<any>('/decision', { method: 'POST', body: JSON.stringify(body) }),
   getDecisions: (limit = 20) => fetchJson<any[]>(`/decisions?limit=${limit}`),
   resetDemo: () => fetchJson<any>('/reset-demo', { method: 'POST', body: JSON.stringify({}) }),
+  getResetStatus: () => fetchJson<{ available: boolean }>('/reset-status'),
+
+  getIngestion: () => fetchJson<any>('/ingestion'),
+  getEnrichment: (cid: string) => fetchJson<any>(`/claim/enrichment?cid=${encodeURIComponent(cid)}`),
+  getGovernance: () => fetchJson<any>('/governance'),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

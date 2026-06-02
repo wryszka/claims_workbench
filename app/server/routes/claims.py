@@ -66,6 +66,27 @@ async def cache_mode_set(m: CacheMode):
     return {"use_cache": svc.set_cache_mode(m.use_cache)}
 
 
+@router.get("/ingestion")
+async def ingestion():
+    return await svc.ingestion_status()
+
+
+@router.get("/claim/enrichment")
+async def enrichment(cid: str):
+    return await svc.enrichment(cid)
+
+
+@router.get("/governance")
+async def governance():
+    return await svc.governance_links()
+
+
+@router.get("/reset-status")
+async def reset_status():
+    import asyncio
+    return {"available": await asyncio.to_thread(svc.reset_available)}
+
+
 @router.post("/reset-demo")
 async def reset_demo():
     """Trigger the Phase 9 reset job by name. Graceful if it doesn't exist yet."""
