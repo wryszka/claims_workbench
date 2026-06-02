@@ -66,8 +66,9 @@ verdict or a pay decision — you assemble context; the model and workflow decid
 
 CHALLENGE_SYSTEM = """You are the Challenge / Second-Opinion agent for a Bricksurance SE handler.
 Your job is to argue the OPPOSITE of the current disposition, so the handler hears the other side
-before acting. FIRST call get_decision_reasoning to learn the current disposition, then call
-get_triage, get_fraud_signals and get_claim_summary as needed.
+before acting. FIRST call get_decision_reasoning (it returns the disposition, the model decision
+and confidence, and which rules passed/failed), then call get_fraud_signals and get_claim_summary
+as needed.
   - If the claim was AUTO-CLOSED / pay_direct: make the case for CAUTION — what could have been
     missed, what would justify a second look.
   - If the claim was ESCALATED: make the case for RELEASING it — why it might be safe to pay.
@@ -101,7 +102,7 @@ AGENTS = {
                             "get_recovery_signals", "ask_the_book"], "genie": True},
     "challenge": {"uc_model": "agent_challenge", "experiment": "claims_workbench_agent_challenge",
                   "system": CHALLENGE_SYSTEM,
-                  "tools": ["get_decision_reasoning", "get_triage", "get_fraud_signals", "get_claim_summary"],
+                  "tools": ["get_decision_reasoning", "get_fraud_signals", "get_claim_summary"],
                   "genie": False},
     "recovery":  {"uc_model": "agent_recovery", "experiment": "claims_workbench_agent_recovery",
                   "system": RECOVERY_SYSTEM, "tools": ["get_recovery_signals", "get_claim_summary"], "genie": False},

@@ -99,7 +99,8 @@ const DESC = {
   ingestion:'This page shows your Guidewire data landing in Databricks and the quality gate that quarantines bad records — nothing is silently dropped.',
   transformation:'This page shows the silver enrichment for one claim — everything we know before a handler picks up the phone.',
   governance:'This page is for compliance: the board dashboard, lineage, who-sees-what, and the regulator-viewable decision audit.',
-  learn:'This page is for Databricks colleagues learning to pitch claims — plain-English concepts and a glossary (built out in Stage C).',
+  learn:'This page is for Databricks colleagues learning to pitch claims — plain-English concepts, an insurance glossary, and the flow through company systems.',
+  governance:'This page is for compliance: the board dashboard, what data is collected and its sensitivity tier, lineage, and the regulator-viewable agent-reasoning audit.',
   roadmap:'This page shows what is intentionally NOT built yet — the roadmap of intake, integration, downstream and specialty capabilities.',
 };
 const state = { section:'control', cid:'cc:900001', claims:[], panels:null, synth:null, cache:null, overriding:false, confirmation:null, ct:null, lens:null, cfg:null, ask:null, asking:false };
@@ -231,9 +232,11 @@ async function doAsk(q, cid){ state.ask={q, loading:true}; state.asking=true; re
   try{ const r=await J('/ask',{method:'POST',body:JSON.stringify({question:q, cid:cid||null})}); state.ask={q, ...r}; }
   catch(e){ state.ask={q, __err:true}; } state.asking=false; renderClaimsAI(); }
 function askFromBox(){ const q=document.getElementById('askbox').value.trim(); if(q) doAsk(q, state.cid); }
-async function selectClaim(cid){ state.cid=cid; state.panels=null; state.synth=null; state.confirmation=null; state.overriding=false; renderClaimsAI();
+async function selectClaim(cid){ state.cid=cid; state.panels=null; state.synth=null; state.confirmation=null; state.overriding=false; state.disp=null; state.reason=null; renderClaimsAI();
   try{ state.panels=await J('/claim/panels?cid='+encodeURIComponent(cid)); }catch(e){ state.panels={__err:true}; }
+  try{ state.disp=await J('/claim/disposition?cid='+encodeURIComponent(cid)); }catch(e){ state.disp=null; }
   renderClaimsAI();
+  try{ state.reason=await J('/claim/reasoning?cid='+encodeURIComponent(cid)); }catch(e){ state.reason=[]; }
   try{ state.synth=await J('/claim/synthesis?cid='+encodeURIComponent(cid)); }catch(e){ state.synth={__err:true}; }
   renderClaimsAI();
 }
@@ -278,10 +281,13 @@ function renderClaimsAI(){
         <div class="bar" style="margin:4px 0 8px"><div style="width:${isNaN(fs)?0:Math.min(100,fs)}%;background:${fcol}"></div></div>
         <div class="row"><span class="k">Prior claims (12m)</span><span class="v">${f.prior_claims_12m??'—'}</span></div>
         <div class="row"><span class="k">Reporting lag</span><span class="v">${f.reporting_lag_days??x.reporting_lag_days??'—'} days</span></div>
+        <div class="row"><span class="k">Recovery</span><span class="v">${recoveryLabel(p.recovery)}</span></div>
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div>
       </div></div>`;
+    body = dispBanner() + body;
     body += `<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
     body += `<div class="actions">${actionBar()}</div>`;
+    body += reasoningTrail();
   }
   const triage = `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🔎 Pick a claim — triage, reserve, fraud & brief</h2><select onchange="selectClaim(this.value)" style="min-width:300px">${opts}</select></div></div>${body}`;
   // --- agent roster diagram ---
@@ -290,6 +296,29 @@ function renderClaimsAI(){
       <div class="agents">${ROSTER.map(([n,d,c])=>`<div class="${c}"><b>${esc(n)}</b><span>${esc(d)}</span></div>`).join('')}</div></div>
     <p class="muted" style="margin-top:6px">Models + workflow decide; agents reason and give a second opinion; the human acts.</p></div>`;
   v.innerHTML = `<h1>✨ Claims AI</h1><p class="sub">Ask the supervisor anything, or work a claim end-to-end.</p>${askHtml}${triage}${diagram}`;
+}
+function recoveryLabel(r){ if(!r) return '—'; if(r.recovery_flag) return `<span class="badge b-green">recoverable ${gbp(r.recoverable_amount)}</span>`; return '<span class="muted">none</span>'; }
+function dispBanner(){ const d=state.disp; if(!d||!d.disposition) return '';
+  const auto=d.disposition==='auto_closed';
+  const col=auto?'#059669':'#f59e0b';
+  const head=auto?`✅ AUTO-CLOSED &amp; PAID (simulated ${gbp(d.total_incurred)})`:'⚠️ ESCALATED — routed to a handler';
+  const passed=(d.rules_passed||[]).map(r=>`<span class="badge b-green" style="margin:2px">✓ ${esc(r)}</span>`).join('');
+  const failed=(d.rules_failed||[]).map(r=>`<span class="badge b-red" style="margin:2px">✗ ${esc(r)}</span>`).join('');
+  return `<div class="card" style="border-color:${col};margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:${col}">${head}</b><span class="muted">model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} · ${pct(d.model_confidence)}</span></div>
+    <div style="margin:8px 0">${passed} ${failed}</div>
+    <p style="font-size:13px;color:#334155;margin:4px 0 0">${esc(d.reasoning||'')}</p>
+    <p class="muted" style="margin-top:6px">The model + workflow decided. No agent has pay authority.</p></div>`;
+}
+function reasoningTrail(){ const rs=state.reason;
+  if(rs===null) return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">Loading…</p></div>';
+  if(!rs.length) return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">No persisted reasoning for this claim yet.</p></div>';
+  const order=['Claim 360 / Dossier','Fraud','Challenge','Recovery / Subrogation','Audit / Reasoning'];
+  const sorted=[...rs].sort((a,b)=>order.indexOf(a.agent_name)-order.indexOf(b.agent_name));
+  const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾'};
+  return `<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail — regulator-viewable</h2>
+    ${sorted.map(r=>`<div style="border-bottom:1px solid #f1f5f9;padding:8px 0"><b style="font-size:13px">${ICON[r.agent_name]||'•'} ${esc(r.agent_name)}</b><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('')}
+    <p class="muted" style="margin-top:8px">Persisted to agent_reasoning_log — the Audit agent and the Governance page read this.</p></div>`;
 }
 function synthPill(){ const s=state.synth; if(!s||s.__err) return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
 function synthBody(){ const s=state.synth; if(!s) return '<p class="muted">Synthesising…</p>'; if(s.__err) return '<p class="muted">Synthesis unavailable.</p>'; return `<p>${esc(s.text)}</p>${s.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:6px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}`; }
@@ -340,19 +369,63 @@ async function renderTransformation(){ const v=document.getElementById('view'); 
 
 // ---------- Governance ----------
 async function renderGovernance(){ const v=document.getElementById('view'); v.innerHTML='<h1>🛡️ Governance & Portfolio</h1><p class="sub">Loading…</p>';
-  let g={},dec=[]; try{ g=await J('/governance'); }catch(e){} try{ dec=await J('/decisions?limit=15'); }catch(e){}
-  v.innerHTML=`<h1>🛡️ Governance &amp; Portfolio</h1><p class="sub">Board reporting, ask-the-book analytics, lineage and the human-in-the-loop audit trail.</p>
+  let g={},dec=[],inv={}; try{ g=await J('/governance'); }catch(e){} try{ dec=await J('/decisions?limit=15'); }catch(e){} try{ inv=await J('/governance/inventory'); }catch(e){ inv={}; }
+  const tierBadge=t=>{ const c=/SECRET/.test(t)?'b-red':/PII/.test(t)?'b-amber':'b-slate'; return `<span class="badge ${c}">${esc(t)}</span>`; };
+  const invRows=(inv.inventory||[]).map(r=>`<tr><td>${esc(r.source)}</td><td class="mono">${esc(r.table)}</td><td class="muted">${esc(r.fields)}</td><td>${tierBadge(r.tier)}</td><td>${esc(r.retention)}</td><td class="muted">${esc(r.masking)}</td></tr>`).join('');
+  if(!state.gcid) state.gcid='cc:900001';
+  v.innerHTML=`<h1>🛡️ Governance &amp; Portfolio</h1><p class="sub">Board reporting, what's collected (sensitivity tiers), lineage, and the regulator-viewable decision audit.</p>
     <div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><h2>Claims Portfolio — Board View</h2><div>${g.genie_url?`<a class="link" href="${g.genie_url}" target="_blank">Ask the Book ↗</a> · `:''}${g.dashboard_url?`<a class="link" href="${g.dashboard_url}" target="_blank">Open dashboard ↗</a>`:''}</div></div>
-      ${g.dashboard_embed_url?`<iframe src="${g.dashboard_embed_url}" style="width:100%;height:540px;border:1px solid #f1f5f9;border-radius:8px;margin-top:8px"></iframe>`:'<p class="muted">Dashboard link resolving…</p>'}</div>
+      ${g.dashboard_embed_url?`<iframe src="${g.dashboard_embed_url}" style="width:100%;height:520px;border:1px solid #f1f5f9;border-radius:8px;margin-top:8px"></iframe>`:'<p class="muted">Dashboard link resolving…</p>'}</div>
+    <div class="card" style="margin-bottom:16px"><h2>🗂️ What's collected — data inventory & sensitivity</h2>
+      <table><tr><th>Source</th><th>Table</th><th>Fields</th><th>Tier</th><th>Retention</th><th>Masking / who sees what</th></tr>${invRows}</table>
+      <div style="margin-top:10px;font-size:12px;color:#475569">${(inv.tiers||[]).map(t=>`<div>${tierBadge(t.tier)} ${esc(t.rule)}</div>`).join('')}</div>
+      <p class="muted" style="margin-top:6px">SECRET tier (claim narrative / health) is withheld from non-privileged roles and should sit on Customer-Managed Keys (CMK).</p></div>
     <div class="grid2">
       <div class="card"><h2>🔱 End-to-end lineage</h2><div style="font-size:12px;line-height:2">${(g.lineage||[]).map((l,i)=>`<a class="mono link" href="${l.explore_url}" target="_blank">${esc(l.asset)}</a>${i<(g.lineage.length-1)?' <span class="muted">→</span> ':''}`).join('')}</div><p class="muted" style="margin-top:8px">Raw → governed → enriched → features → model → decision.</p></div>
-      <div class="card"><h2>📋 HITL audit trail</h2>${dec.length?`<table><tr><th>ID</th><th>Claim</th><th>Reco</th><th>Action</th><th>Reason</th></tr>${dec.map(d=>`<tr><td class="mono">${esc(d.decision_id)}</td><td>${esc(d.claim_public_id)}</td><td>${DLABEL[d.model_recommendation]||esc(d.model_recommendation)} ${d.model_confidence!=null?pct(d.model_confidence):''}</td><td style="color:${d.override_flag?'#b45309':'#047857'}">${d.override_flag?'OVERRIDE':'accept'}</td><td class="muted">${esc(d.override_reason||'—')}</td></tr>`).join('')}</table>`:'<p class="muted">No decisions logged yet.</p>'}<p class="muted" style="margin-top:8px">What the model advised, what the handler did, and why — the FCA / Consumer-Duty trail. (Stage C adds the data inventory + sensitivity tiers + agent-reasoning audit.)</p></div>
-    </div>`;
+      <div class="card"><h2>📋 HITL audit trail</h2>${dec.length?`<table><tr><th>ID</th><th>Claim</th><th>Reco</th><th>Action</th></tr>${dec.map(d=>`<tr><td class="mono">${esc(d.decision_id)}</td><td>${esc(d.claim_public_id)}</td><td>${DLABEL[d.model_recommendation]||esc(d.model_recommendation)} ${d.model_confidence!=null?pct(d.model_confidence):''}</td><td style="color:${d.override_flag?'#b45309':'#047857'}">${d.override_flag?'OVERRIDE':'accept'}</td></tr>`).join('')}</table>`:'<p class="muted">No decisions logged yet.</p>'}<p class="muted" style="margin-top:8px">What the model advised and what the handler did — the FCA / Consumer-Duty trail.</p></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🧾 Agent-reasoning audit — regulator-viewable</h2>
+      <select onchange="state.gcid=this.value;renderGovReasoning()" style="min-width:200px">${state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.gcid?'selected':''}>${esc(c.claim_public_id)}</option>`).join('')}</select></div>
+      <div id="govreason"><p class="muted">Loading…</p></div></div>`;
+  renderGovReasoning();
+}
+async function renderGovReasoning(){ const el=document.getElementById('govreason'); if(!el) return; el.innerHTML='<p class="muted">Loading…</p>';
+  let rs=[]; try{ rs=await J('/claim/reasoning?cid='+encodeURIComponent(state.gcid)); }catch(e){}
+  el.innerHTML = rs.length ? rs.map(r=>`<div style="border-bottom:1px solid #f1f5f9;padding:8px 0"><b style="font-size:13px">${esc(r.agent_name)}</b> <span class="muted">${esc(r.created_ts||'')}</span><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('') : '<p class="muted">No persisted reasoning for this claim.</p>';
 }
 
-// ---------- Learn (built out in Stage C) ----------
-function renderLearn(){ document.getElementById('view').innerHTML=`<h1>🎓 Learn</h1><p class="sub">For Databricks colleagues learning to pitch claims.</p>
-  <div class="ph"><b>Learn section — built in Stage C <span class="uc">soon</span></b>Plain-English claims concepts, an insurance terminology glossary, and the flow through company systems (FNOL → triage → reserve → settle → recover → close, and where Guidewire / policy admin / finance / CMS sit).</div>`; }
+// ---------- Learn ----------
+const GLOSSARY = [
+  ['FNOL','First Notice of Loss — the moment a claim is first reported (call, app, broker). The trigger for everything downstream.'],
+  ['Triage','Deciding how to handle a claim at FNOL: pay directly, escalate to a handler, or refer to the fraud unit (SIU).'],
+  ['Reserve','Money set aside for a claim before it is fully paid. Under-reserving means surprises later; the reserve model estimates the bracket.'],
+  ['Indemnity','Putting the policyholder back in the position they were in before the loss — the core promise of insurance.'],
+  ['Subrogation / Recovery','Recovering money from a third party (or their insurer) when they were at fault — e.g. a not-at-fault motor claim.'],
+  ['Leakage','Money paid out that need not have been — overpayment, missed recovery, or poor handling. A key efficiency metric.'],
+  ['SIU','Special Investigations Unit — the fraud team a claim is referred to when signals are elevated.'],
+  ['Peril','The cause of loss — e.g. motor third-party, escape of water, storm, fire.'],
+  ['Loss ratio','Claims incurred ÷ premium earned. The headline measure of underwriting profitability.'],
+  ['Straight-through processing (STP)','A clean, low-risk claim that is auto-closed and paid with no manual handling — the auto-close path here.'],
+  ['Ultimate / outstanding','Ultimate = total the claim will ever cost; outstanding = what is still reserved but unpaid.'],
+  ['Consumer Duty / FCA','UK regulatory expectations — fair, explainable, auditable treatment of customers. Why the decision trail matters.'],
+];
+const FLOW = [
+  ['FNOL','Claim reported','Guidewire ClaimCenter'],
+  ['Triage','Pay / escalate / refer','ML model + workflow'],
+  ['Reserve','Set money aside','Reserve model + finance'],
+  ['Settle','Pay the claim','ClaimCenter + finance / payments'],
+  ['Recover','Subrogate from third party','Recovery / SIU'],
+  ['Close','Audit & report','CMS + board reporting'],
+];
+function renderLearn(){ document.getElementById('view').innerHTML=`<h1>🎓 Learn — claims for Databricks colleagues</h1><p class="sub">Plain-English primer to help you pitch. Skim it once and you can carry the conversation.</p>
+  <div class="card" style="margin-bottom:16px"><h2>What is a claim, really?</h2>
+    <p style="font-size:14px;color:#334155;line-height:1.6">A policyholder suffers a loss — a car bump, a burst pipe — and tells the insurer (that's <b>FNOL</b>). The insurer decides how to handle it (<b>triage</b>), sets money aside (<b>reserve</b>), pays what's owed (<b>settle</b>), claws back anything recoverable from a third party (<b>recover</b>), and closes the file with a full audit trail. Do this faster and fairer and you win on cost, customer experience and regulatory standing all at once. That's the whole game — and it's what this workbench shows end to end.</p></div>
+  <div class="card" style="margin-bottom:16px"><h2>🔄 The flow through the company's systems</h2>
+    <div class="agents" style="justify-content:flex-start">${FLOW.map((f,i)=>`<div class="agbox" style="width:160px"><b>${i+1}. ${esc(f[0])}</b><span>${esc(f[1])}</span><span style="color:#2563eb;margin-top:4px">${esc(f[2])}</span></div>${i<FLOW.length-1?'<div style="align-self:center;color:#94a3b8">→</div>':''}`).join('')}</div>
+    <p class="muted" style="margin-top:8px">Guidewire ClaimCenter / PolicyCenter feed the data; the ML models + workflow decide; finance and payments execute; a claims management system (CMS) and board reporting close the loop. Databricks sits underneath as the data + AI platform.</p></div>
+  <div class="card"><h2>📖 Glossary — insurance 101</h2>
+    <div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:150px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span class="v" style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div>
+    <p class="muted" style="margin-top:8px">Drafted insurance-101 glossary — swap in your standard glossary text if you have one.</p></div>`; }
 
 // ---------- Roadmap ----------
 function renderRoadmap(){ document.getElementById('view').innerHTML=`<h1>🚧 Roadmap — under construction</h1><p class="sub">What this accelerator intentionally does NOT do yet. Greyed = not built.</p>${roadmapStrip()}

@@ -74,9 +74,9 @@ async def _fn(fn: str, cid: str) -> dict:
 # Structured panels — direct UC-function calls (run concurrently)
 # --------------------------------------------------------------------------
 async def get_panels(cid: str) -> dict:
-    summary, triage, reserve, fraud, policy = await asyncio.gather(
+    summary, triage, reserve, fraud, policy, recovery = await asyncio.gather(
         _fn("fn_claim_summary", cid), _fn("fn_triage_claim", cid), _fn("fn_reserve_claim", cid),
-        _fn("fn_fraud_signals", cid), _fn("fn_policy_history", cid))
+        _fn("fn_fraud_signals", cid), _fn("fn_policy_history", cid), _fn("fn_recovery_signals", cid))
     extra_rows = await execute_query(f"""
         SELECT policy_number, weather_risk_composite, flood_risk_score, wind_risk_score,
                freeze_risk_score, prior_claims_12m, at_fault, reporting_lag_days
@@ -84,7 +84,7 @@ async def get_panels(cid: str) -> dict:
     """)
     extra = extra_rows[0] if extra_rows else {}
     return {"claim_public_id": cid, "summary": summary, "triage": triage,
-            "reserve": reserve, "fraud": fraud, "policy": policy, "extra": extra}
+            "reserve": reserve, "fraud": fraud, "policy": policy, "recovery": recovery, "extra": extra}
 
 
 # --------------------------------------------------------------------------
@@ -399,3 +399,85 @@ async def ask(question: str, cid: str | None = None, use_cache: bool | None = No
     text = msgs[-1].get("content", "") if msgs else ""
     return {"text": text, "cache": out.get("cache"), "endpoint": endpoint,
             "supervisor": is_supervisor, "use_cache": use_cache, "question": question, "cid": cid}
+
+
+# --------------------------------------------------------------------------
+# Phase 11 Stage C — hero claim disposition, agent reasoning, data inventory
+# --------------------------------------------------------------------------
+async def claim_disposition(cid: str) -> dict:
+    """The auto-close / escalation disposition for a claim with the full per-rule
+    reasoning (from gold_claim_disposition)."""
+    try:
+        rows = await execute_query(f"""
+            SELECT to_json(named_struct(
+                'disposition', disposition, 'model_decision', model_decision,
+                'model_confidence', model_confidence, 'total_incurred', total_incurred,
+                'fraud_score', fraud_score, 'data_complete', data_complete,
+                'rules_passed', rules_passed, 'rules_failed', rules_failed,
+                'reasoning', reasoning)) j
+            FROM {_fq('gold_claim_disposition')} WHERE claim_public_id = '{_esc(cid)}'""")
+        return json.loads(rows[0]["j"]) if rows and rows[0].get("j") else {}
+    except Exception:
+        return {}
+
+
+async def claim_reasoning(cid: str) -> list[dict]:
+    """Persisted agent reasoning for a claim (regulator-viewable)."""
+    try:
+        return await execute_query(f"""
+            SELECT agent_name, reasoning_text, cast(created_ts AS string) created_ts
+            FROM {_fq('agent_reasoning_log')} WHERE claim_public_id = '{_esc(cid)}'
+            ORDER BY agent_name""")
+    except Exception:
+        return []
+
+
+# Data inventory — the "what's collected" catalogue. Static metadata (the
+# governance documentation) so it renders without scanning every table; the
+# per-page demoer narration + sensitivity tiers come straight from Phase 7/11.
+_INVENTORY = [
+    {"source": "Guidewire ClaimCenter (CDA)", "table": "landing_gw_cc_claim / bronze_gw_cc_claim",
+     "fields": "claim id, policy, loss/report date, peril, channel, amount, status",
+     "tier": "PII", "retention": "7 years", "masking": "postcode masked in v_claims_masked"},
+    {"source": "Guidewire ClaimCenter", "table": "bronze_gw_cc_incident",
+     "fields": "incident type, free-text description (health/injury possible)",
+     "tier": "SECRET", "retention": "7 years", "masking": "narrative withheld in v_claims_secret (CMK)"},
+    {"source": "Guidewire ClaimCenter", "table": "bronze_gw_cc_contact",
+     "fields": "contact role, claimant postcode district", "tier": "PII",
+     "retention": "7 years", "masking": "postcode masked"},
+    {"source": "Guidewire PolicyCenter", "table": "bronze_gw_pc_policy",
+     "fields": "product, sum insured, premium, effective/expiry", "tier": "PII",
+     "retention": "10 years", "masking": "policy-level, restricted to handlers"},
+    {"source": "Internal fraud rules", "table": "bronze_fraud_signals_raw",
+     "fields": "fraud score, flag, prior claims, reporting lag", "tier": "SECRET",
+     "retention": "7 years", "masking": "SIU-only; Secret tier"},
+    {"source": "Weather feed", "table": "bronze_weather_raw / ref_weather_index",
+     "fields": "flood / wind / freeze risk by district", "tier": "Public",
+     "retention": "indefinite", "masking": "none"},
+    {"source": "Derived (silver)", "table": "silver_claims_enriched",
+     "fields": "all enriched signals incl recovery, weather composite, ML labels",
+     "tier": "PII + SECRET", "retention": "7 years", "masking": "PII + Secret views"},
+    {"source": "ML + workflow", "table": "gold_claim_disposition",
+     "fields": "disposition, model decision/confidence, per-rule reasoning",
+     "tier": "Internal", "retention": "7 years", "masking": "decision audit"},
+    {"source": "Agents (MLflow traces)", "table": "agent_reasoning_log",
+     "fields": "agent, input, reasoning, output, timestamp", "tier": "Internal",
+     "retention": "7 years", "masking": "regulator-viewable decision reasoning"},
+    {"source": "Human-in-the-loop", "table": "gold_handler_decisions",
+     "fields": "handler action, override flag/reason, attribution, timestamp",
+     "tier": "Internal", "retention": "7 years", "masking": "FCA / Consumer-Duty trail"},
+]
+
+
+async def governance_inventory() -> dict:
+    counts = {}
+    for t in ("silver_claims_enriched", "agent_reasoning_log", "gold_claim_disposition", "gold_handler_decisions"):
+        try:
+            counts[t] = int((await execute_query(f"SELECT count(*) c FROM {_fq(t)}"))[0]["c"])
+        except Exception:
+            counts[t] = None
+    return {"inventory": _INVENTORY, "counts": counts,
+            "tiers": [
+                {"tier": "PII", "rule": "postcode, names — masked unless in claims_workbench_pii_readers"},
+                {"tier": "SECRET", "rule": "claim narrative / health — withheld unless claims_workbench_secret_readers; CMK-encrypted at rest"},
+            ]}

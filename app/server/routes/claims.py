@@ -112,6 +112,21 @@ async def ask(a: AskIn):
     return await svc.ask(a.question, a.cid, a.use_cache)
 
 
+@router.get("/claim/disposition")
+async def claim_disposition(cid: str):
+    return await svc.claim_disposition(cid)
+
+
+@router.get("/claim/reasoning")
+async def claim_reasoning(cid: str):
+    return await svc.claim_reasoning(cid)
+
+
+@router.get("/governance/inventory")
+async def governance_inventory():
+    return await svc.governance_inventory()
+
+
 @router.get("/reset-status")
 async def reset_status():
     import asyncio
