@@ -62,6 +62,7 @@ export const api = {
   getExpertOpinion: (cid: string, role: string) =>
     fetchJson<any>(`/claim/expert?cid=${encodeURIComponent(cid)}&role=${role}`),
   getFairOutcomes: () => fetchJson<any>('/governance/fair-outcomes'),
+  getRules: () => fetchJson<any>('/rules'),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

@@ -157,14 +157,18 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
   try{state.brief=await J('/monday-brief');}catch(e){state.brief=null;}
   try{state.cfg=await J('/auto-close/config');}catch(e){state.cfg={conf_threshold:85,amount_cap:2000,fraud_floor:20};}
   const t=state.ct, h=t.hero||{}, rec=t.recovery||{}, res=t.reserve||{};
-  const tileEl=x=>`<div class="tile" style="border-left:3px solid ${RAGC[x.rag||'info']};${x.worklist?'cursor:pointer':''}" ${x.worklist?`onclick="goWork('${x.worklist}')"`:''}><div class="l">${esc(x.label)}</div><div class="n">${fmtv(x.value,x.fmt)}${trendArrow(x.trend)}</div><div class="s">${esc(x.sub||'')}${x.worklist?' · view →':''}</div></div>`;
+  const tileEl=x=>`<div class="tile" style="border-left:3px solid ${RAGC[x.rag||'info']};${x.worklist?'cursor:pointer':''}" ${x.worklist?`onclick="goWork('${x.worklist}')"`:''}><div class="l">${esc(x.label)}${x.illustrative?' <span class="badge b-slate" style="font-size:9px">illustrative</span>':''}</div><div class="n">${fmtv(x.value,x.fmt)}${trendArrow(x.trend)}</div><div class="s">${esc(x.sub||'')}${x.worklist?' · view →':''}</div></div>`;
+  const BUILT_ON='Built on the Databricks Smart Claims solution accelerator and the EY Future of Claims Management framework — extended to personal lines with Guidewire CDA ingestion, Agent Bricks multi-agent supervision, auto-close, and full governance.';
   const heroCard=`<div class="tile hero"><div class="l">% Auto-closed — straight-through</div><div class="n">${pct(h.pct_auto_closed)}${trendArrow(h.trend)}</div><div class="s">${num(h.auto_closed)} claims · ≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs saved · target ${h.target}%</div></div>`;
   const recCard=`<div class="tile" style="border-left:3px solid #10b981;cursor:pointer" onclick="goWork('recovery')"><div class="l">💷 Recovery on the table</div><div class="n">${gbp(rec.total)}${trendArrow(rec.trend)}</div><div class="s">${num(rec.count)} open claims · view →</div></div>`;
   const resCard=res.dev_ratio?`<div class="tile" style="border-left:3px solid ${res.dev_ratio>1.15?'#ef4444':'#f59e0b'};cursor:pointer" onclick="goWork('underreserved')"><div class="l">⚠️ EoW reserve development</div><div class="n">${res.dev_ratio}×</div><div class="s">~${Math.round((res.dev_ratio-1)*100)}% under-reserved · gap ≈${gbp(Math.abs(res.gap||0))} · view →</div></div>`:`<div class="tile"><div class="l">Reserve development</div><div class="n">—</div></div>`;
   v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you on Monday, the money on the table, and a live auto-close risk-appetite dial.')
     +`<div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
     <div class="grid3" style="margin-bottom:16px">${heroCard}${recCard}${resCard}</div>
-    <div class="grid4" style="margin-bottom:22px">${(t.tiles||[]).map(tileEl).join('')}</div>
+    <div class="eyebrow" style="margin:4px 0 8px">⚙️ Efficiency — how well we run claims</div>
+    <div class="grid4" style="margin-bottom:18px">${(t.efficiency||[]).map(tileEl).join('')}</div>
+    <div class="eyebrow" style="margin:4px 0 8px">🎯 Effectiveness — how well we protect the P&amp;L</div>
+    <div class="grid4" style="margin-bottom:22px">${(t.effectiveness||[]).map(tileEl).join('')}</div>
     <div class="grid2">
       <div class="card"><h2>🗓️ Monday brief — what needs you</h2>${briefHtml()}<p class="muted" style="margin-top:8px">Prioritised from the live book — each line opens a worklist you can act on.</p></div>
       <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
@@ -172,7 +176,8 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
         <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
         <div class="srow"><label>Max fraud score</label><input type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
         <div style="margin-top:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:var(--v)" id="seg_pct">${pct(h.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(h.auto_closed)} auto-closed · ${num(h.escalated)} escalated</div></div></div></div>
-    <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}<p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>`;
+    <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}<p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>
+    <div class="card" style="margin-top:16px;border-left:3px solid var(--v)"><div class="eyebrow">🏗️ Built on</div><p style="font-size:13px;color:#334155;line-height:1.55;margin:4px 0 0">${esc(BUILT_ON)}</p><p class="muted" style="margin-top:6px">Same foundation, advanced — full provenance in <a class="link" onclick="go('learn')">Learn</a>.</p></div>`;
 }
 function briefHtml(){ const b=state.brief; if(!b||!b.sections)return '<p class="muted">Unavailable.</p>';
   return b.sections.filter(s=>s.items&&s.items.length).map(sec=>`<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${sec.icon} ${esc(sec.title)}</div>${sec.items.map(it=>`<div style="font-size:13px;color:#334155;margin:5px 0;line-height:1.45">${esc(it.text)}${it.worklist?` <a class="link" onclick="goWork('${it.worklist}')">${esc(it.action||'open')} →</a>`:''}</div>`).join('')}</div>`).join(''); }

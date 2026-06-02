@@ -96,6 +96,11 @@ async def auto_close_segment(conf: float = 85.0, cap: float = 2000.0, fraud: flo
     return await svc.segment_auto_close(conf, cap, fraud)
 
 
+@router.get("/rules")
+async def rules():
+    return await svc.rules()
+
+
 @router.get("/monitoring-lens")
 async def monitoring_lens():
     return await svc.monitoring_lens()

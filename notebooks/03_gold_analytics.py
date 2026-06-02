@@ -231,8 +231,10 @@ disposition_schema = T.StructType([
     T.StructField("total_incurred", T.DecimalType(12, 2)),
     T.StructField("fraud_score", T.IntegerType()),
     T.StructField("data_complete", T.BooleanType()),
+    T.StructField("nonfraud_rule_fired", T.BooleanType()),
     T.StructField("rules_passed", T.ArrayType(T.StringType())),
     T.StructField("rules_failed", T.ArrayType(T.StringType())),
+    T.StructField("fired_rules", T.ArrayType(T.StringType())),
     T.StructField("reasoning", T.StringType()),
     T.StructField("evaluated_ts", T.TimestampType()),
 ])

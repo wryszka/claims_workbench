@@ -81,6 +81,32 @@ print(f"thresholds: confidence >= {CONF}% | amount <= GBP {CAP:,.0f} | fraud_sco
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 1b · Dynamic rule engine config (`rule_config`) — explainable business rules
+# MAGIC R1 fraud, R2 reporting lag, R3 prior-claims velocity, R4 amount/sum-insured anomaly,
+# MAGIC R5 severity/amount consistency. Each emits a flag + plain-English reason; any fired
+# MAGIC rule blocks auto-close (model + workflow decide). Params adjustable in the app settings.
+# MAGIC R6/R7 (telematics, image severity) are Phase 12 — clean hooks left below.
+
+# COMMAND ----------
+
+RULE_DEFAULTS = {"lag_limit": 14.0, "velocity_limit": 1.0, "ratio_ceiling": 0.9, "severity_mult": 5.0}
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {tbl('rule_config')} (
+  config_key STRING, lag_limit DOUBLE, velocity_limit DOUBLE, ratio_ceiling DOUBLE, severity_mult DOUBLE, updated_ts TIMESTAMP
+) USING DELTA
+COMMENT 'Dynamic rule-engine parameters (R2 lag, R3 velocity, R4 ratio anomaly, R5 severity). R1 fraud uses auto_close_config.fraud_floor. Phase 12 adds R6/R7.'
+""")
+if spark.table(tbl("rule_config")).count() == 0:
+    spark.sql(f"""INSERT INTO {tbl('rule_config')} VALUES ('default',
+        {RULE_DEFAULTS['lag_limit']}, {RULE_DEFAULTS['velocity_limit']},
+        {RULE_DEFAULTS['ratio_ceiling']}, {RULE_DEFAULTS['severity_mult']}, current_timestamp())""")
+rc = spark.table(tbl("rule_config")).where("config_key='default'").collect()[0].asDict()
+LAG, VEL, RATIOC, SEVM = float(rc["lag_limit"]), float(rc["velocity_limit"]), float(rc["ratio_ceiling"]), float(rc["severity_mult"])
+print(f"rules: R2 lag>{LAG:.0f}d | R3 prior>{VEL:.0f} | R4 ratio>{RATIOC} | R5 amount>{SEVM:.0f}x peril norm")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 2 · Batch-score the champion triage model (probabilities → decision + confidence)
 
 # COMMAND ----------
@@ -115,7 +141,8 @@ print(f"scored {scored.count():,} claims")
 
 silver = spark.table(tbl("silver_claims_enriched")).select(
     "claim_public_id", "total_incurred", "fraud_score", "loss_date", "report_date",
-    "peril_type", "postcode_district", "description_text")
+    "peril_type", "postcode_district", "description_text",
+    "reporting_lag_days", "prior_claims_12m", "sum_insured_to_reported_ratio")
 
 # FNOL data complete: every field a handler needs at first notification is present.
 silver = silver.withColumn("data_complete", F.expr(
@@ -123,44 +150,59 @@ silver = silver.withColumn("data_complete", F.expr(
     "AND total_incurred IS NOT NULL AND postcode_district IS NOT NULL "
     "AND description_text IS NOT NULL AND length(trim(description_text)) > 0"))
 
+# Per-peril severity norm for R5 (mean incurred by peril) — joined back per claim.
+peril_norm = (silver.groupBy("peril_type")
+              .agg(F.avg("total_incurred").alias("peril_avg_incurred")))
+silver = silver.join(peril_norm, "peril_type", "left")
+
 df = scored.join(silver, "claim_public_id", "inner")
 
-# Per-rule pass/fail with the contributing values (the audit reasoning).
-df = (df
-    .withColumn("r_decision", F.expr("model_decision = 'pay_direct'"))
-    .withColumn("r_conf", F.expr(f"model_confidence >= {CONF}"))
-    .withColumn("r_amount", F.expr(f"total_incurred <= {CAP}"))
-    .withColumn("r_fraud", F.expr(f"fraud_score <= {FLOOR}"))
-    .withColumn("r_complete", F.col("data_complete"))
-    .withColumn("auto_ok", F.expr("r_decision AND r_conf AND r_amount AND r_fraud AND r_complete"))
-    .withColumn("disposition", F.expr("CASE WHEN auto_ok THEN 'auto_closed' ELSE 'escalated' END")))
-
-# rules_passed / rules_failed as readable arrays: "<rule label> [<actual value>]".
-# Each `val` is a pure SQL string expression for the contributing value.
-rule_exprs = {
-    "r_decision": (f"triage = pay_direct",        "model_decision"),
-    "r_conf":     (f"confidence >= {CONF:.0f}%",  "concat(model_confidence, '%')"),
-    "r_amount":   (f"amount <= GBP {CAP:,.0f}",   "concat('GBP ', format_number(total_incurred, 0))"),
-    "r_fraud":    (f"fraud_score <= {FLOOR:.0f}", "concat('fraud ', CAST(fraud_score AS INT))"),
-    "r_complete": (f"FNOL data complete",         "CAST(data_complete AS STRING)"),
+# The decisioning checks: the risk-appetite BAND (triage/confidence/amount/complete)
+# plus the dynamic RULE ENGINE (R1-R5). Each is a pass/fail with a plain-English reason.
+# auto-close requires model = pay_direct AND every check passes (no rule fired); any
+# failure escalates with the failed checks as the reasons. (Smart-Claims-style rules
+# layer complementing the model; R6 telematics / R7 image-severity are Phase 12 hooks.)
+CHECKS = {
+    # band (A1)
+    "r_decision": (f"model_decision = 'pay_direct'",                              "triage = pay_direct",            "model_decision"),
+    "r_conf":     (f"model_confidence >= {CONF}",                                 f"confidence >= {CONF:.0f}%",     "concat(model_confidence, '%')"),
+    "r_amount":   (f"total_incurred <= {CAP}",                                    f"amount <= GBP {CAP:,.0f}",      "concat('GBP ', format_number(total_incurred, 0))"),
+    "r_complete": (f"data_complete",                                              "FNOL data complete",             "CAST(data_complete AS STRING)"),
+    # dynamic rule engine (A1.5)
+    "R1": (f"fraud_score <= {FLOOR}",                                             f"R1 fraud-score <= {FLOOR:.0f}", "concat('fraud ', CAST(fraud_score AS INT))"),
+    "R2": (f"coalesce(reporting_lag_days,0) <= {LAG}",                            f"R2 reporting-lag <= {LAG:.0f}d","concat(CAST(coalesce(reporting_lag_days,0) AS INT), 'd')"),
+    "R3": (f"coalesce(prior_claims_12m,0) <= {VEL}",                              f"R3 prior-claims <= {VEL:.0f}",  "concat(CAST(coalesce(prior_claims_12m,0) AS INT), ' prior')"),
+    "R4": (f"sum_insured_to_reported_ratio IS NULL OR sum_insured_to_reported_ratio <= {RATIOC}", f"R4 amount/sum-insured ok", "concat('ratio ', round(coalesce(sum_insured_to_reported_ratio,0),3))"),
+    "R5": (f"peril_avg_incurred IS NULL OR total_incurred <= {SEVM} * peril_avg_incurred",        "R5 severity consistent",    "concat('GBP ', format_number(total_incurred,0), ' vs norm GBP ', format_number(coalesce(peril_avg_incurred,0),0))"),
 }
+RULE_KEYS = ["R1", "R2", "R3", "R4", "R5"]
+NONFRAUD_RULES = ["R2", "R3", "R4", "R5"]   # R1 (fraud) is the slider; these gate the live re-segment
+
+for k, (pass_sql, _l, _v) in CHECKS.items():
+    df = df.withColumn(k, F.expr(pass_sql))
+df = df.withColumn("auto_ok", F.expr(" AND ".join(CHECKS.keys())))
+df = df.withColumn("disposition", F.expr("CASE WHEN auto_ok THEN 'auto_closed' ELSE 'escalated' END"))
+df = df.withColumn("nonfraud_rule_fired", F.expr(" OR ".join(f"(NOT {k})" for k in NONFRAUD_RULES)))
+
 passed = F.array_compact(F.array(*[
-    F.expr(f"CASE WHEN {r} THEN concat('{label} [', CAST({val} AS STRING), ']') ELSE NULL END")
-    for r, (label, val) in rule_exprs.items()]))
+    F.expr(f"CASE WHEN {k} THEN concat('{label} [', CAST({val} AS STRING), ']') ELSE NULL END")
+    for k, (_p, label, val) in CHECKS.items()]))
 failed = F.array_compact(F.array(*[
-    F.expr(f"CASE WHEN NOT {r} THEN concat('{label} [', CAST({val} AS STRING), ']') ELSE NULL END")
-    for r, (label, val) in rule_exprs.items()]))
-df = df.withColumn("rules_passed", passed).withColumn("rules_failed", failed)
+    F.expr(f"CASE WHEN NOT {k} THEN concat('{label} [', CAST({val} AS STRING), ']') ELSE NULL END")
+    for k, (_p, label, val) in CHECKS.items()]))
+# Just the fired rule CODES (R1..R5) for a compact display.
+fired_codes = F.array_compact(F.array(*[F.expr(f"CASE WHEN NOT {k} THEN '{k}' ELSE NULL END") for k in RULE_KEYS]))
+df = df.withColumn("rules_passed", passed).withColumn("rules_failed", failed).withColumn("fired_rules", fired_codes)
 
 df = df.withColumn("reasoning", F.expr("""
     concat(
       CASE WHEN disposition = 'auto_closed'
-        THEN concat('AUTO-CLOSED & PAID (simulated): all risk-appetite rules passed. ')
-        ELSE concat('ESCALATED to a handler: ', CAST(size(rules_failed) AS STRING),
-                    ' rule(s) failed. ') END,
+        THEN 'AUTO-CLOSED & PAID (simulated): model said pay_direct and every check passed (no rule fired). '
+        ELSE concat('ESCALATED to a handler: ', CAST(size(rules_failed) AS STRING), ' check(s) failed',
+                    CASE WHEN size(fired_rules) > 0 THEN concat(' [rules: ', concat_ws(',', fired_rules), ']') ELSE '' END, '. ') END,
       'Passed: ', concat_ws('; ', rules_passed),
       CASE WHEN size(rules_failed) > 0 THEN concat('. Failed: ', concat_ws('; ', rules_failed)) ELSE '' END,
-      '. The workflow decided; no agent has pay authority.')
+      '. The model + workflow decided; no agent has pay authority.')
 """))
 
 out = df.select(
@@ -168,7 +210,7 @@ out = df.select(
     F.col("model_confidence").cast("double"),
     F.col("total_incurred").cast("decimal(12,2)"),
     F.col("fraud_score").cast("int"),
-    "data_complete", "rules_passed", "rules_failed", "reasoning",
+    "data_complete", "nonfraud_rule_fired", "rules_passed", "rules_failed", "fired_rules", "reasoning",
     F.current_timestamp().alias("evaluated_ts"))
 
 (out.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
@@ -191,19 +233,27 @@ agg = spark.sql(f"""
   FROM {tbl('gold_claim_disposition')}""").collect()[0]
 print(f">>> % AUTO-CLOSED = {agg['pct_auto_closed']}%  ({agg['auto_closed']:,} of {agg['total']:,})")
 
+# Rule-engine summary: how often each rule fires across the book.
+rule_summary = spark.sql(f"""
+  SELECT r AS rule, count(*) fired FROM {tbl('gold_claim_disposition')}
+  LATERAL VIEW explode(fired_rules) t AS r GROUP BY r ORDER BY r""").collect()
+print("Rule firing across the book:", {x['rule']: x['fired'] for x in rule_summary})
+
 for cid in ["cc:900002", "cc:900001"]:
     r = spark.table(tbl("gold_claim_disposition")).where(F.col("claim_public_id") == cid).collect()
     if r:
         d = r[0].asDict()
         print(f"\n{cid}: disposition={d['disposition']} | model={d['model_decision']} @ {d['model_confidence']}% "
-              f"| GBP {float(d['total_incurred']):,.0f} | fraud {d['fraud_score']}")
+              f"| GBP {float(d['total_incurred']):,.0f} | fraud {d['fraud_score']} | fired_rules={d['fired_rules']}")
         print(f"   reasoning: {d['reasoning']}")
 
 hero2 = spark.table(tbl("gold_claim_disposition")).where("claim_public_id='cc:900002'").collect()
 hero1 = spark.table(tbl("gold_claim_disposition")).where("claim_public_id='cc:900001'").collect()
 assert hero2 and hero2[0]["disposition"] == "auto_closed", "cc:900002 should auto-close"
+assert hero2 and len(hero2[0]["fired_rules"]) == 0, "cc:900002 should fire NO rules (clean)"
 assert hero1 and hero1[0]["disposition"] == "escalated", "cc:900001 should escalate"
-print("\n[OK] cc:900002 auto-closed & cc:900001 escalated.")
+assert hero1 and len(hero1[0]["fired_rules"]) > 0, "cc:900001 should fire blocking rules"
+print(f"\n[OK] cc:900002 auto-closed (no rules) & cc:900001 escalated (rules {hero1[0]['fired_rules']}).")
 
 dbutils.notebook.exit(json.dumps({
     "pct_auto_closed": float(agg["pct_auto_closed"]), "auto_closed": int(agg["auto_closed"]),

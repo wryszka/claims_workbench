@@ -25,7 +25,8 @@ PERIL_SLA = {"motor_tp": 30, "home_fire": 60}   # days; default 45
 DEFAULT_SLA = 45
 # Book targets for the RAG status on each tile.
 TARGETS = {"pct_auto_closed": 15.0, "leakage_rate": 6.0, "avg_settle_days": 35.0,
-           "fraud_refer_rate": 5.0, "sla_breach_pct": 10.0}
+           "fraud_refer_rate": 5.0, "sla_breach_pct": 10.0,
+           "closed_within_target": 80.0, "reserve_adequacy": 95.0, "loss_ratio": 75.0}
 
 
 def _rag(value, target, lower_is_better, amber_mult=1.5):
@@ -343,8 +344,13 @@ async def control_tower() -> dict:
           round(avg(CASE WHEN days_to_settle IS NOT NULL THEN days_to_settle END), 1) avg_settle_days,
           round(100.0 * avg(CASE WHEN coalesce(is_potential_fraud,false) THEN 1 ELSE 0 END), 1) fraud_refer_rate,
           sum(CASE WHEN recovery_flag AND claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) recovery_count,
-          round(sum(CASE WHEN recovery_flag AND claim_status IN ('open','under_investigation') THEN recoverable_amount ELSE 0 END)) recoverable_total
+          round(sum(CASE WHEN recovery_flag AND claim_status IN ('open','under_investigation') THEN recoverable_amount ELSE 0 END)) recoverable_total,
+          sum(CASE WHEN claim_status='withdrawn' THEN 1 ELSE 0 END) withdrawn,
+          sum(CASE WHEN claim_status='settled' AND days_to_settle <= {sla} THEN 1 ELSE 0 END) closed_within,
+          round(sum(CASE WHEN claim_status IN ('open','under_investigation') THEN initial_reserve ELSE 0 END)) init_open,
+          round(sum(CASE WHEN claim_status IN ('open','under_investigation') THEN ultimate_reserve ELSE 0 END)) ult_open
         FROM {s}"""))[0]
+    handlers_n = int((await execute_query(f"SELECT count(*) h FROM {_fq('ref_handlers')}"))[0]["h"]) or 80
     try:
         disp = (await execute_query(f"""
             SELECT sum(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END) auto_closed,
@@ -389,24 +395,56 @@ async def control_tower() -> dict:
         good = (delta < 0) if lower_is_better else (delta > 0)
         return {"delta": delta, "dir": "up" if delta > 0 else ("down" if delta < 0 else "flat"), "good": good}
 
-    tiles = [
+    # Derived EY KPIs (real where the data supports it).
+    settled = int(base["closed"]); declined = int(base["declined"]); withdrawn = int(base["withdrawn"])
+    closed_total = settled + declined + withdrawn
+    pct_within_target = round(100.0 * int(base["closed_within"]) / settled, 1) if settled else None
+    closed_without_pay = round(100.0 * (declined + withdrawn) / closed_total, 1) if closed_total else None
+    pct_litigated = round(100.0 * int(base["investigating"]) / int(base["total"]), 1) if int(base["total"]) else None
+    reserve_adequacy = round(100.0 * float(base["init_open"] or 0) / float(base["ult_open"]), 1) if base.get("ult_open") else None
+    claims_per_fte = round(int(base["open_inv"]) / handlers_n)
+    # Loss / Combined ratio: the synthetic book over-indexes severity vs premium, so these
+    # are shown as ILLUSTRATIVE reference values (see the About/disclaimer) — the structure
+    # and placement is the point; the precise value is not a calibrated P&L.
+    loss_ratio, expense_ratio = 71.0, 28.0
+    combined_ratio = round(loss_ratio + expense_ratio, 1)
+
+    efficiency = [
         {"key": "open", "label": "Open inventory", "value": int(base["open_inv"]), "fmt": "num",
          "sub": f"{int(base['investigating']):,} under investigation", "rag": "info", "worklist": "aged"},
-        {"key": "sla", "label": "Past SLA", "value": past_sla, "fmt": "num",
-         "sub": f"{sla_breach_pct}% of open · per-peril SLA", "rag": _rag(sla_breach_pct, TARGETS["sla_breach_pct"], True), "worklist": "aged"},
-        {"key": "large", "label": "Large losses (open)", "value": int(base["large_losses"]), "fmt": "num",
-         "sub": "over £50,000 — senior review", "rag": "info", "worklist": "large"},
-        {"key": "reserves", "label": "Open reserves", "value": int(base["total_reserves"]), "fmt": "gbp",
-         "sub": "outstanding liability", "rag": "info", "worklist": None},
-        {"key": "leakage", "label": "Leakage rate", "value": base["leakage_rate"], "fmt": "pct",
-         "sub": f"target ≤ {TARGETS['leakage_rate']}% of claims", "rag": _rag(base["leakage_rate"], TARGETS["leakage_rate"], True),
-         "trend": trend("leakage_rate", base["leakage_rate"], True), "worklist": None},
-        {"key": "settle", "label": "Avg settlement", "value": base["avg_settle_days"], "fmt": "days",
-         "sub": f"target ≤ {TARGETS['avg_settle_days']} days", "rag": _rag(base["avg_settle_days"], TARGETS["avg_settle_days"], True),
+        {"key": "escalated", "label": "Escalated", "value": ac and int(disp["escalated"]) or int(disp["escalated"]), "fmt": "num",
+         "sub": "routed to a handler", "rag": "info", "worklist": None},
+        {"key": "settle", "label": "Avg settlement / cycle time", "value": base["avg_settle_days"], "fmt": "days",
+         "sub": f"target <= {TARGETS['avg_settle_days']:.0f} days", "rag": _rag(base["avg_settle_days"], TARGETS["avg_settle_days"], True),
          "trend": trend("avg_settle_days", base["avg_settle_days"], True), "worklist": None},
+        {"key": "within", "label": "% closed within target", "value": pct_within_target, "fmt": "pct",
+         "sub": f"settled within peril SLA · target >= {TARGETS['closed_within_target']:.0f}%",
+         "rag": _rag(pct_within_target, TARGETS["closed_within_target"], False), "worklist": None},
+        {"key": "sla", "label": "Aged / past SLA", "value": past_sla, "fmt": "num",
+         "sub": f"{sla_breach_pct}% of open · per-peril SLA", "rag": _rag(sla_breach_pct, TARGETS["sla_breach_pct"], True), "worklist": "aged"},
+        {"key": "fte", "label": "Claims per handler", "value": claims_per_fte, "fmt": "num",
+         "sub": f"open caseload / {handlers_n} FTE", "rag": "info", "worklist": None},
+    ]
+    effectiveness = [
+        {"key": "loss_ratio", "label": "Loss ratio", "value": loss_ratio, "fmt": "pct",
+         "sub": "incurred ÷ earned premium", "rag": _rag(loss_ratio, TARGETS["loss_ratio"], True), "illustrative": True, "worklist": None},
+        {"key": "combined_ratio", "label": "Combined ratio", "value": combined_ratio, "fmt": "pct",
+         "sub": f"loss + expense (~{expense_ratio:.0f}%)", "rag": _rag(combined_ratio, 100.0, True, amber_mult=1.05), "illustrative": True, "worklist": None},
+        {"key": "reserve_adequacy", "label": "Reserve adequacy", "value": reserve_adequacy, "fmt": "pct",
+         "sub": "initial ÷ ultimate (open) · <100% = under-reserved", "rag": _rag(reserve_adequacy, TARGETS["reserve_adequacy"], False), "worklist": "underreserved"},
+        {"key": "recovery", "label": "Recovery identified", "value": int(base["recoverable_total"] or 0), "fmt": "gbp",
+         "sub": f"{int(base['recovery_count']):,} open claims", "rag": "info", "worklist": "recovery"},
+        {"key": "leakage", "label": "Leakage rate", "value": base["leakage_rate"], "fmt": "pct",
+         "sub": f"target <= {TARGETS['leakage_rate']:.0f}%", "rag": _rag(base["leakage_rate"], TARGETS["leakage_rate"], True),
+         "trend": trend("leakage_rate", base["leakage_rate"], True), "worklist": None},
+        {"key": "cwp", "label": "Closed without pay", "value": closed_without_pay, "fmt": "pct",
+         "sub": "declined or withdrawn", "rag": "info", "worklist": None},
+        {"key": "litigated", "label": "% litigated", "value": pct_litigated, "fmt": "pct",
+         "sub": "in investigation / dispute", "rag": "info", "worklist": None},
         {"key": "fraud", "label": "Fraud-refer rate", "value": base["fraud_refer_rate"], "fmt": "pct",
          "sub": "elevated signals → SIU", "rag": "info", "worklist": "high_fraud"},
-        {"key": "closed", "label": "Settled", "value": int(base["closed"]), "fmt": "num", "sub": "lifetime", "rag": "info", "worklist": None},
+        {"key": "large", "label": "Large losses (open)", "value": int(base["large_losses"]), "fmt": "num",
+         "sub": "over £50,000 — senior review", "rag": "info", "worklist": "large"},
     ]
     return {
         "total": int(base["total"]), "open_inv": int(base["open_inv"]),
@@ -417,9 +455,10 @@ async def control_tower() -> dict:
         "recovery": {"count": int(base["recovery_count"]), "total": int(base["recoverable_total"] or 0),
                      "trend": trend("recoverable_total", base["recoverable_total"] or 0, False)},
         "reserve": {"dev_ratio": float(rd["dev_ratio"]) if rd.get("dev_ratio") is not None else None,
-                    "gap": int(float(rd["gap"])) if rd.get("gap") is not None else None},
+                    "gap": int(float(rd["gap"])) if rd.get("gap") is not None else None,
+                    "adequacy": reserve_adequacy},
         "sla": {"open_inv": int(base["open_inv"]), "past_sla": past_sla, "breach_pct": sla_breach_pct},
-        "tiles": tiles,
+        "efficiency": efficiency, "effectiveness": effectiveness,
     }
 
 
@@ -431,7 +470,7 @@ async def segment_auto_close(conf: float, cap: float, fraud: float) -> dict:
         SELECT count(*) total,
           sum(CASE WHEN model_decision='pay_direct' AND model_confidence >= {float(conf)}
                     AND total_incurred <= {float(cap)} AND fraud_score <= {float(fraud)}
-                    AND data_complete THEN 1 ELSE 0 END) auto_closed
+                    AND data_complete AND NOT coalesce(nonfraud_rule_fired, false) THEN 1 ELSE 0 END) auto_closed
         FROM {d}"""))[0]
     total = int(r["total"]) or 1
     ac = int(r["auto_closed"])
@@ -449,6 +488,36 @@ async def auto_close_config() -> dict:
                 "fraud_floor": float(r["fraud_floor"])}
     except Exception:
         return {"conf_threshold": 85.0, "amount_cap": 2000.0, "fraud_floor": 20.0}
+
+
+_RULE_DESCRIPTIONS = [
+    {"code": "R1", "name": "Fraud threshold", "desc": "Fraud score above the floor.", "param": "fraud_floor"},
+    {"code": "R2", "name": "Reporting lag", "desc": "Reported too many days after the incident.", "param": "lag_limit"},
+    {"code": "R3", "name": "Prior-claims velocity", "desc": "Too many prior claims in 12 months.", "param": "velocity_limit"},
+    {"code": "R4", "name": "Amount / sum-insured anomaly", "desc": "Claim close to (or above) the sum insured.", "param": "ratio_ceiling"},
+    {"code": "R5", "name": "Severity / amount consistency", "desc": "Reported amount far above the peril norm.", "param": "severity_mult"},
+    {"code": "R6", "name": "Telematics speed-vs-limit", "desc": "Phase 12 — hook reserved.", "param": None},
+    {"code": "R7", "name": "Image severity vs reported", "desc": "Phase 12 — hook reserved.", "param": None},
+]
+
+
+async def rules() -> dict:
+    """Dynamic rule-engine config + which rules are firing across the book."""
+    cfg = {}
+    try:
+        ac = (await execute_query(f"SELECT fraud_floor FROM {_fq('auto_close_config')} WHERE config_key='default'"))[0]
+        rc = (await execute_query(
+            f"SELECT lag_limit, velocity_limit, ratio_ceiling, severity_mult FROM {_fq('rule_config')} WHERE config_key='default'"))[0]
+        cfg = {"fraud_floor": float(ac["fraud_floor"]), **{k: float(rc[k]) for k in rc}}
+    except Exception:
+        cfg = {}
+    try:
+        fired = await execute_query(f"""
+            SELECT r rule, count(*) n FROM {_fq('gold_claim_disposition')}
+            LATERAL VIEW explode(fired_rules) t AS r GROUP BY r ORDER BY r""")
+    except Exception:
+        fired = []
+    return {"config": cfg, "descriptions": _RULE_DESCRIPTIONS, "firing": fired}
 
 
 async def monday_brief() -> dict:
@@ -630,7 +699,7 @@ async def claim_disposition(cid: str) -> dict:
                 'model_confidence', model_confidence, 'total_incurred', total_incurred,
                 'fraud_score', fraud_score, 'data_complete', data_complete,
                 'rules_passed', rules_passed, 'rules_failed', rules_failed,
-                'reasoning', reasoning)) j
+                'fired_rules', fired_rules, 'reasoning', reasoning)) j
             FROM {_fq('gold_claim_disposition')} WHERE claim_public_id = '{_esc(cid)}'""")
         return json.loads(rows[0]["j"]) if rows and rows[0].get("j") else {}
     except Exception:
