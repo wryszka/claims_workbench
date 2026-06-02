@@ -1,0 +1,31 @@
+# Phase 10 — the full end-to-end smoke test job. Runs notebooks/98_smoke_test.py
+# on serverless and asserts at every hop of the chain (reset → bronze → silver →
+# gold → features → models → UC tools → sub-agents → cache → audit → reachability),
+# printing a single PASS/FAIL table and failing the run if any step is red.
+#
+# run_reset defaults to "false" (assert date freshness only — use after a morning
+# reset). Set run_reset=true to trigger claims_workbench_99_reset_demo first:
+#   databricks bundle run claims_workbench_98_smoke_test -t dev
+resources:
+  jobs:
+    claims_workbench_98_smoke_test:
+      name: claims_workbench_98_smoke_test
+      tags:
+        project: claims_workbench
+      parameters:
+        - name: run_reset
+          default: "false"
+      environments:
+        - environment_key: serverless
+          spec:
+            client: "2"
+      tasks:
+        - task_key: smoke_test
+          notebook_task:
+            notebook_path: ../notebooks/98_smoke_test.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+              run_reset: "{{job.parameters.run_reset}}"
+          environment_key: serverless
