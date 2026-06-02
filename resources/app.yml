@@ -1,0 +1,36 @@
+# Phase 8 — the Claims Intelligence Workbench Databricks App.
+# Deployed by `databricks bundle deploy -t dev` (build the frontend first:
+#   cd app/frontend && npm install && npm run build).
+#
+# The app's service principal is granted CAN_USE on the warehouse and CAN_QUERY
+# on the serving endpoints it calls (triage/reserve via ai_query inside the UC
+# functions, and the fraud/context agents for synthesis). UC EXECUTE/SELECT/
+# MODIFY on the claims_workbench schema is granted to the app SP post-deploy
+# (see GOVERNANCE_NOTES / the deploy step).
+resources:
+  apps:
+    claims_workbench_app:
+      name: claims-workbench
+      description: "Bricksurance SE — Claims Intelligence Workbench (FNOL triage, reserve, fraud, governance)."
+      source_code_path: ../app
+      resources:
+        - name: sql_warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: triage_endpoint
+          serving_endpoint:
+            name: dev_laurence_ryszka_claims-workbench-triage
+            permission: CAN_QUERY
+        - name: reserve_endpoint
+          serving_endpoint:
+            name: dev_laurence_ryszka_claims-workbench-reserve
+            permission: CAN_QUERY
+        - name: fraud_agent
+          serving_endpoint:
+            name: agents_lr_serverless_aws_us_catalog-claims_workbench-agent_frau
+            permission: CAN_QUERY
+        - name: context_agent
+          serving_endpoint:
+            name: agents_lr_serverless_aws_us_catalog-claims_workbench-agent_cont
+            permission: CAN_QUERY

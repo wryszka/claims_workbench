@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Claims Intelligence Workbench — Bricksurance SE</title>
+<style>
+  :root { --slate:#1e293b; --blue:#2563eb; --bg:#f3f4f6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:#1e293b; }
+  .app { display:flex; min-height:100vh; }
+  .side { width:224px; background:var(--slate); color:#fff; display:flex; flex-direction:column; flex-shrink:0; }
+  .brand { padding:18px 16px; border-bottom:1px solid rgba(255,255,255,.1); display:flex; gap:10px; align-items:center; }
+  .brand b { font-size:14px; } .brand small { color:#94a3b8; font-size:10px; display:block; }
+  .nav { flex:1; padding:10px 8px; } .nav a { display:flex; gap:8px; align-items:center; padding:8px 12px; border-radius:8px; color:#94a3b8; text-decoration:none; font-size:14px; cursor:pointer; }
+  .nav a.on { background:rgba(37,99,235,.2); color:#fff; font-weight:600; } .nav a:hover { color:#fff; background:rgba(255,255,255,.05); }
+  .foot { padding:12px 16px; border-top:1px solid rgba(255,255,255,.1); color:#64748b; font-size:10px; }
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .top { height:48px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:10px; padding:0 20px; }
+  .top .ctx { color:#94a3b8; font-size:12px; } .spacer { flex:1; }
+  .btn { border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; gap:6px; align-items:center; }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.cached { background:#fffbeb; color:#b45309; border-color:#fcd34d; } .btn.live { background:#ecfdf5; color:#047857; border-color:#6ee7b7; }
+  .content { padding:24px; overflow:auto; } .wrap { max-width:1120px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 2px; } .sub { color:#64748b; font-size:12px; margin:0 0 18px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; } .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:900px){ .grid3,.grid2{ grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+  .card h2 { font-size:13px; margin:0 0 12px; display:flex; gap:6px; align-items:center; }
+  .row { display:flex; justify-content:space-between; gap:12px; font-size:14px; padding:4px 0; border-bottom:1px solid #f1f5f9; }
+  .row:last-child { border:0; } .row .k { color:#64748b; } .row .v { text-align:right; }
+  .badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; }
+  .b-blue { background:#dbeafe; color:#1d4ed8; } .b-green { background:#d1fae5; color:#047857; } .b-slate { background:#f1f5f9; color:#475569; }
+  .b-amber { background:#fef3c7; color:#b45309; }
+  .decision { color:#fff; border-radius:10px; padding:12px; text-align:center; margin-bottom:12px; }
+  .decision .d { font-size:20px; font-weight:800; letter-spacing:.03em; } .decision .c { font-size:13px; opacity:.9; }
+  .reasons li { font-size:14px; color:#334155; margin:2px 0; } .reasons { padding-left:18px; margin:6px 0; }
+  .bar { height:8px; border-radius:999px; background:#f1f5f9; overflow:hidden; } .bar > div { height:100%; }
+  .synth { border:1px solid #bfdbfe; background:rgba(239,246,255,.5); border-radius:12px; padding:16px; margin-top:16px; }
+  .synth p { white-space:pre-wrap; line-height:1.55; font-size:14px; color:#334155; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; } .pill.hit{ background:#fef3c7; color:#b45309;} .pill.live{ background:#d1fae5; color:#047857;}
+  .actions { border:1px solid #e2e8f0; background:#fff; border-radius:12px; padding:16px; margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .primary { background:var(--blue); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
+  .ghost { border:1px solid #fbbf24; color:#b45309; background:#fff; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
+  .ok { color:#047857; font-weight:600; } select { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-size:14px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th { text-align:left; color:#64748b; border-bottom:1px solid #f1f5f9; padding:6px 4px; }
+  td { padding:6px 4px; border-bottom:1px solid #f8fafc; } .mono { font-family: ui-monospace, monospace; font-size:12px; }
+  .stat { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; } .stat .n { font-size:26px; font-weight:800; } .stat .l { font-size:12px; color:#64748b; }
+  a.link { color:var(--blue); font-size:12px; text-decoration:none; } a.link:hover { text-decoration:underline; }
+  .muted { color:#94a3b8; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span style="font-size:22px">🛡️</span><div><b>Claims Intelligence</b><small>Bricksurance SE</small></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="foot">Synthetic demo accelerator — not a Databricks product</div>
+  </aside>
+  <div class="main">
+    <div class="top">
+      <span class="ctx">Bricksurance SE · Claims Intelligence Workbench</span>
+      <span class="spacer"></span>
+      <button class="btn" id="cacheBtn" onclick="toggleCache()">AI: …</button>
+      <button class="btn" id="resetBtn" onclick="resetDemo()">↺ Reset demo</button>
+      <span class="muted" id="resetMsg"></span>
+    </div>
+    <div class="content"><div class="wrap" id="view"></div></div>
+  </div>
+</div>
+<script>
+const SECTIONS = [
+  {id:'ingestion', label:'Ingestion'}, {id:'transformation', label:'Transformation'},
+  {id:'claimsai', label:'Claims AI'}, {id:'governance', label:'Governance & Portfolio'},
+];
+const state = { section:'claimsai', cid:'cc:900001', claims:[], panels:null, synth:null, cache:null, overriding:false, confirmation:null };
+const gbp = v => { const n=parseFloat(v); return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0}); };
+const pct = v => { const n=parseFloat(v); return isNaN(n)?'—':n.toFixed(1)+'%'; };
+const DLABEL = { pay_direct:'PAY DIRECT', escalate:'ESCALATE', refer_siu:'REFER TO SIU' };
+const PERIL = { motor_tp:'Motor Third Party', home_escape_water:'Home — Escape of Water', home_storm:'Home — Storm', home_fire:'Home — Fire' };
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function J(path, opts){ const r=await fetch('/api'+path, {headers:{'Content-Type':'application/json'}, ...opts}); if(!r.ok) throw new Error(r.status); return r.json(); }
+
+function renderNav(){
+  document.getElementById('nav').innerHTML = SECTIONS.map(s =>
+    `<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`).join('');
+}
+function go(s){ state.section=s; renderNav(); render(); }
+
+async function initCache(){
+  try{ const d=await J('/cache-mode'); state.cache=d.use_cache; }catch(e){ state.cache=true; }
+  const b=document.getElementById('cacheBtn'); b.className='btn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live');
+  try{ const r=await J('/reset-status'); const rb=document.getElementById('resetBtn'); if(!r.available){ rb.disabled=true; rb.textContent='↺ Reset demo (Phase 9)'; } }catch(e){}
+}
+async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='btn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
+async function resetDemo(){ document.getElementById('resetMsg').textContent='Triggering…'; try{ const d=await J('/reset-demo',{method:'POST',body:'{}'}); document.getElementById('resetMsg').textContent = d.triggered?('Reset run '+d.run_id):(d.message||'unavailable'); }catch(e){ document.getElementById('resetMsg').textContent='unavailable'; } }
+
+function render(){
+  if(state.section==='claimsai') return renderClaimsAI();
+  if(state.section==='ingestion') return renderIngestion();
+  if(state.section==='transformation') return renderTransformation();
+  if(state.section==='governance') return renderGovernance();
+}
+
+// ---------- Claims AI ----------
+async function loadClaims(){ try{ state.claims=await J('/claims'); }catch(e){ state.claims=[]; } }
+async function selectClaim(cid){ state.cid=cid; state.panels=null; state.synth=null; state.confirmation=null; state.overriding=false; renderClaimsAI();
+  try{ state.panels=await J('/claim/panels?cid='+encodeURIComponent(cid)); }catch(e){ state.panels={__err:true}; }
+  renderClaimsAI();
+  try{ state.synth=await J('/claim/synthesis?cid='+encodeURIComponent(cid)); }catch(e){ state.synth={__err:true}; }
+  renderClaimsAI();
+}
+function renderClaimsAI(){
+  const p=state.panels; const v=document.getElementById('view');
+  const opts = state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${c.claim_public_id==='cc:900001'?'★ ':''}${esc(c.claim_public_id)} · ${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
+  let body='';
+  if(!p){ body='<p class="muted">Loading claim…</p>'; }
+  else if(p.__err){ body='<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c">Could not load this claim.</div>'; }
+  else {
+    const s=p.summary||{}, t=p.triage||{}, r=p.reserve||{}, f=p.fraud||{}, pol=p.policy||{}, x=p.extra||{};
+    const motor = s.peril_type==='motor_tp';
+    const dcol = t.decision==='refer_siu'?'#dc2626':t.decision==='escalate'?'#f59e0b':'#059669';
+    const fs = parseFloat(f.fraud_score); const fcol = fs>70?'#ef4444':fs>=40?'#f59e0b':'#10b981';
+    body = `<div class="grid3">
+      <div class="card"><h2>📄 Claim Summary</h2>
+        <div class="row"><span class="k">Policy</span><span class="v">${esc(x.policy_number||'—')}</span></div>
+        <div class="row"><span class="k">Claimant</span><span class="v">${claimant(state.cid)} <span class="muted">(synthetic)</span></span></div>
+        <div style="margin:8px 0"><span class="badge ${motor?'b-blue':'b-green'}">${esc(PERIL[s.peril_type]||s.peril_type)}</span> <span class="badge b-slate">${esc(s.report_channel)}</span></div>
+        <div class="row"><span class="k">Reported amount</span><span class="v" style="font-size:18px;font-weight:700">${gbp(s.total_incurred)}</span></div>
+        <div class="row"><span class="k">Status</span><span class="v">${esc(s.claim_status)}</span></div>
+        <p style="font-size:13px;color:#475569;font-style:italic;margin-top:10px">“${esc(s.incident_description)}”</p>
+      </div>
+      <div class="card"><h2>✨ AI Recommendation</h2>
+        <div class="decision" style="background:${dcol}"><div class="d">${DLABEL[t.decision]||esc(t.decision)||'—'}</div><div class="c">confidence ${pct(t.confidence)}</div></div>
+        <div class="muted" style="text-transform:uppercase;font-weight:600;font-size:11px">Why</div>
+        <ul class="reasons">${(t.top_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><b style="font-size:14px">Reserve: ${esc(r.bracket)||'—'}</b><div class="muted">${esc(r.estimated_range)}</div></div>
+      </div>
+      <div class="card"><h2>🛡️ Risk Signals</h2>
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted" style="text-transform:uppercase;font-size:11px;font-weight:600">Fraud score</span><span style="font-size:18px;font-weight:800;color:${fcol}">${isNaN(fs)?'—':fs}<span class="muted" style="font-size:11px">/100</span></span></div>
+        <div class="bar" style="margin:4px 0 8px"><div style="width:${isNaN(fs)?0:Math.min(100,fs)}%;background:${fcol}"></div></div>
+        ${f.fraud_flag===true?'<div style="color:#dc2626;font-size:11px;margin-bottom:6px">⚑ flagged by fraud rules</div>':''}
+        <div class="row"><span class="k">Prior claims (12m)</span><span class="v">${f.prior_claims_12m??'—'}</span></div>
+        <div class="row"><span class="k">Reporting lag</span><span class="v">${f.reporting_lag_days??x.reporting_lag_days??'—'} days</span></div>
+        <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div>
+        <div style="margin-top:8px" class="muted">Weather risk</div>
+        ${weatherBar('Flood',x.flood_risk_score)}${weatherBar('Wind',x.wind_risk_score)}${weatherBar('Freeze',x.freeze_risk_score)}
+      </div></div>`;
+    // synthesis
+    body += `<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
+    // actions
+    body += `<div class="actions">${actionBar()}</div>`;
+  }
+  v.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div><h1>✨ Claims AI — FNOL Triage</h1><p class="sub">Incoming first-notice-of-loss · decide, reserve, and brief in one screen</p></div>
+      <select onchange="selectClaim(this.value)" style="min-width:280px">${opts}</select></div>${body}`;
+}
+function claimant(cid){ const names=['A. Okafor','B. Lindqvist','C. Marchetti','D. Petrov','E. Nakamura','F. Dubois']; let h=0; for(const c of cid) h=(h*31+c.charCodeAt(0))|0; return names[Math.abs(h)%names.length]; }
+function weatherBar(l,v){ const n=parseFloat(v); return `<div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span class="muted" style="width:46px">${l}</span><div class="bar" style="flex:1"><div style="width:${isNaN(n)?0:(n/10*100)}%;background:#38bdf8"></div></div><span class="muted" style="width:22px;text-align:right">${isNaN(n)?'—':n}</span></div>`; }
+function synthPill(){ const s=state.synth; if(!s||s.__err) return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
+function synthBody(){ const s=state.synth; if(!s) return '<p class="muted">Synthesising…</p>'; if(s.__err) return '<p class="muted">Synthesis unavailable.</p>'; return `<p>${esc(s.text)}</p>${s.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:6px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}`; }
+function actionBar(){
+  const c=state.confirmation, t=(state.panels&&state.panels.triage)||{};
+  if(c){ return `<span class="ok">✓ Decision logged · ${esc(c.decision_id)} · ${DLABEL[c.model_recommendation]||esc(c.model_recommendation)} · ${c.override_flag?('OVERRIDE ('+esc(c.override_reason)+')'):'ACCEPTED'} · ${esc(c.time)}</span><span class="spacer"></span><a class="link" onclick="selectClaim(state.cid)">Next claim</a>`; }
+  if(state.overriding){ const reasons=['Insufficient evidence','Customer relationship','Local knowledge','Other'];
+    return `<span>⚠️ Override reason:</span><select id="ovr">${reasons.map(r=>`<option>${r}</option>`).join('')}</select><button class="ghost" onclick="decide('override')">Confirm Override</button><a class="link" onclick="state.overriding=false;renderClaimsAI()">Cancel</a>`; }
+  return `<span class="muted">Human-in-the-loop — record the handler's decision:</span><span class="spacer"></span><button class="primary" onclick="decide('accept')">✓ Accept AI Recommendation</button><button class="ghost" onclick="state.overriding=true;renderClaimsAI()">Override</button>`;
+}
+async function decide(action){
+  const t=(state.panels&&state.panels.triage)||{}; const reason = action==='override'?(document.getElementById('ovr')||{}).value||'Other':'';
+  try{ state.confirmation = await J('/decision',{method:'POST',body:JSON.stringify({claim_public_id:state.cid,model_recommendation:t.decision||'',model_confidence:t.confidence??null,handler_action:action,override_flag:action==='override',override_reason:reason})}); state.overriding=false; }catch(e){ alert('Decision failed'); }
+  renderClaimsAI();
+}
+
+// ---------- Ingestion ----------
+async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML='<h1>📥 Ingestion</h1><p class="sub">Loading pipeline status…</p>';
+  let d; try{ d=await J('/ingestion'); }catch(e){ v.innerHTML='<h1>Ingestion</h1><p class="muted">Unavailable.</p>'; return; }
+  const q=(Number(d.quarantined_claims)||0)+(Number(d.quarantined_fraud)||0);
+  v.innerHTML=`<h1>📥 Ingestion — Guidewire CDA → governed bronze</h1><p class="sub">The DLT pipeline enforces quality rules and quarantines bad records — nothing is silently dropped.</p>
+    <div class="grid3" style="margin-bottom:16px">
+      <div class="stat"><div class="l">Records passing all rules</div><div class="n" style="color:#059669">${d.pass_rate}%</div><div class="muted">${(d.total_evaluated||0).toLocaleString()} evaluated</div></div>
+      <div class="stat"><div class="l">Quarantined (not dropped)</div><div class="n" style="color:#b45309">${q.toLocaleString()}</div><div class="muted">${d.quarantined_claims||0} claims · ${d.quarantined_fraud||0} fraud</div></div>
+      <div class="stat"><div class="l">Pipeline state</div><div class="n" style="color:#334155;font-size:20px">${esc(d.state||'—')}</div><div class="muted">${esc(d.pipeline_name||'')}</div></div></div>
+    <div class="card" style="border-color:#a7f3d0;background:#ecfdf5;margin-bottom:16px"><b>No claims data lost.</b> Failed records are routed to quarantine tables and stay inspectable — held back, not deleted.</div>
+    <div class="card"><div style="display:flex;justify-content:space-between"><h2>Data-quality expectations</h2>${d.pipeline_url?`<a class="link" href="${d.pipeline_url}" target="_blank">Open pipeline ↗</a>`:''}</div>
+      <table><tr><th>Rule</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th></tr>
+      ${(d.expectations||[]).map(e=>`<tr><td class="mono">${esc(e.name)}</td><td style="text-align:right;color:#047857">${e.passed.toLocaleString()}</td><td style="text-align:right;color:${e.failed?'#b45309':'#94a3b8'}">${e.failed.toLocaleString()}</td></tr>`).join('')}</table></div>`;
+}
+
+// ---------- Transformation ----------
+async function renderTransformation(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();
+  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${c.claim_public_id==='cc:900001'?'★ ':''}${esc(c.claim_public_id)}</option>`).join('');
+  v.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div><h1>🧩 Transformation</h1><p class="sub">Silver enrichment — everything we know before the handler picks up the phone.</p></div><select onchange="state.cid=this.value;renderTransformation()" style="min-width:240px">${opts}</select></div><p class="muted" id="tload">Loading…</p>`;
+  let e; try{ e=await J('/claim/enrichment?cid='+encodeURIComponent(state.cid)); }catch(err){ document.getElementById('tload').textContent='Unavailable.'; return; }
+  const yn=x=>x===true||x==='true'?'Yes':x===false||x==='false'?'No':(x??'—');
+  const g=(title,rows)=>`<div class="card"><h2>${title}</h2>${rows.map(([k,val])=>`<div class="row"><span class="k">${k}</span><span class="v">${esc(val??'—')}</span></div>`).join('')}</div>`;
+  document.getElementById('view').querySelector('#tload')?.remove();
+  v.insertAdjacentHTML('beforeend', `<div class="grid2">
+    ${g('Claim & incident',[['Claim number',e.claim_number],['Peril',e.peril_type],['Loss cause',e.loss_cause],['Reported',e.report_date],['Channel',e.report_channel],['Reporting lag',e.reporting_lag_days+' days'],['Incident',e.description_text],['Status',e.claim_status]])}
+    ${g('Policy',[['Policy number',e.policy_number],['Product',e.product],['Sum insured',gbp(e.sum_insured)],['Annual premium',gbp(e.annual_premium)],['Tenure (yrs)',e.policy_tenure_years],['Prior claims (12m)',e.prior_claims_12m]])}
+    ${g('Location & weather',[['Postcode district',e.postcode_district],['Third party',yn(e.third_party_involved)],['Flood',e.flood_risk_score+'/10'],['Wind',e.wind_risk_score+'/10'],['Freeze',e.freeze_risk_score+'/10'],['Composite',e.weather_risk_composite]])}
+    ${g('Reserves & lifecycle',[['Total incurred',gbp(e.total_incurred)],['Paid',gbp(e.paid_amount)],['Initial reserve',gbp(e.initial_reserve)],['Ultimate reserve',gbp(e.ultimate_reserve)],['Leakage',yn(e.leakage_flag)],['Handler',e.handler_id+' ('+e.handler_grade+')']])}
+    ${g('Risk & ML labels',[['Fraud score',e.fraud_score+'/100'],['High value',yn(e.is_high_value)],['Potential fraud',yn(e.is_potential_fraud)],['At fault',yn(e.at_fault)],['Triage label',e.triage_decision],['Reserve bracket',e.reserve_bracket]])}
+  </div>`);
+}
+
+// ---------- Governance ----------
+async function renderGovernance(){ const v=document.getElementById('view'); v.innerHTML='<h1>🛡️ Governance & Portfolio</h1><p class="sub">Loading…</p>';
+  let g={},dec=[]; try{ g=await J('/governance'); }catch(e){} try{ dec=await J('/decisions?limit=15'); }catch(e){}
+  v.innerHTML=`<h1>🛡️ Governance &amp; Portfolio</h1><p class="sub">Board reporting, ask-the-book analytics, lineage and the human-in-the-loop audit trail.</p>
+    <div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><h2>Claims Portfolio — Board View</h2><div>${g.genie_url?`<a class="link" href="${g.genie_url}" target="_blank">Ask the Book ↗</a> · `:''}${g.dashboard_url?`<a class="link" href="${g.dashboard_url}" target="_blank">Open dashboard ↗</a>`:''}</div></div>
+      ${g.dashboard_embed_url?`<iframe src="${g.dashboard_embed_url}" style="width:100%;height:540px;border:1px solid #f1f5f9;border-radius:8px;margin-top:8px"></iframe>`:'<p class="muted">Dashboard link resolving…</p>'}</div>
+    <div class="grid2">
+      <div class="card"><h2>🔱 End-to-end lineage</h2><div style="font-size:12px;line-height:2">${(g.lineage||[]).map((l,i)=>`<a class="mono link" href="${l.explore_url}" target="_blank">${esc(l.asset)}</a>${i<(g.lineage.length-1)?' <span class="muted">→</span> ':''}`).join('')}</div><p class="muted" style="margin-top:8px">Raw → governed → enriched → features → model → decision.</p></div>
+      <div class="card"><h2>📋 HITL audit trail</h2>${dec.length?`<table><tr><th>ID</th><th>Claim</th><th>Reco</th><th>Action</th><th>Reason</th></tr>${dec.map(d=>`<tr><td class="mono">${esc(d.decision_id)}</td><td>${esc(d.claim_public_id)}</td><td>${DLABEL[d.model_recommendation]||esc(d.model_recommendation)} ${d.model_confidence!=null?pct(d.model_confidence):''}</td><td style="color:${d.override_flag?'#b45309':'#047857'}">${d.override_flag?'OVERRIDE':'accept'}</td><td class="muted">${esc(d.override_reason||'—')}</td></tr>`).join('')}</table>`:'<p class="muted">No decisions logged yet.</p>'}<p class="muted" style="margin-top:8px">What the model advised, what the handler did, and why — the FCA / Consumer-Duty trail.</p></div>
+    </div>`;
+}
+
+// ---------- boot ----------
+(async function(){ renderNav(); await initCache(); await loadClaims(); render(); if(state.section==='claimsai') selectClaim(state.cid); })();
+</script>
+</body>
+</html>

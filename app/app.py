@@ -56,7 +56,11 @@ async def app_config():
 
 
 if FRONTEND_DIR.is_dir():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+    # Only mount /assets when a built Vite bundle is present (the hand-written
+    # fallback dist ships a single index.html with no assets/ dir).
+    _assets = FRONTEND_DIR / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=_assets), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):

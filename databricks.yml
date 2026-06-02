@@ -25,6 +25,11 @@ bundle:
 include:
   - resources/*.yml
 
+# Keep the app upload lean — never sync the frontend's node_modules.
+sync:
+  exclude:
+    - "app/frontend/node_modules"
+
 variables:
   catalog:
     description: >-

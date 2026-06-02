@@ -25,6 +25,7 @@ export default function ClaimsAI() {
   const [panels, setPanels] = useState<any>(null);
   const [synth, setSynth] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
   const [overriding, setOverriding] = useState(false);
   const [reason, setReason] = useState(OVERRIDE_REASONS[0]);
   const [confirmation, setConfirmation] = useState<any>(null);
@@ -34,8 +35,8 @@ export default function ClaimsAI() {
 
   useEffect(() => {
     if (!cid) return;
-    setLoading(true); setPanels(null); setSynth(null); setConfirmation(null); setOverriding(false);
-    api.getPanels(cid).then(setPanels).catch(() => {}).finally(() => setLoading(false));
+    setLoading(true); setErr(false); setPanels(null); setSynth(null); setConfirmation(null); setOverriding(false);
+    api.getPanels(cid).then(setPanels).catch(() => setErr(true)).finally(() => setLoading(false));
     api.getSynthesis(cid).then(setSynth).catch(() => setSynth({ text: '', error: true }));
   }, [cid]);
 
@@ -76,6 +77,12 @@ export default function ClaimsAI() {
       </div>
 
       {loading && <div className="text-sm text-gray-500 py-10 text-center">Loading claim…</div>}
+      {err && !loading && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" /> Could not load this claim. Try another, or retry.
+          <button onClick={() => setCid(cid)} className="ml-auto text-blue-600 hover:underline">Retry</button>
+        </div>
+      )}
 
       {panels && (
         <>
