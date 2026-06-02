@@ -51,6 +51,17 @@ export const api = {
   getClaimTrack: (cid: string) => fetchJson<any>(`/claim/track?cid=${encodeURIComponent(cid)}`),
   getInventory: () => fetchJson<any>('/governance/inventory'),
   getAgents: () => fetchJson<any>('/agents'),
+
+  // CCO uplift + expert agents
+  getMondayBrief: () => fetchJson<any>('/monday-brief'),
+  getWorklist: (kind: string) => fetchJson<any>(`/worklist?kind=${kind}`),
+  getHandlers: () => fetchJson<any>('/handlers'),
+  getFraud: () => fetchJson<any>('/fraud'),
+  getTrends: () => fetchJson<any>('/trends'),
+  getExperts: () => fetchJson<any>('/experts'),
+  getExpertOpinion: (cid: string, role: string) =>
+    fetchJson<any>(`/claim/expert?cid=${encodeURIComponent(cid)}&role=${role}`),
+  getFairOutcomes: () => fetchJson<any>('/governance/fair-outcomes'),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

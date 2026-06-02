@@ -844,6 +844,18 @@ def _agent_roster_sync() -> dict:
         {"name": "Audit / Reasoning", "color": "slate", "kind": "agent",
          "desc": "Writes the regulator-readable explanation of how a claim's decision was reached — rules, values, and that no agent had pay authority.",
          **agent_ep("audi")},
+        {"name": "Senior Reserving Actuary", "color": "blue", "kind": "expert",
+         "desc": "A second opinion on reserve adequacy — flags light escape-of-water reserves and proposes an overlay for a human actuary to sign off. Never books it.",
+         **agent_ep("rese")},
+        {"name": "Senior Loss Adjuster", "color": "amber", "kind": "expert",
+         "desc": "The experienced adjuster's read — is the quantum right for this peril, what to inspect or verify before settling, and any handling red flags.",
+         **agent_ep("adju")},
+        {"name": "Coverage Counsel", "color": "slate", "kind": "expert",
+         "desc": "The coverage question — does the policy respond? Product-vs-peril fit, sum insured vs amount, and the conditions/exclusions to check.",
+         **agent_ep("cove")},
+        {"name": "Consumer-Duty Reviewer", "color": "green", "kind": "expert",
+         "desc": "Fair-outcomes / FCA Consumer Duty — was the customer treated fairly and consistently, any vulnerability signals, would it withstand Ombudsman scrutiny.",
+         **agent_ep("cond")},
         {"name": "Triage model", "color": "blue", "kind": "tool",
          "desc": "A UC function scoring the FNOL triage classifier — pay_direct / escalate / refer_siu with a confidence %.",
          **ep(find("claims-workbench-triage"))},
@@ -867,6 +879,77 @@ def _agent_roster_sync() -> dict:
 
 async def agent_roster() -> dict:
     return await asyncio.to_thread(_agent_roster_sync)
+
+
+# Role -> agents.deploy endpoint token (first 4 chars of the UC model name suffix).
+_EXPERT_TOKENS = {"reserving": "rese", "adjuster": "adju", "coverage": "cove", "conduct": "cond",
+                  "fraud": "frau", "dossier": "cont", "context": "cont", "challenge": "chal",
+                  "recovery": "reco", "audit": "audi"}
+EXPERTS = [
+    {"role": "reserving", "name": "Senior Reserving Actuary", "icon": "📐", "color": "blue",
+     "blurb": "Is the reserve adequate?"},
+    {"role": "adjuster", "name": "Senior Loss Adjuster", "icon": "🔧", "color": "amber",
+     "blurb": "Is the quantum right — what to inspect?"},
+    {"role": "coverage", "name": "Coverage Counsel", "icon": "⚖️", "color": "slate",
+     "blurb": "Does the policy respond?"},
+    {"role": "conduct", "name": "Consumer-Duty Reviewer", "icon": "🤝", "color": "green",
+     "blurb": "Was the customer treated fairly?"},
+]
+
+
+def _agent_endpoint_name(token: str) -> str:
+    from server.sql import _client
+    try:
+        eps = [e.name for e in _client().serving_endpoints.list()]
+        m = next((n for n in eps if f"agent_{token}" in n), None)
+        if m:
+            return m
+    except Exception:
+        pass
+    return f"agents_{CAT}-{SCH}-agent_{token}"
+
+
+async def expert_opinion(cid: str, role: str, use_cache: bool | None = None) -> dict:
+    """A named senior-expert agent's second opinion on one claim (cache-first)."""
+    if use_cache is None:
+        use_cache = _use_cache
+    token = _EXPERT_TOKENS.get(role)
+    if not token:
+        return {"role": role, "error": "unknown expert"}
+    ep = await asyncio.to_thread(_agent_endpoint_name, token)
+    prompt = f"Give your expert second opinion on claim {cid}."
+    payload = {"messages": [{"role": "user", "content": prompt}], "custom_inputs": {"claim_public_id": cid}}
+    try:
+        out = await asyncio.to_thread(get_agent_response, ep, payload, use_cache)
+        msgs = out.get("response", {}).get("messages", [])
+        text = msgs[-1].get("content", "") if msgs else ""
+        return {"role": role, "endpoint": ep, "text": text, "cache": out.get("cache")}
+    except Exception as e:
+        return {"role": role, "endpoint": ep, "error": str(e)[:160]}
+
+
+async def fair_outcomes() -> dict:
+    """Consumer-Duty / fair-outcomes view: are similar claims handled CONSISTENTLY, and
+    where to watch for vulnerability — the data behind the conduct reviewer."""
+    s = _fq("silver_claims_enriched")
+    d = _fq("gold_claim_disposition")
+    try:
+        by_channel = await execute_query(f"""
+            SELECT s.report_channel channel, count(*) n,
+                   round(100.0*avg(CASE WHEN d.disposition='auto_closed' THEN 1 ELSE 0 END),1) auto_rate,
+                   round(100.0*avg(CASE WHEN s.leakage_flag THEN 1 ELSE 0 END),1) leak_rate
+            FROM {s} s JOIN {d} d USING (claim_public_id) GROUP BY s.report_channel ORDER BY n DESC""")
+        by_peril = await execute_query(f"""
+            SELECT s.peril_type peril, count(*) n,
+                   round(100.0*avg(CASE WHEN d.disposition='auto_closed' THEN 1 ELSE 0 END),1) auto_rate
+            FROM {s} s JOIN {d} d USING (claim_public_id) GROUP BY s.peril_type ORDER BY n DESC""")
+        watch = (await execute_query(f"""
+            SELECT sum(CASE WHEN peril_type='home_fire' AND claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) distress_open,
+                   sum(CASE WHEN prior_claims_12m >= 3 THEN 1 ELSE 0 END) repeat_customers
+            FROM {s}"""))[0]
+    except Exception:
+        by_channel, by_peril, watch = [], [], {}
+    return {"by_channel": by_channel, "by_peril": by_peril, "watch": watch}
 
 
 async def governance_inventory() -> dict:

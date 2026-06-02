@@ -162,6 +162,21 @@ async def agents():
     return await svc.agent_roster()
 
 
+@router.get("/experts")
+async def experts():
+    return {"experts": svc.EXPERTS}
+
+
+@router.get("/claim/expert")
+async def claim_expert(cid: str, role: str):
+    return await svc.expert_opinion(cid, role)
+
+
+@router.get("/governance/fair-outcomes")
+async def fair_outcomes():
+    return await svc.fair_outcomes()
+
+
 @router.get("/reset-status")
 async def reset_status():
     import asyncio

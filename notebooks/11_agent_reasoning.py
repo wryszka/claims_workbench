@@ -78,13 +78,19 @@ all_eps = [e.name for e in w.serving_endpoints.list()]
 # agents.deploy truncates the UC model name (e.g. agent_fraud -> ...agent_frau,
 # agent_context -> ...agent_cont). Match on 'agent_' + first 4 letters of the role.
 AGENTS = {"fraud": "Fraud", "context": "Claim 360 / Dossier", "challenge": "Challenge",
-          "recovery": "Recovery / Subrogation", "audit": "Audit / Reasoning"}
+          "recovery": "Recovery / Subrogation", "audit": "Audit / Reasoning",
+          "reserving": "Senior Reserving Actuary", "adjuster": "Senior Loss Adjuster",
+          "coverage": "Coverage Counsel", "conduct": "Consumer-Duty Reviewer"}
 PROMPTS = {
     "fraud":     "Assess the fraud risk for claim {cid}.",
     "context":   "Give me the full Claim 360 dossier for claim {cid}.",
     "challenge": "Give me the second opinion — argue the opposite of the current disposition for claim {cid}.",
     "recovery":  "Is there any recovery or subrogation potential on claim {cid}?",
     "audit":     "Explain, for a regulator, how the decision on claim {cid} was reached.",
+    "reserving": "Give your expert second opinion on the reserve for claim {cid}.",
+    "adjuster":  "Give your expert second opinion as a loss adjuster on claim {cid}.",
+    "coverage":  "Does the policy respond to claim {cid}? Give your coverage opinion.",
+    "conduct":   "Review claim {cid} for fair customer outcomes (Consumer Duty).",
 }
 
 

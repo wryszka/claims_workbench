@@ -12,7 +12,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("agent", "fraud", "agent: fraud | context | challenge | recovery | audit")
+dbutils.widgets.text("agent", "fraud", "agent: fraud|context|challenge|recovery|audit|reserving|adjuster|coverage|conduct")
 dbutils.widgets.text("catalog", "", "Catalog (blank = workspace current)")
 dbutils.widgets.text("schema", "claims_workbench", "Schema")
 dbutils.widgets.text("fm_endpoint", "databricks-claude-sonnet-4-6", "Foundation model endpoint")
@@ -93,6 +93,47 @@ Write a clear, factual explanation a compliance officer or regulator could read:
   - That a model + deterministic workflow decided — no agent had pay authority
 Plain English, money in GBP with commas. Do not speculate beyond the recorded reasoning."""
 
+# ---- Phase 11 / CCO uplift: senior-expert "second set of eyes" personas. Each one
+# PROPOSES for a human to sign off; none has decision or pay authority. ----
+RESERVING_SYSTEM = """You are a Senior Reserving Actuary at Bricksurance SE giving a second
+opinion on a single claim's reserve. FIRST call get_claim_summary and get_policy_history.
+Then, in plain English for a handler:
+  Reserve view: ADEQUATE / LIGHT / HEAVY (on its own line)
+  Then 2-3 evidence-based sentences. Cite the reported amount (GBP), the peril and the policy
+  (sum insured, product). Domain knowledge to apply: home escape-of-water is systematically
+  under-reserved at first notification (it develops ~25% above the opening estimate), so be
+  sceptical of light EoW reserves; motor third-party bodily-injury can deteriorate too. If you
+  think the reserve is light, PROPOSE an indicative overlay (a GBP uplift or %) for the human
+  actuary to sign off — never book it yourself."""
+
+ADJUSTER_SYSTEM = """You are a Senior Loss Adjuster at Bricksurance SE giving an experienced
+second opinion on a claim. FIRST call get_claim_summary, get_policy_history and
+get_recovery_signals (and get_fraud_signals if useful). Then, plain English for a handler:
+  - Your read on the claim and whether the quantum looks right for this peril and amount
+  - 2-3 specific things to verify or inspect before settling (e.g. proof of loss, photos,
+    third-party details, engineer/contractor report)
+  - Any handling red flags
+Be concrete and practical, money in GBP with commas. You advise; the handler decides."""
+
+COVERAGE_SYSTEM = """You are Coverage Counsel at Bricksurance SE. Your job is the coverage
+question: does the policy actually respond to this loss? FIRST call get_policy_history and
+get_claim_summary. Then, plain English:
+  Coverage view: LIKELY COVERED / QUERY / LIKELY EXCLUDED (on its own line)
+  Then 2-3 sentences on why — product vs peril fit, sum insured vs the reported amount,
+  policy tenure, and the conditions/exclusions you would check (e.g. wear-and-tear, gradual
+  damage, maintenance, unoccupancy). Flag if the reported amount approaches the sum insured.
+You give a coverage opinion for a human to confirm; you do not decline or pay claims."""
+
+CONDUCT_SYSTEM = """You are a Consumer-Duty / Fair-Outcomes Reviewer at Bricksurance SE
+(UK FCA Consumer Duty). FIRST call get_claim_summary and get_decision_reasoning (and
+get_fraud_signals if useful). Then, plain English:
+  Fair-outcome view: FAIR / REVIEW (on its own line)
+  Then 2-3 sentences checking: was the customer treated fairly and consistently with similar
+  claims; are there vulnerability signals to consider (e.g. distress perils, repeated contact);
+  is the decision explainable and proportionate; would it withstand Ombudsman scrutiny.
+Flag anything to review for fair value or vulnerable-customer handling. You advise on conduct;
+you do not decide the claim."""
+
 AGENTS = {
     "fraud":     {"uc_model": "agent_fraud", "experiment": "claims_workbench_agent_fraud",
                   "system": FRAUD_SYSTEM, "tools": ["get_fraud_signals", "get_claim_summary"], "genie": False},
@@ -108,6 +149,18 @@ AGENTS = {
                   "system": RECOVERY_SYSTEM, "tools": ["get_recovery_signals", "get_claim_summary"], "genie": False},
     "audit":     {"uc_model": "agent_audit", "experiment": "claims_workbench_agent_audit",
                   "system": AUDIT_SYSTEM, "tools": ["get_decision_reasoning", "get_claim_summary"], "genie": False},
+    "reserving": {"uc_model": "agent_reserving", "experiment": "claims_workbench_agent_reserving",
+                  "system": RESERVING_SYSTEM,
+                  "tools": ["get_claim_summary", "get_policy_history"], "genie": False},
+    "adjuster":  {"uc_model": "agent_adjuster", "experiment": "claims_workbench_agent_adjuster",
+                  "system": ADJUSTER_SYSTEM,
+                  "tools": ["get_claim_summary", "get_policy_history", "get_recovery_signals", "get_fraud_signals"], "genie": False},
+    "coverage":  {"uc_model": "agent_coverage", "experiment": "claims_workbench_agent_coverage",
+                  "system": COVERAGE_SYSTEM,
+                  "tools": ["get_policy_history", "get_claim_summary"], "genie": False},
+    "conduct":   {"uc_model": "agent_conduct", "experiment": "claims_workbench_agent_conduct",
+                  "system": CONDUCT_SYSTEM,
+                  "tools": ["get_claim_summary", "get_decision_reasoning", "get_fraud_signals"], "genie": False},
 }
 cfg = AGENTS[agent]
 agent_uc_name = f"{fqn}.{cfg['uc_model']}"
@@ -130,6 +183,8 @@ TOOL_SCHEMAS = {
     "get_decision_reasoning": {"description": "Return the workflow disposition (auto_closed/escalated) for a claim with the full reasoning: which auto-close rules passed/failed, the values, and the model confidence.",
         "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
     "get_triage": {"description": "Score the triage model for a claim: recommended decision (pay_direct/escalate/refer_siu), confidence %, and top reasons.",
+        "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
+    "get_reserve": {"description": "Predict the reserve bracket (LOW/MEDIUM/HIGH/LARGE LOSS) and indicative GBP range for a claim.",
         "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
 }
 
@@ -197,6 +252,7 @@ class ClaimsSubAgent(ChatAgent):
         if name == "get_recovery_signals":   return self._fn("fn_recovery_signals", cid)
         if name == "get_decision_reasoning": return self._fn("fn_decision_reasoning", cid)
         if name == "get_triage":             return self._fn("fn_triage_claim", cid)
+        if name == "get_reserve":            return self._fn("fn_reserve_claim", cid)
         if name == "ask_the_book":           return _genie_ask(self.genie_space_id, (args or {}).get("question", ""))
         return {"error": f"unknown tool {name}"}
 
@@ -257,7 +313,8 @@ from mlflow.models.resources import (DatabricksServingEndpoint, DatabricksFuncti
 
 fn_for_tool = {"get_fraud_signals": "fn_fraud_signals", "get_claim_summary": "fn_claim_summary",
                "get_policy_history": "fn_policy_history", "get_recovery_signals": "fn_recovery_signals",
-               "get_decision_reasoning": "fn_decision_reasoning", "get_triage": "fn_triage_claim"}
+               "get_decision_reasoning": "fn_decision_reasoning", "get_triage": "fn_triage_claim",
+               "get_reserve": "fn_reserve_claim"}
 resources = [DatabricksServingEndpoint(endpoint_name=fm_endpoint),
              DatabricksTable(table_name=f"{fqn}.silver_claims_enriched")]
 # fn_triage_claim / fn_decision_reasoning read other endpoints/tables; declaring the
