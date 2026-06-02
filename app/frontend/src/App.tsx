@@ -64,8 +64,22 @@ function TopBar() {
   async function reset() {
     if (!resetOk) return;
     setResetMsg('Triggering…');
-    try { const d = await api.resetDemo(); setResetMsg(d.triggered ? `Reset run ${d.run_id} started` : (d.message || 'unavailable')); }
-    catch { setResetMsg('Reset failed'); }
+    try {
+      const d = await api.resetDemo();
+      if (!d.triggered) { setResetMsg(d.message || 'unavailable'); return; }
+      const t0 = Date.now();
+      const tick = async () => {
+        try {
+          const r = await api.getResetRun(d.run_id);
+          if ((r.life_cycle || '').includes('TERMINATED')) {
+            clearInterval(timer);
+            setResetMsg((r.result || '').includes('SUCCESS') ? '✓ Reset complete — dates current' : 'Reset failed');
+          } else { setResetMsg(`Reset running… ${Math.round((Date.now() - t0) / 60000)}m`); }
+        } catch { /* keep polling */ }
+      };
+      tick();
+      const timer = setInterval(tick, 15000);
+    } catch { setResetMsg('Reset failed'); }
   }
 
   const cached = cache === true;

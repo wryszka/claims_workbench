@@ -275,9 +275,20 @@ async def governance_links() -> dict:
     return await asyncio.to_thread(_governance_sync)
 
 
-def reset_available() -> bool:
+def find_reset_job():
+    """Resolve the reset job id — DAB dev mode prefixes the name ("[dev user] ...")
+    so match by substring, not exact name."""
     from server.sql import _client
+    w = _client()
+    j = next((x for x in w.jobs.list(name=config.RESET_JOB_NAME)), None)
+    if not j:
+        j = next((x for x in w.jobs.list()
+                  if config.RESET_JOB_NAME in ((x.settings.name if x.settings else "") or "")), None)
+    return j
+
+
+def reset_available() -> bool:
     try:
-        return next((j for j in _client().jobs.list(name=config.RESET_JOB_NAME)), None) is not None
+        return find_reset_job() is not None
     except Exception:
         return False

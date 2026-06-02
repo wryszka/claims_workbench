@@ -1,0 +1,82 @@
+# Phase 9 — the demo reset job. Returns the workbench to a clean base state with
+# all dates re-anchored to current_date() (the Phase 0 generator rolls every date
+# off current_date(), so this never goes stale). Multi-task serverless job
+# chaining the existing phase notebooks + the bronze DLT (full refresh). NO model
+# retrain by default (champion models kept); set retrain=true to also retrain.
+#
+# Triggered by name from the Phase 8 app's "Reset demo" button.
+resources:
+  jobs:
+    claims_workbench_99_reset_demo:
+      name: claims_workbench_99_reset_demo
+      tags:
+        project: claims_workbench
+      parameters:
+        - name: retrain
+          default: "false"
+      environments:
+        - environment_key: serverless
+          spec:
+            client: "2"
+      tasks:
+        # 1 — regenerate the landing zone with dates rolled to today (seed=42)
+        - task_key: data_gen
+          notebook_task:
+            notebook_path: ../notebooks/00_setup_and_data_generation.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless
+
+        # 2 — bronze DLT, full refresh so it reprocesses the new landing data
+        - task_key: bronze
+          depends_on:
+            - task_key: data_gen
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.claims_workbench_01_bronze_dlt.id}
+            full_refresh: true
+
+        # 3 — silver enrichment
+        - task_key: silver
+          depends_on:
+            - task_key: bronze
+          notebook_task:
+            notebook_path: ../notebooks/02_silver_enrichment.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless
+
+        # 4 — gold analytics (also resets the gold_handler_decisions audit shell)
+        - task_key: gold
+          depends_on:
+            - task_key: silver
+          notebook_task:
+            notebook_path: ../notebooks/03_gold_analytics.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless
+
+        # 5 — feature tables (merge; champion models consume these unchanged)
+        - task_key: features
+          depends_on:
+            - task_key: silver
+          notebook_task:
+            notebook_path: ../notebooks/04_feature_engineering.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless
+
+        # 6 — clear + re-warm the agent cache for the vivid claim
+        - task_key: cache_reset
+          depends_on:
+            - task_key: gold
+            - task_key: features
+          notebook_task:
+            notebook_path: ../notebooks/09_reset_cache.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless

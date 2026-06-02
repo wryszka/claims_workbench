@@ -30,6 +30,7 @@ export const api = {
   getDecisions: (limit = 20) => fetchJson<any[]>(`/decisions?limit=${limit}`),
   resetDemo: () => fetchJson<any>('/reset-demo', { method: 'POST', body: JSON.stringify({}) }),
   getResetStatus: () => fetchJson<{ available: boolean }>('/reset-status'),
+  getResetRun: (runId: number) => fetchJson<{ life_cycle: string; result: string }>(`/reset-run?run_id=${runId}`),
 
   getIngestion: () => fetchJson<any>('/ingestion'),
   getEnrichment: (cid: string) => fetchJson<any>(`/claim/enrichment?cid=${encodeURIComponent(cid)}`),

@@ -87,15 +87,27 @@ async def reset_status():
     return {"available": await asyncio.to_thread(svc.reset_available)}
 
 
+@router.get("/reset-run")
+async def reset_run(run_id: int):
+    import asyncio
+
+    def _g():
+        r = _client().jobs.get_run(run_id=run_id)
+        st = r.state
+        return {"life_cycle": str(st.life_cycle_state) if st and st.life_cycle_state else None,
+                "result": str(st.result_state) if st and st.result_state else None}
+    return await asyncio.to_thread(_g)
+
+
 @router.post("/reset-demo")
 async def reset_demo():
     """Trigger the Phase 9 reset job by name. Graceful if it doesn't exist yet."""
     try:
-        w = _client()
-        job = next((j for j in w.jobs.list(name=config.RESET_JOB_NAME)), None)
+        import asyncio
+        job = await asyncio.to_thread(svc.find_reset_job)
         if not job:
-            return {"available": False, "message": f"Reset job '{config.RESET_JOB_NAME}' not found (built in Phase 9)."}
-        run = w.jobs.run_now(job_id=job.job_id)
+            return {"available": False, "message": f"Reset job '{config.RESET_JOB_NAME}' not found."}
+        run = _client().jobs.run_now(job_id=job.job_id)
         return {"available": True, "triggered": True, "run_id": getattr(run, "run_id", None)}
     except Exception as e:
         return {"available": False, "message": f"Reset unavailable: {e}"}

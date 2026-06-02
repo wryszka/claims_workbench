@@ -93,7 +93,19 @@ async function initCache(){
   try{ const r=await J('/reset-status'); const rb=document.getElementById('resetBtn'); if(!r.available){ rb.disabled=true; rb.textContent='↺ Reset demo (Phase 9)'; } }catch(e){}
 }
 async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='btn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
-async function resetDemo(){ document.getElementById('resetMsg').textContent='Triggering…'; try{ const d=await J('/reset-demo',{method:'POST',body:'{}'}); document.getElementById('resetMsg').textContent = d.triggered?('Reset run '+d.run_id):(d.message||'unavailable'); }catch(e){ document.getElementById('resetMsg').textContent='unavailable'; } }
+let _resetTimer=null;
+async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…';
+  try{ const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){ m.textContent=d.message||'unavailable'; return; }
+    document.getElementById('resetBtn').disabled=true; pollReset(d.run_id, Date.now());
+  }catch(e){ m.textContent='unavailable'; } }
+function pollReset(rid, t0){ const m=document.getElementById('resetMsg');
+  clearInterval(_resetTimer);
+  const tick=async()=>{ try{ const r=await J('/reset-run?run_id='+rid); const mins=Math.round((Date.now()-t0)/60000);
+      if((r.life_cycle||'').includes('TERMINATED')){ clearInterval(_resetTimer); document.getElementById('resetBtn').disabled=false;
+        m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete — dates current':'Reset failed'; if((r.result||'').includes('SUCCESS')) location.reload(); }
+      else { m.textContent=`Reset running… ${mins}m`; }
+    }catch(e){} };
+  tick(); _resetTimer=setInterval(tick, 15000); }
 
 function render(){
   if(state.section==='claimsai') return renderClaimsAI();

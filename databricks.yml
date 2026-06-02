@@ -62,7 +62,7 @@ targets:
     # Portability: ship with a placeholder host so this bundle is workspace-agnostic.
     # To run locally, set host to your dev workspace URL and uncomment `profile`.
     workspace:
-      host: REPLACE-ME            # e.g. https://fevm-lr-serverless-aws-us.cloud.databricks.com
+      host: REPLACE-ME
       # profile: DEFAULT
     variables:
       # Phase 1 DLT needs an explicit catalog — pin your dev workspace catalog here.
