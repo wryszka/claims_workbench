@@ -89,20 +89,27 @@ print(f"thresholds: confidence >= {CONF}% | amount <= GBP {CAP:,.0f} | fraud_sco
 
 # COMMAND ----------
 
-RULE_DEFAULTS = {"lag_limit": 14.0, "velocity_limit": 1.0, "ratio_ceiling": 0.9, "severity_mult": 5.0}
-spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {tbl('rule_config')} (
-  config_key STRING, lag_limit DOUBLE, velocity_limit DOUBLE, ratio_ceiling DOUBLE, severity_mult DOUBLE, updated_ts TIMESTAMP
-) USING DELTA
-COMMENT 'Dynamic rule-engine parameters (R2 lag, R3 velocity, R4 ratio anomaly, R5 severity). R1 fraud uses auto_close_config.fraud_floor. Phase 12 adds R6/R7.'
-""")
+RULE_DEFAULTS = {"lag_limit": 14.0, "velocity_limit": 1.0, "ratio_ceiling": 0.9, "severity_mult": 5.0,
+                 "speed_margin": 10.0, "severe_min_amount": 5000.0, "minor_max_amount": 20000.0}
+RULE_COLS = list(RULE_DEFAULTS.keys())
+# Recreate the config if its schema drifted (CREATE-IF-NOT-EXISTS keeps an old schema,
+# so adding R6/R7 columns needs a rebuild).
+try:
+    have = set(spark.table(tbl("rule_config")).columns)
+    if not set(RULE_COLS).issubset(have):
+        spark.sql(f"DROP TABLE IF EXISTS {tbl('rule_config')}")
+except Exception:
+    pass
+cols_ddl = ", ".join(f"{c} DOUBLE" for c in RULE_COLS)
+spark.sql(f"""CREATE TABLE IF NOT EXISTS {tbl('rule_config')} (config_key STRING, {cols_ddl}, updated_ts TIMESTAMP)
+USING DELTA COMMENT 'Dynamic rule-engine params: R2 lag, R3 velocity, R4 ratio, R5 severity, R6 speed_margin, R7 severe/minor amount bands. R1 fraud uses auto_close_config.fraud_floor.'""")
 if spark.table(tbl("rule_config")).count() == 0:
-    spark.sql(f"""INSERT INTO {tbl('rule_config')} VALUES ('default',
-        {RULE_DEFAULTS['lag_limit']}, {RULE_DEFAULTS['velocity_limit']},
-        {RULE_DEFAULTS['ratio_ceiling']}, {RULE_DEFAULTS['severity_mult']}, current_timestamp())""")
+    vals = ", ".join(str(RULE_DEFAULTS[c]) for c in RULE_COLS)
+    spark.sql(f"INSERT INTO {tbl('rule_config')} VALUES ('default', {vals}, current_timestamp())")
 rc = spark.table(tbl("rule_config")).where("config_key='default'").collect()[0].asDict()
 LAG, VEL, RATIOC, SEVM = float(rc["lag_limit"]), float(rc["velocity_limit"]), float(rc["ratio_ceiling"]), float(rc["severity_mult"])
-print(f"rules: R2 lag>{LAG:.0f}d | R3 prior>{VEL:.0f} | R4 ratio>{RATIOC} | R5 amount>{SEVM:.0f}x peril norm")
+SPDM, SEVMIN, MINMAX = float(rc["speed_margin"]), float(rc["severe_min_amount"]), float(rc["minor_max_amount"])
+print(f"rules: R2 lag>{LAG:.0f}d | R3 prior>{VEL:.0f} | R4 ratio>{RATIOC} | R5 >{SEVM:.0f}x norm | R6 speed>limit+{SPDM:.0f} | R7 severe<£{SEVMIN:.0f}/minor>£{MINMAX:.0f}")
 
 # COMMAND ----------
 
@@ -142,7 +149,8 @@ print(f"scored {scored.count():,} claims")
 silver = spark.table(tbl("silver_claims_enriched")).select(
     "claim_public_id", "total_incurred", "fraud_score", "loss_date", "report_date",
     "peril_type", "postcode_district", "description_text",
-    "reporting_lag_days", "prior_claims_12m", "sum_insured_to_reported_ratio")
+    "reporting_lag_days", "prior_claims_12m", "sum_insured_to_reported_ratio",
+    "speed_at_incident", "posted_speed_limit")
 
 # FNOL data complete: every field a handler needs at first notification is present.
 silver = silver.withColumn("data_complete", F.expr(
@@ -154,6 +162,13 @@ silver = silver.withColumn("data_complete", F.expr(
 peril_norm = (silver.groupBy("peril_type")
               .agg(F.avg("total_incurred").alias("peril_avg_incurred")))
 silver = silver.join(peril_norm, "peril_type", "left")
+
+# Image severity (Phase 12, R7) — joined per claim; most claims have no photo (null).
+try:
+    img = spark.table(tbl("claim_image_severity")).select("claim_public_id", "severity").dropDuplicates(["claim_public_id"])
+    silver = silver.join(img, "claim_public_id", "left")
+except Exception:
+    silver = silver.withColumn("severity", F.lit(None).cast("string"))
 
 df = scored.join(silver, "claim_public_id", "inner")
 
@@ -174,9 +189,12 @@ CHECKS = {
     "R3": (f"coalesce(prior_claims_12m,0) <= {VEL}",                              f"R3 prior-claims <= {VEL:.0f}",  "concat(CAST(coalesce(prior_claims_12m,0) AS INT), ' prior')"),
     "R4": (f"sum_insured_to_reported_ratio IS NULL OR sum_insured_to_reported_ratio <= {RATIOC}", f"R4 amount/sum-insured ok", "concat('ratio ', round(coalesce(sum_insured_to_reported_ratio,0),3))"),
     "R5": (f"peril_avg_incurred IS NULL OR total_incurred <= {SEVM} * peril_avg_incurred",        "R5 severity consistent",    "concat('GBP ', format_number(total_incurred,0), ' vs norm GBP ', format_number(coalesce(peril_avg_incurred,0),0))"),
+    # R6 telematics speed-vs-limit (motor; null telematics passes). R7 image severity vs reported amount.
+    "R6": (f"speed_at_incident IS NULL OR speed_at_incident <= coalesce(posted_speed_limit,999) + {SPDM}", "R6 speed vs limit", "concat(coalesce(CAST(speed_at_incident AS INT),0), ' in ', coalesce(CAST(posted_speed_limit AS INT),0), ' zone')"),
+    "R7": (f"severity IS NULL OR NOT ((severity='severe' AND total_incurred < {SEVMIN}) OR (severity='minor' AND total_incurred > {MINMAX}))", "R7 image severity vs reported", "concat('photo ', coalesce(severity,'none'), ' vs GBP ', format_number(total_incurred,0))"),
 }
-RULE_KEYS = ["R1", "R2", "R3", "R4", "R5"]
-NONFRAUD_RULES = ["R2", "R3", "R4", "R5"]   # R1 (fraud) is the slider; these gate the live re-segment
+RULE_KEYS = ["R1", "R2", "R3", "R4", "R5", "R6", "R7"]
+NONFRAUD_RULES = ["R2", "R3", "R4", "R5", "R6", "R7"]   # R1 (fraud) is the slider; these gate the live re-segment
 
 for k, (pass_sql, _l, _v) in CHECKS.items():
     df = df.withColumn(k, F.expr(pass_sql))

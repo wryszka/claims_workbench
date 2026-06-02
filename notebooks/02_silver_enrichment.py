@@ -103,6 +103,16 @@ weather = (
     .select("postcode_district", "flood_risk_score", "wind_risk_score", "freeze_risk_score")
 )
 
+# Telematics (motor only; home claims -> null). Phase 12 — feeds rule R6.
+try:
+    telematics = (
+        spark.table(tbl("bronze_telematics"))
+        .select("claim_public_id", "speed_at_incident", "posted_speed_limit", "harsh_braking")
+        .dropDuplicates(["claim_public_id"])
+    )
+except Exception:
+    telematics = None
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -119,6 +129,12 @@ df = (
     .join(fraud, "claim_public_id", "left")         # quarantined fraud rows -> null (by design)
     .join(weather, "postcode_district", "left")
 )
+if telematics is not None:
+    df = df.join(telematics, "claim_public_id", "left")   # motor only; home -> null
+else:
+    df = (df.withColumn("speed_at_incident", F.lit(None).cast("int"))
+            .withColumn("posted_speed_limit", F.lit(None).cast("int"))
+            .withColumn("harsh_braking", F.lit(None).cast("boolean")))
 
 # COMMAND ----------
 
@@ -421,6 +437,7 @@ OUTPUT_COLS = [
     "fraud_score", "fraud_flag", "prior_claims_12m", "days_since_incident",
     "is_high_value", "is_potential_fraud", "at_fault",
     "third_party_at_fault", "recovery_flag", "recoverable_amount",
+    "speed_at_incident", "posted_speed_limit", "harsh_braking",
     "claim_status", "settlement_date", "days_to_settle", "leakage_flag",
     "handler_id", "handler_grade",
     "triage_decision", "reserve_bracket", "triage_source",

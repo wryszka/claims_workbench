@@ -95,9 +95,10 @@ async def _fn(fn: str, cid: str) -> dict:
 # Structured panels — direct UC-function calls (run concurrently)
 # --------------------------------------------------------------------------
 async def get_panels(cid: str) -> dict:
-    summary, triage, reserve, fraud, policy, recovery = await asyncio.gather(
+    summary, triage, reserve, fraud, policy, recovery, telematics, image = await asyncio.gather(
         _fn("fn_claim_summary", cid), _fn("fn_triage_claim", cid), _fn("fn_reserve_claim", cid),
-        _fn("fn_fraud_signals", cid), _fn("fn_policy_history", cid), _fn("fn_recovery_signals", cid))
+        _fn("fn_fraud_signals", cid), _fn("fn_policy_history", cid), _fn("fn_recovery_signals", cid),
+        _fn("fn_telematics_signals", cid), _fn("fn_image_severity", cid))
     extra_rows = await execute_query(f"""
         SELECT policy_number, weather_risk_composite, flood_risk_score, wind_risk_score,
                freeze_risk_score, prior_claims_12m, at_fault, reporting_lag_days
@@ -105,7 +106,8 @@ async def get_panels(cid: str) -> dict:
     """)
     extra = extra_rows[0] if extra_rows else {}
     return {"claim_public_id": cid, "summary": summary, "triage": triage,
-            "reserve": reserve, "fraud": fraud, "policy": policy, "recovery": recovery, "extra": extra}
+            "reserve": reserve, "fraud": fraud, "policy": policy, "recovery": recovery,
+            "telematics": telematics, "image": image, "extra": extra}
 
 
 # --------------------------------------------------------------------------

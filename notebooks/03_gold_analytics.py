@@ -244,6 +244,22 @@ if not spark.catalog.tableExists(tbl("gold_claim_disposition")):
 else:
     print("gold_claim_disposition already exists — left intact for the auto-close run.")
 
+# claim_image_severity shell (Phase 12) — 14_image_severity.py fills it via a vision FM;
+# shell-created here so fn_image_severity resolves even before the first seed run.
+image_sev_schema = T.StructType([
+    T.StructField("claim_public_id", T.StringType()),
+    T.StructField("image_url", T.StringType()),
+    T.StructField("image_file", T.StringType()),
+    T.StructField("severity", T.StringType()),
+    T.StructField("rationale", T.StringType()),
+    T.StructField("assessment_ts", T.TimestampType()),
+])
+if not spark.catalog.tableExists(tbl("claim_image_severity")):
+    n_img = write_gold(spark.createDataFrame([], image_sev_schema), "claim_image_severity")
+    print(f"claim_image_severity shell created ({n_img} rows).")
+else:
+    print("claim_image_severity already exists — left intact for the image-severity run.")
+
 # COMMAND ----------
 
 # MAGIC %md

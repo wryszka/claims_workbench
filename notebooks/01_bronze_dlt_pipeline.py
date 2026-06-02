@@ -161,6 +161,20 @@ def bronze_weather_raw():
     )
 
 
+@dlt.table(
+    name="bronze_telematics",
+    comment="Governed bronze telematics (motor only) — Smart Claims `telematic` entity, "
+            "extended with posted_speed_limit + harsh_braking. Feeds rule R6 (speed-vs-limit).",
+    table_properties={"quality": "bronze", "layer": "bronze"},
+)
+@dlt.expect("non_negative_speed", "speed_at_incident >= 0 AND posted_speed_limit > 0")
+def bronze_telematics():
+    return (
+        _read_landing_stream("landing_telematics")
+        .withColumn("_bronze_ingested_at", F.current_timestamp())
+    )
+
+
 # --------------------------------------------------------------------------
 # Quarantine — the rows the expect_or_drop rules removed, captured from LANDING
 # so they are inspectable ("no claims data lost — quarantined, not silently

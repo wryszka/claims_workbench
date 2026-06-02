@@ -48,7 +48,10 @@ fqn            = f"{catalog}.{schema}"
 user           = spark.sql("select current_user()").collect()[0][0]
 
 FRAUD_SYSTEM = """You are a fraud-risk assistant for a Bricksurance SE claims handler.
-For the claim under review, FIRST call get_fraud_signals and get_claim_summary, then judge.
+For the claim under review, FIRST call get_fraud_signals and get_claim_summary; for motor
+also call get_telematics_signals, and call get_image_severity if a photo is on file. Then judge.
+Treat as elevated: speed materially over the limit (telematics), or a photo whose severity is
+inconsistent with the reported amount (e.g. a severe photo on a tiny claim). Cite these if present.
 Output, in plain English (no jargon):
   Risk level: one of LOW / MEDIUM / HIGH (on its own line)
   Then 2-3 sentences explaining WHY, citing the specific signals that drove it
@@ -61,10 +64,12 @@ report (over 14 days) is also elevated. Never invent signals the tools did not r
 CONTEXT_SYSTEM = """You are the Claim 360 / Dossier assistant for Bricksurance SE. Assemble
 EVERYTHING about a claim into one narrative brief a handler can read in 30 seconds. FIRST call
 get_claim_summary, get_policy_history, get_fraud_signals and get_recovery_signals for the claim
-under review. You may call ask_the_book for portfolio context. Then write a structured dossier:
+under review; for motor also call get_telematics_signals, and call get_image_severity if a photo
+is on file. You may call ask_the_book for portfolio context. Then write a structured dossier:
   - Policyholder & policy: product, sum insured, tenure, annual premium
   - The claim: peril, amount (GBP), channel, status, incident description
   - History & risk: prior claims, fraud signals, reporting lag, weather/enrichment context
+  - Telematics & photo: speed-vs-limit (motor) and AI-inferred photo severity, if present
   - Recovery: whether money is recoverable from a third party
 Keep it tight and skimmable, plain English, money in GBP with commas. Do not give a fraud
 verdict or a pay decision — you assemble context; the model and workflow decide."""
@@ -72,8 +77,9 @@ verdict or a pay decision — you assemble context; the model and workflow decid
 CHALLENGE_SYSTEM = """You are the Challenge / Second-Opinion agent for a Bricksurance SE handler.
 Your job is to argue the OPPOSITE of the current disposition, so the handler hears the other side
 before acting. FIRST call get_decision_reasoning (it returns the disposition, the model decision
-and confidence, and which rules passed/failed), then call get_fraud_signals and get_claim_summary
-as needed.
+and confidence, and which rules passed/failed), then call get_fraud_signals, get_claim_summary
+and (if a photo is on file) get_image_severity as needed. If a rule like R7 fired on a photo-vs-amount
+discrepancy, weigh whether the photo truly contradicts the report.
   - If the claim was AUTO-CLOSED / pay_direct: make the case for CAUTION — what could have been
     missed, what would justify a second look.
   - If the claim was ESCALATED: make the case for RELEASING it — why it might be safe to pay.
@@ -141,14 +147,15 @@ you do not decide the claim."""
 
 AGENTS = {
     "fraud":     {"uc_model": "agent_fraud", "experiment": "claims_workbench_agent_fraud",
-                  "system": FRAUD_SYSTEM, "tools": ["get_fraud_signals", "get_claim_summary"], "genie": False},
+                  "system": FRAUD_SYSTEM,
+                  "tools": ["get_fraud_signals", "get_claim_summary", "get_telematics_signals", "get_image_severity"], "genie": False},
     "context":   {"uc_model": "agent_context", "experiment": "claims_workbench_agent_context",
                   "system": CONTEXT_SYSTEM,
                   "tools": ["get_claim_summary", "get_policy_history", "get_fraud_signals",
-                            "get_recovery_signals", "ask_the_book"], "genie": True},
+                            "get_recovery_signals", "get_telematics_signals", "get_image_severity", "ask_the_book"], "genie": True},
     "challenge": {"uc_model": "agent_challenge", "experiment": "claims_workbench_agent_challenge",
                   "system": CHALLENGE_SYSTEM,
-                  "tools": ["get_decision_reasoning", "get_fraud_signals", "get_claim_summary"],
+                  "tools": ["get_decision_reasoning", "get_fraud_signals", "get_claim_summary", "get_image_severity"],
                   "genie": False},
     "recovery":  {"uc_model": "agent_recovery", "experiment": "claims_workbench_agent_recovery",
                   "system": RECOVERY_SYSTEM, "tools": ["get_recovery_signals", "get_claim_summary"], "genie": False},
@@ -190,6 +197,10 @@ TOOL_SCHEMAS = {
     "get_triage": {"description": "Score the triage model for a claim: recommended decision (pay_direct/escalate/refer_siu), confidence %, and top reasons.",
         "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
     "get_reserve": {"description": "Predict the reserve bracket (LOW/MEDIUM/HIGH/LARGE LOSS) and indicative GBP range for a claim.",
+        "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
+    "get_telematics_signals": {"description": "Return motor telematics: speed at incident vs posted speed limit, whether over the limit and by how much, harsh braking. Motor only.",
+        "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
+    "get_image_severity": {"description": "Return the AI-inferred damage severity (minor/moderate/severe) + rationale from the claim photo, if one is on file. Use to check the photo against the reported amount.",
         "input_schema": {"type": "object", "properties": {"claim_public_id": {"type": "string"}}, "required": ["claim_public_id"]}},
 }
 
@@ -258,6 +269,8 @@ class ClaimsSubAgent(ChatAgent):
         if name == "get_decision_reasoning": return self._fn("fn_decision_reasoning", cid)
         if name == "get_triage":             return self._fn("fn_triage_claim", cid)
         if name == "get_reserve":            return self._fn("fn_reserve_claim", cid)
+        if name == "get_telematics_signals": return self._fn("fn_telematics_signals", cid)
+        if name == "get_image_severity":     return self._fn("fn_image_severity", cid)
         if name == "ask_the_book":           return _genie_ask(self.genie_space_id, (args or {}).get("question", ""))
         return {"error": f"unknown tool {name}"}
 
@@ -319,7 +332,8 @@ from mlflow.models.resources import (DatabricksServingEndpoint, DatabricksFuncti
 fn_for_tool = {"get_fraud_signals": "fn_fraud_signals", "get_claim_summary": "fn_claim_summary",
                "get_policy_history": "fn_policy_history", "get_recovery_signals": "fn_recovery_signals",
                "get_decision_reasoning": "fn_decision_reasoning", "get_triage": "fn_triage_claim",
-               "get_reserve": "fn_reserve_claim"}
+               "get_reserve": "fn_reserve_claim", "get_telematics_signals": "fn_telematics_signals",
+               "get_image_severity": "fn_image_severity"}
 resources = [DatabricksServingEndpoint(endpoint_name=fm_endpoint),
              DatabricksTable(table_name=f"{fqn}.silver_claims_enriched")]
 # fn_triage_claim / fn_decision_reasoning read other endpoints/tables; declaring the
@@ -329,6 +343,8 @@ for t in cfg["tools"]:
         resources.append(DatabricksFunction(function_name=f"{fqn}.{fn_for_tool[t]}"))
 if "get_decision_reasoning" in cfg["tools"]:
     resources.append(DatabricksTable(table_name=f"{fqn}.gold_claim_disposition"))
+if "get_image_severity" in cfg["tools"]:
+    resources.append(DatabricksTable(table_name=f"{fqn}.claim_image_severity"))
 if cfg["genie"]:
     resources.append(DatabricksGenieSpace(genie_space_id=genie_space_id))
     resources.append(DatabricksSQLWarehouse(warehouse_id=warehouse_id))

@@ -39,6 +39,8 @@ VIVID_CLAIM_ID = "cc:900001"       # SACRED — the escalated hero (fraud 74, RE
 VIVID_POLICY_NUMBER = "BSE-P-9009001"
 VIVID_CLAIM_ID_2 = "cc:900002"     # SACRED — the auto-close hero (clean, pay_direct)
 VIVID_POLICY_NUMBER_2 = "BSE-P-9009002"
+VIVID_CLAIM_ID_3 = "cc:900003"     # SACRED — the discrepancy hero (Phase 12): reported tiny,
+VIVID_POLICY_NUMBER_3 = "BSE-P-9009003"   # but the photo shows SEVERE damage -> rule R7 fires
 
 # Motor policy ids occupy 1..40000, home 40001..70000, so a claim's product is
 # recoverable from its policy id range and FK integrity is guaranteed.
@@ -350,6 +352,33 @@ def vivid_claim_row_2(spark, anchor=None):
     """)
 
 
+def vivid_claim_row_3(spark, anchor=None):
+    """The SACRED discrepancy hero cc:900003 (Phase 12) — a small, clean-looking MOTOR
+    claim (GBP 600, low fraud, no prior, complete, reported next-day) that everything says
+    auto-close... except the damage photo shows SEVERE damage. Rule R7 (image severity vs
+    reported amount) catches the discrepancy and escalates. The Smart-Claims lightbulb."""
+    a = _anchor_sql(anchor)
+    return spark.sql(f"""
+        SELECT
+            cast('{VIVID_CLAIM_ID_3}' as string)             AS claim_public_id,
+            900003L                                          AS claim_seq,
+            concat('BSE-CC-', cast(year(date_sub({a},1)) as string), '-900003') AS claim_number,
+            cast('{VIVID_POLICY_NUMBER_3}' as string)        AS policy_number,
+            900003L                                          AS policy_seq,
+            cast('motor' as string)                          AS product,
+            cast('M20' as string)                            AS postcode_district,
+            date_sub({a}, 1)                                 AS loss_date,
+            {a}                                              AS report_date,
+            cast('digital' as string)                        AS report_channel,
+            cast('vehcollision' as string)                   AS loss_cause,
+            cast('open' as string)                           AS claim_status,
+            600                                              AS total_incurred,
+            cast(date_sub({a},1) as timestamp) + make_interval(0,0,0,0,9,0,0) AS cda_batch_ts,
+            false                                            AS is_bad_policy,
+            0                                                AS report_lag_days
+    """)
+
+
 # --------------------------------------------------------------------------
 # Child / related tables — derived from the claims DataFrame (FK-safe)
 # --------------------------------------------------------------------------
@@ -560,6 +589,70 @@ def vivid_children_2(spark, anchor=None):
     return exposure, incident, contact, fraud
 
 
+def vivid_children_3(spark, anchor=None):
+    """Children for the discrepancy hero cc:900003 — clean signals; the only red flag is the
+    photo (seeded in claim_image_severity). Reported as a minor bump; image shows severe."""
+    cid = VIVID_CLAIM_ID_3
+    exposure = spark.sql(f"""
+        SELECT 'ec:900003' AS exposure_public_id, '{cid}' AS claim_public_id,
+               'motor_third_party' AS coverage_type, 'indemnity' AS exposure_type,
+               600 AS reserve_amount, 0 AS paid_amount
+    """)
+    incident = spark.sql(f"""
+        SELECT 'in:900003' AS incident_public_id, '{cid}' AS claim_public_id,
+               'vehicle_collision' AS incident_type, 'MM20 BSE' AS vehicle_or_property_ref,
+               'Reported as a minor parking knock; limited cosmetic damage claimed.' AS description_text
+    """)
+    contact = spark.sql(f"""
+        SELECT 'ct:900003:1' AS contact_public_id, '{cid}' AS claim_public_id,
+               'claimant' AS contact_role, 'M20' AS postcode_district
+    """)
+    fraud = spark.sql(f"""
+        SELECT '{cid}' AS claim_public_id, 12 AS fraud_score, false AS fraud_flag,
+               0 AS prior_claims_12m, 1 AS days_since_incident,
+               'internal_rules' AS signal_source
+    """)
+    return exposure, incident, contact, fraud
+
+
+# --------------------------------------------------------------------------
+# Telematics (motor) — light synthetic feed aligned to the Smart Claims
+# accelerator's `telematic` entity (vehicle_id, latitude, longitude,
+# event_timestamp, speed), extended with posted_speed_limit + harsh_braking.
+# One row per MOTOR claim; feeds rule R6 (speed-vs-limit). Home claims: none.
+# --------------------------------------------------------------------------
+def build_telematics(spark, claims, anchor=None):
+    a = _anchor_sql(anchor)
+    motor = claims.filter("product = 'motor'")
+    df = (motor.select("claim_public_id", "claim_seq", "postcode_district", "loss_date")
+          # posted limit cycles through UK limits deterministically by claim_seq
+          .withColumn("posted_speed_limit",
+                      F.expr("element_at(array(30,40,50,60,70), CAST(pmod(claim_seq,5) AS INT)+1)"))
+          # most drivers are at/under; ~12% materially over (deterministic) -> R6 fires
+          .withColumn("_over", F.expr("pmod(crc32(concat(claim_public_id,'|tel')),100) < 12"))
+          .withColumn("speed_at_incident",
+                      F.expr("CAST(CASE WHEN _over THEN posted_speed_limit + 18 + pmod(crc32(claim_public_id),15) "
+                             "ELSE greatest(posted_speed_limit - pmod(crc32(claim_public_id),12), 8) END AS INT)"))
+          .withColumn("harsh_braking", F.expr("_over OR pmod(crc32(concat(claim_public_id,'|hb')),100) < 20"))
+          .withColumn("vehicle_id", F.expr("concat('VH-', lpad(CAST(pmod(claim_seq,99999) AS string),5,'0'))"))
+          .withColumn("latitude", F.expr("round(51.5 + (pmod(crc32(claim_public_id),1000)/1000.0 - 0.5), 5)"))
+          .withColumn("longitude", F.expr("round(-1.5 + (pmod(crc32(concat(claim_public_id,'|lon')),1000)/1000.0 - 0.5), 5)"))
+          .withColumn("event_timestamp", F.expr(f"cast(loss_date as timestamp) + make_interval(0,0,0,0,8,30,0)"))
+          .select("claim_public_id", "vehicle_id", "latitude", "longitude", "event_timestamp",
+                  "speed_at_incident", "posted_speed_limit", "harsh_braking"))
+    # Vivid telematics: cc:900001 speeding (R6 fires); cc:900003 within limit (only R7 fires).
+    vivid = spark.sql(f"""
+        SELECT '{VIVID_CLAIM_ID}' claim_public_id, 'VH-90001' vehicle_id, 53.4808 latitude, -2.2426 longitude,
+               cast(date_sub({a},18) as timestamp) + make_interval(0,0,0,0,8,30,0) event_timestamp,
+               95 speed_at_incident, 50 posted_speed_limit, true harsh_braking
+        UNION ALL
+        SELECT '{VIVID_CLAIM_ID_3}', 'VH-90003', 53.4084, -2.2342,
+               cast(date_sub({a},1) as timestamp) + make_interval(0,0,0,0,8,30,0),
+               28, 30, false
+    """)
+    return df.unionByName(vivid)
+
+
 # --------------------------------------------------------------------------
 # Policy / handler / weather tables
 # --------------------------------------------------------------------------
@@ -580,6 +673,8 @@ def build_policies(spark, claims, anchor=None):
         SELECT 900001L AS policy_seq, '{VIVID_POLICY_NUMBER}' AS policy_number, 'motor' AS product
         UNION ALL
         SELECT 900002L AS policy_seq, '{VIVID_POLICY_NUMBER_2}' AS policy_number, 'home' AS product
+        UNION ALL
+        SELECT 900003L AS policy_seq, '{VIVID_POLICY_NUMBER_3}' AS policy_number, 'motor' AS product
     """)
     base = base.unionByName(vivid_pol)
 
@@ -760,11 +855,13 @@ def generate_all(spark, catalog, schema, anchor=None):
     bulk = spark.table(scratch)
     vivid = vivid_claim_row(spark, anchor=anchor)
     vivid2 = vivid_claim_row_2(spark, anchor=anchor)
+    vivid3 = vivid_claim_row_3(spark, anchor=anchor)
 
     claims_public = (
         bulk.select(*CLAIM_PUBLIC_COLS)
             .unionByName(vivid.select(*CLAIM_PUBLIC_COLS))
             .unionByName(vivid2.select(*CLAIM_PUBLIC_COLS))
+            .unionByName(vivid3.select(*CLAIM_PUBLIC_COLS))
     )
     counts["landing_gw_cc_claim"] = write_and_tag(
         spark, claims_public, catalog, schema, "landing_gw_cc_claim", "landing")
@@ -772,24 +869,32 @@ def generate_all(spark, catalog, schema, anchor=None):
     # --- child tables (bulk derived + vivid rows) ---
     v_exp, v_inc, v_con, v_fraud = vivid_children(spark, anchor=anchor)
     v2_exp, v2_inc, v2_con, v2_fraud = vivid_children_2(spark, anchor=anchor)
+    v3_exp, v3_inc, v3_con, v3_fraud = vivid_children_3(spark, anchor=anchor)
 
     # vivid claims carry no u_*/report_lag helper cols, so derive children from
     # the bulk frame only, then union the explicit vivid child rows.
-    exposures = build_exposures(bulk).unionByName(v_exp).unionByName(v2_exp)
+    exposures = build_exposures(bulk).unionByName(v_exp).unionByName(v2_exp).unionByName(v3_exp)
     counts["landing_gw_cc_exposure"] = write_and_tag(
         spark, exposures, catalog, schema, "landing_gw_cc_exposure", "landing")
 
-    incidents = build_incidents(bulk).unionByName(v_inc).unionByName(v2_inc)
+    incidents = build_incidents(bulk).unionByName(v_inc).unionByName(v2_inc).unionByName(v3_inc)
     counts["landing_gw_cc_incident"] = write_and_tag(
         spark, incidents, catalog, schema, "landing_gw_cc_incident", "landing")
 
-    contacts = build_contacts(bulk).unionByName(v_con).unionByName(v2_con)
+    contacts = build_contacts(bulk).unionByName(v_con).unionByName(v2_con).unionByName(v3_con)
     counts["landing_gw_cc_contact"] = write_and_tag(
         spark, contacts, catalog, schema, "landing_gw_cc_contact", "landing")
 
-    fraud = build_fraud_signals(bulk).unionByName(v_fraud).unionByName(v2_fraud)
+    fraud = build_fraud_signals(bulk).unionByName(v_fraud).unionByName(v2_fraud).unionByName(v3_fraud)
     counts["landing_fraud_signals"] = write_and_tag(
         spark, fraud, catalog, schema, "landing_fraud_signals", "landing")
+
+    # --- telematics (motor only) ---
+    # build_telematics filters motor from the BULK frame and unions the explicit vivid
+    # telematics for cc:900001 (speeding -> R6) and cc:900003 (within limit -> only R7).
+    telematics = build_telematics(spark, bulk, anchor=anchor)
+    counts["landing_telematics"] = write_and_tag(
+        spark, telematics, catalog, schema, "landing_telematics", "landing")
 
     # --- policy / handlers / weather ---
     # Derive policies from the bulk frame only; the vivid policy is appended

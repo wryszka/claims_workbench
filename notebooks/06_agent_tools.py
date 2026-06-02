@@ -165,15 +165,48 @@ RETURN
   FROM {FQ}.gold_claim_disposition WHERE claim_public_id = p_claim_public_id
 """)
 
-print("7 UC functions created.")
+# fn_telematics_signals — motor telematics (Phase 12, no model call). Feeds rule R6.
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {FQ}.fn_telematics_signals(p_claim_public_id STRING)
+RETURNS STRUCT<has_telematics BOOLEAN, speed_at_incident INT, posted_speed_limit INT, over_limit BOOLEAN, excess_mph INT, harsh_braking BOOLEAN>
+COMMENT 'Return motor telematics for a claim: speed at incident vs the posted speed limit, whether the vehicle was over the limit and by how much, and harsh-braking. Motor only (null for home). Use to assess speed-vs-limit consistency / fault.'
+RETURN
+  SELECT named_struct(
+    'has_telematics', any_value(speed_at_incident) IS NOT NULL,
+    'speed_at_incident', any_value(CAST(speed_at_incident AS INT)),
+    'posted_speed_limit', any_value(CAST(posted_speed_limit AS INT)),
+    'over_limit', any_value(coalesce(speed_at_incident > posted_speed_limit, false)),
+    'excess_mph', any_value(CAST(greatest(coalesce(speed_at_incident,0) - coalesce(posted_speed_limit,0), 0) AS INT)),
+    'harsh_braking', any_value(harsh_braking))
+  FROM {FQ}.silver_claims_enriched WHERE claim_public_id = p_claim_public_id
+""")
+
+# fn_image_severity — inferred damage severity from the claim photo (Phase 12). The
+# inference is produced by a vision foundation model in 14_image_severity.py and stored
+# in claim_image_severity; this tool reads it. Most claims carry no image (null-safe).
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {FQ}.fn_image_severity(p_claim_public_id STRING)
+RETURNS STRUCT<has_image BOOLEAN, severity STRING, rationale STRING, image_url STRING>
+COMMENT 'Return the AI-inferred damage severity (minor/moderate/severe) and rationale from the claim photo, if one is on file. Produced by a vision foundation model. Use to check whether the image is consistent with the reported amount.'
+RETURN
+  SELECT named_struct(
+    'has_image', any_value(severity) IS NOT NULL,
+    'severity', any_value(severity),
+    'rationale', any_value(rationale),
+    'image_url', any_value(image_url))
+  FROM {FQ}.claim_image_severity WHERE claim_public_id = p_claim_public_id
+""")
+
+print("9 UC functions created.")
 
 # COMMAND ----------
 
 # Smoke-test each for the vivid claims
 import json
 for fn in ["fn_triage_claim", "fn_reserve_claim", "fn_fraud_signals", "fn_policy_history",
-           "fn_claim_summary", "fn_recovery_signals", "fn_decision_reasoning"]:
-    for cid in ["cc:900001", "cc:900002"]:
+           "fn_claim_summary", "fn_recovery_signals", "fn_decision_reasoning",
+           "fn_telematics_signals", "fn_image_severity"]:
+    for cid in ["cc:900001", "cc:900002", "cc:900003"]:
         try:
             r = spark.sql(f"SELECT to_json({FQ}.{fn}('{cid}')) AS r").collect()[0]["r"]
             print(f"{fn}({cid}): {r}")
