@@ -74,6 +74,13 @@ resources:
             base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
           environment_key: serverless
 
+        - task_key: cco_metrics
+          depends_on: [{task_key: gold}, {task_key: auto_close}]
+          notebook_task:
+            notebook_path: ../notebooks/13_cco_metrics.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
         - task_key: governance
           depends_on: [{task_key: silver}]
           notebook_task:

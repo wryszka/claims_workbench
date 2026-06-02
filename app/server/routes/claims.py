@@ -101,6 +101,31 @@ async def monitoring_lens():
     return await svc.monitoring_lens()
 
 
+@router.get("/monday-brief")
+async def monday_brief():
+    return await svc.monday_brief()
+
+
+@router.get("/worklist")
+async def worklist(kind: str, limit: int = 100):
+    return await svc.worklist(kind, limit)
+
+
+@router.get("/handlers")
+async def handlers():
+    return await svc.handlers()
+
+
+@router.get("/fraud")
+async def fraud():
+    return await svc.fraud_view()
+
+
+@router.get("/trends")
+async def trends():
+    return await svc.trends()
+
+
 class AskIn(BaseModel):
     question: str
     cid: str | None = None

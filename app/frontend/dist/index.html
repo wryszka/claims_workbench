@@ -112,8 +112,12 @@
 <script>
 const SECTIONS=[
   {id:'control',label:'🎛️ Control Tower',grp:'Operate'},
-  {id:'claimsai',label:'🤖 Claims AI',grp:'Operate'},
+  {id:'worklists',label:'✅ Worklists',grp:'Operate'},
   {id:'claim',label:'📋 Work a claim',grp:'Operate'},
+  {id:'claimsai',label:'🤖 Claims AI',grp:'Operate'},
+  {id:'performance',label:'📊 Performance',grp:'Insight'},
+  {id:'fraud',label:'🔍 Fraud & SIU',grp:'Insight'},
+  {id:'trends',label:'📈 Trends',grp:'Insight'},
   {id:'ingestion',label:'📥 Ingestion',grp:'Pipeline'},
   {id:'enrichment',label:'🧩 Enrichment',grp:'Pipeline'},
   {id:'governance',label:'🛡️ Governance',grp:'Govern'},
@@ -139,45 +143,112 @@ async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:
 let _rt=null;
 async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…'; try{const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){m.textContent=d.message||'unavailable';return;} document.getElementById('resetBtn').disabled=true; pollReset(d.run_id,Date.now());}catch(e){m.textContent='unavailable';} }
 function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000); if((r.life_cycle||'').includes('TERMINATED')){clearInterval(_rt);document.getElementById('resetBtn').disabled=false;m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed';if((r.result||'').includes('SUCCESS'))location.reload();}else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={control:renderControl,claimsai:renderClaimsAI,claim:renderClaim,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={control:renderControl,worklists:renderWorklists,claim:renderClaim,claimsai:renderClaimsAI,performance:renderPerformance,fraud:renderFraud,trends:renderTrends,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function goWork(kind){ state.worklistKind=kind; go('worklists'); }
+const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
+const fmtv=(v,f)=>f==='gbp'?gbp(v):f==='pct'?pct(v):f==='days'?((v??'—')+' d'):num(v);
+function trendArrow(tr){ if(!tr||tr.dir==='flat')return ''; const c=tr.good?'#059669':'#dc2626'; const ar=tr.dir==='up'?'▲':'▼'; return ` <span style="color:${c};font-size:11px;font-weight:700">${ar}${Math.abs(tr.delta)}</span>`; }
 function page(eyebrow,title,lead,desc){ return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
 
 // ============ CONTROL TOWER ============
 const DISCLAIMER="Bricksurance SE is a synthetic insurer. All data is generated — there is no real Guidewire integration and no real customer data. Figures illustrate the Databricks platform, not a real book. Decisions are model and workflow outputs with a human in the loop; the AI agents reason and give a second opinion and have no payment authority.";
-async function renderControl(){ const v=document.getElementById('view'); v.innerHTML=page('Control Tower','Your claims book, at a glance','The demo home — open vs auto-closed vs escalated, what needs attention, and a live auto-close risk-appetite slider.','Loading portfolio…');
+async function renderControl(){ const v=document.getElementById('view'); v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you on Monday, the money on the table, and a live auto-close risk-appetite dial.','Loading portfolio…');
   try{state.ct=await J('/control-tower');}catch(e){v.innerHTML=page('Control Tower','Control Tower','')+'<p class="muted">Unavailable.</p>';return;}
-  try{state.lens=await J('/monitoring-lens');}catch(e){state.lens=null;}
+  try{state.brief=await J('/monday-brief');}catch(e){state.brief=null;}
   try{state.cfg=await J('/auto-close/config');}catch(e){state.cfg={conf_threshold:85,amount_cap:2000,fraud_floor:20};}
-  const t=state.ct; const tile=(l,n,s,cls)=>`<div class="tile ${cls||''}"><div class="l">${l}</div><div class="n">${n}</div><div class="s">${s||''}</div></div>`;
-  v.innerHTML=page('Control Tower','Your claims book, at a glance','The demo home — open vs auto-closed vs escalated, what needs attention, and a live auto-close risk-appetite slider.')
+  const t=state.ct, h=t.hero||{}, rec=t.recovery||{}, res=t.reserve||{};
+  const tileEl=x=>`<div class="tile" style="border-left:3px solid ${RAGC[x.rag||'info']};${x.worklist?'cursor:pointer':''}" ${x.worklist?`onclick="goWork('${x.worklist}')"`:''}><div class="l">${esc(x.label)}</div><div class="n">${fmtv(x.value,x.fmt)}${trendArrow(x.trend)}</div><div class="s">${esc(x.sub||'')}${x.worklist?' · view →':''}</div></div>`;
+  const heroCard=`<div class="tile hero"><div class="l">% Auto-closed — straight-through</div><div class="n">${pct(h.pct_auto_closed)}${trendArrow(h.trend)}</div><div class="s">${num(h.auto_closed)} claims · ≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs saved · target ${h.target}%</div></div>`;
+  const recCard=`<div class="tile" style="border-left:3px solid #10b981;cursor:pointer" onclick="goWork('recovery')"><div class="l">💷 Recovery on the table</div><div class="n">${gbp(rec.total)}${trendArrow(rec.trend)}</div><div class="s">${num(rec.count)} open claims · view →</div></div>`;
+  const resCard=res.dev_ratio?`<div class="tile" style="border-left:3px solid ${res.dev_ratio>1.15?'#ef4444':'#f59e0b'};cursor:pointer" onclick="goWork('underreserved')"><div class="l">⚠️ EoW reserve development</div><div class="n">${res.dev_ratio}×</div><div class="s">~${Math.round((res.dev_ratio-1)*100)}% under-reserved · gap ≈${gbp(Math.abs(res.gap||0))} · view →</div></div>`:`<div class="tile"><div class="l">Reserve development</div><div class="n">—</div></div>`;
+  v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you on Monday, the money on the table, and a live auto-close risk-appetite dial.')
     +`<div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
-    <div class="grid4" style="margin-bottom:14px">
-      ${tile('% Auto-closed',pct(t.pct_auto_closed),num(t.auto_closed)+' straight-through','hero')}
-      ${tile('Open',num(t.open),'first notice / in progress')}
-      ${tile('Escalated',num(t.escalated),'routed to a handler')}
-      ${tile('Outstanding',num(t.outstanding),'not yet settled')}</div>
-    <div class="grid4" style="margin-bottom:14px">
-      ${tile('Aged / SLA risk',num(t.aged),'>30 days open')}
-      ${tile('Large losses',num(t.large_losses),'over £50,000')}
-      ${tile('Total reserves',gbp(t.total_reserves),'outstanding')}
-      ${tile('Fraud-refer rate',pct(t.fraud_refer_rate),'elevated signals')}</div>
-    <div class="grid4" style="margin-bottom:24px">
-      ${tile('Closed',num(t.closed),'settled')}${tile('Declined',num(t.declined),'')}
-      ${tile('Leakage rate',pct(t.leakage_rate),'overpayment proxy')}${tile('Avg settlement',(t.avg_settle_days??'—')+' d','days to settle')}</div>
+    <div class="grid3" style="margin-bottom:16px">${heroCard}${recCard}${resCard}</div>
+    <div class="grid4" style="margin-bottom:22px">${(t.tiles||[]).map(tileEl).join('')}</div>
     <div class="grid2">
-      <div class="card"><h2>👁️ Monitoring lens — what needs your attention</h2>${state.lens&&state.lens.items?`<ul style="margin:0;padding-left:18px">${state.lens.items.map(i=>`<li style="font-size:13.5px;color:#334155;margin:7px 0;line-height:1.45">${esc(i)}</li>`).join('')}</ul>`:'<p class="muted">Lens unavailable.</p>'}<p class="muted" style="margin-top:8px">Computed from the live book; can be narrated by the Claims AI supervisor.</p></div>
+      <div class="card"><h2>🗓️ Monday brief — what needs you</h2>${briefHtml()}<p class="muted" style="margin-top:8px">Prioritised from the live book — each line opens a worklist you can act on.</p></div>
       <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
         <div class="srow"><label>Min confidence</label><input type="range" id="s_conf" min="50" max="99" value="${Math.round(state.cfg.conf_threshold)}" oninput="segChange()"><span class="val" id="v_conf">${Math.round(state.cfg.conf_threshold)}%</span></div>
         <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
         <div class="srow"><label>Max fraud score</label><input type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
-        <div style="margin-top:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:var(--v)" id="seg_pct">${pct(t.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(t.auto_closed)} auto-closed · ${num(t.escalated)} escalated</div></div></div></div>
+        <div style="margin-top:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:var(--v)" id="seg_pct">${pct(h.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(h.auto_closed)} auto-closed · ${num(h.escalated)} escalated</div></div></div></div>
     <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}<p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>`;
 }
+function briefHtml(){ const b=state.brief; if(!b||!b.sections)return '<p class="muted">Unavailable.</p>';
+  return b.sections.filter(s=>s.items&&s.items.length).map(sec=>`<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${sec.icon} ${esc(sec.title)}</div>${sec.items.map(it=>`<div style="font-size:13px;color:#334155;margin:5px 0;line-height:1.45">${esc(it.text)}${it.worklist?` <a class="link" onclick="goWork('${it.worklist}')">${esc(it.action||'open')} →</a>`:''}</div>`).join('')}</div>`).join(''); }
 let _st=null;
 function segChange(){ const conf=+s_conf.value,cap=+s_cap.value,fraud=+s_fraud.value; v_conf.textContent=conf+'%'; v_cap.textContent=gbp(cap); v_fraud.textContent=fraud;
   clearTimeout(_st); _st=setTimeout(async()=>{try{const r=await J(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`); seg_pct.textContent=pct(r.pct_auto_closed); seg_n.textContent=`${num(r.auto_closed)} auto-closed · ${num(r.escalated)} escalated`;}catch(e){}},250); }
 const ROADMAP={'Intake & documents':['Document classification','Email → structured extraction','Translation','Damage-photo analysis'],'System integration':['CMS write-back','Lakebase-as-CMS','Zero-copy to underwriting'],'Downstream':['Compliance / finance checks','Payment execution','Litigation routing'],'Specialty':['Marine contagion','Parametric / satellite payout','IoT verification','SDI'],'Enrichment':['D&B / S&P / Moody’s','Telematics']};
 function roadmapStrip(){ return `<div class="grid3">${Object.entries(ROADMAP).map(([g,it])=>`<div class="ph"><b>${esc(g)} <span class="uc">soon</span></b>${it.map(i=>`<div>• ${esc(i)}</div>`).join('')}</div>`).join('')}</div>`; }
+
+// ============ WORKLISTS (drill-through, actionable) ============
+const WL_TABS=[['recovery','💷 Recovery'],['aged','⏰ Past SLA'],['large','🏚️ Large losses'],['underreserved','📉 Under-reserved'],['high_fraud','🔍 High fraud'],['autoclose','✅ Auto-closed']];
+function openClaim(cid){ state.trackCid=cid; state.govtab='track'; go('governance'); }
+async function renderWorklists(){ const v=document.getElementById('view'); const kind=state.worklistKind||'recovery';
+  v.innerHTML=page('Worklists','Turn a number into a queue','Each control-tower figure becomes a prioritised list of claims you can work. Click any claim to see its full track.')
+    +`<div class="tabs">${WL_TABS.map(([k,l])=>`<div class="tab ${kind===k?'on':''}" onclick="state.worklistKind='${k}';renderWorklists()">${l}</div>`).join('')}</div><div id="wlbody"><p class="muted">Loading…</p></div>`;
+  let d; try{d=await J('/worklist?kind='+kind+'&limit=100');}catch(e){document.getElementById('wlbody').innerHTML='<p class="muted">Unavailable.</p>';return;}
+  const mf=d.metric_fmt||'num';
+  const rows=(d.rows||[]).map(r=>`<tr style="cursor:pointer" onclick="openClaim('${esc(r.claim_public_id)}')"><td class="mono link">${esc(r.claim_public_id)}</td><td>${esc(PERIL[r.peril_type]||r.peril_type||(r.model_decision||''))}</td><td>${gbp(r.total_incurred)}</td><td style="text-align:right;font-weight:700">${fmtv(r.metric,mf)}</td></tr>`).join('');
+  document.getElementById('wlbody').innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">${esc(d.title)}</h2><span class="badge b-violet">${(d.rows||[]).length} claims</span></div>
+    <table style="margin-top:8px"><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">${esc(d.metric_label||'')}</th></tr>${rows||'<tr><td colspan=4 class="muted">Nothing in this queue — good news.</td></tr>'}</table>
+    <p class="muted" style="margin-top:8px">Click a claim → its full lifecycle track. In production these rows carry an action (assign, pursue recovery, release).</p></div>`;
+}
+
+// ============ PERFORMANCE (handler scorecard) ============
+async function renderPerformance(){ const v=document.getElementById('view'); v.innerHTML=page('Insight','Team & handler performance','Caseload, settlement speed, leakage and overrides by team and handler — from the gold handler scorecard.','Loading…');
+  let d; try{d=await J('/handlers');}catch(e){d={teams:[],worst:[],overall:{}};}
+  const o=d.overall||{};
+  const teamRows=(d.teams||[]).map(t=>`<tr><td><b>${esc(t.team||'—')}</b></td><td style="text-align:right">${num(t.handlers)}</td><td style="text-align:right">${num(t.caseload)}</td><td style="text-align:right">${t.avg_settle??'—'} d</td><td style="text-align:right;color:${t.leakage_pct>8?'#dc2626':t.leakage_pct>6?'#b45309':'#047857'}">${t.leakage_pct}%</td></tr>`).join('');
+  const worstRows=(d.worst||[]).map(h=>`<tr><td class="mono">${esc(h.handler_id)}</td><td>${esc(h.grade)}</td><td>${esc(h.team)}</td><td style="text-align:right">${num(h.caseload)}</td><td style="text-align:right">${h.avg_days_to_settle??'—'} d</td><td style="text-align:right;color:${h.leakage_rate_pct>8?'#dc2626':'#b45309'}">${h.leakage_rate_pct}%</td></tr>`).join('');
+  v.innerHTML=page('Insight','Team & handler performance','Caseload, settlement speed, leakage and overrides by team and handler — from the gold handler scorecard.')
+    +`<div class="grid4" style="margin-bottom:18px">
+      <div class="tile"><div class="l">Handlers</div><div class="n">${num(o.handlers)}</div></div>
+      <div class="tile"><div class="l">Open caseload</div><div class="n">${num(o.caseload)}</div></div>
+      <div class="tile"><div class="l">Avg settlement</div><div class="n">${o.avg_settle??'—'} d</div></div>
+      <div class="tile" style="border-left:3px solid ${o.leakage_pct>6?'#f59e0b':'#10b981'}"><div class="l">Avg leakage</div><div class="n">${o.leakage_pct??'—'}%</div></div></div>
+    <div class="grid2">
+      <div class="card"><h2>🏢 By team (worst leakage first)</h2><table><tr><th>Team</th><th style="text-align:right">Handlers</th><th style="text-align:right">Caseload</th><th style="text-align:right">Settle</th><th style="text-align:right">Leakage</th></tr>${teamRows||'<tr><td class="muted" colspan=5>No data.</td></tr>'}</table></div>
+      <div class="card"><h2>👤 Handlers needing support (top leakage)</h2><table><tr><th>Handler</th><th>Grade</th><th>Team</th><th style="text-align:right">Caseload</th><th style="text-align:right">Settle</th><th style="text-align:right">Leakage</th></tr>${worstRows||'<tr><td class="muted" colspan=6>No data.</td></tr>'}</table><p class="muted" style="margin-top:8px">Surfacing who needs coaching or rebalancing — not a league table.</p></div></div>`;
+}
+
+// ============ FRAUD & SIU ============
+async function renderFraud(){ const v=document.getElementById('view'); v.innerHTML=page('Insight','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.','Loading…');
+  let d; try{d=await J('/fraud');}catch(e){d={summary:{},buckets:[],queue:[]};}
+  const s=d.summary||{};
+  const bucket=(d.buckets||[]).map(b=>`<div class="srow"><label style="width:130px">${esc(b.band)}</label><div class="bar" style="flex:1"><div style="width:${Math.min(100,(b.n/Math.max(...d.buckets.map(x=>x.n))*100))}%;background:${b.band[0]==='7'?'#ef4444':b.band[0]==='4'?'#f59e0b':'#10b981'}"></div></div><span class="val">${num(b.n)}</span></div>`).join('');
+  const q=(d.queue||[]).map(r=>`<tr style="cursor:pointer" onclick="openClaim('${esc(r.claim_public_id)}')"><td class="mono link">${esc(r.claim_public_id)}</td><td>${esc(PERIL[r.peril_type]||r.peril_type)}</td><td>${gbp(r.total_incurred)}</td><td style="text-align:right;font-weight:700;color:#b91c1c">${r.fraud_score}</td><td style="text-align:right">${r.prior_claims_12m}</td><td style="text-align:right">${r.reporting_lag_days}d</td></tr>`).join('');
+  v.innerHTML=page('Insight','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.')
+    +`<div class="grid3" style="margin-bottom:18px">
+      <div class="tile"><div class="l">Refer rate</div><div class="n">${pct(s.refer_rate)}</div><div class="s">elevated-signal claims</div></div>
+      <div class="tile" style="border-left:3px solid #ef4444"><div class="l">High-score open (SIU queue)</div><div class="n">${num(s.high_open)}</div><div class="s">fraud score &gt; 70</div></div>
+      <div class="tile"><div class="l">Avg fraud score</div><div class="n">${s.avg_score??'—'}</div><div class="s">whole book</div></div></div>
+    <div class="grid2">
+      <div class="card"><h2>📊 Fraud-score distribution</h2><div style="margin-top:8px">${bucket}</div></div>
+      <div class="card"><h2>🔍 SIU queue — highest score open claims</h2><table><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">Score</th><th style="text-align:right">Prior</th><th style="text-align:right">Lag</th></tr>${q||'<tr><td class="muted" colspan=6>Queue clear.</td></tr>'}</table></div></div>`;
+}
+
+// ============ TRENDS ============
+function spark(series,key,color,lowerBetter){ const vals=series.map(r=>parseFloat(r[key])).filter(x=>!isNaN(x)); if(!vals.length)return ''; const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1,W=260,H=46;
+  const pts=vals.map((x,i)=>`${(i/(vals.length-1)*W).toFixed(1)},${(H-((x-mn)/rng)*H).toFixed(1)}`).join(' ');
+  const first=vals[0],last=vals[vals.length-1]; const good=lowerBetter?last<first:last>first; const dc=good?'#059669':'#dc2626';
+  return `<svg width="${W}" height="${H}" style="overflow:visible"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2"/><circle cx="${W}" cy="${(H-((last-mn)/rng)*H).toFixed(1)}" r="3" fill="${dc}"/></svg>`; }
+async function renderTrends(){ const v=document.getElementById('view'); v.innerHTML=page('Insight','Trends','Direction, not just today — how the book has moved over the last 12 weeks. (Snapshotted daily; the series re-anchors on each demo reset.)','Loading…');
+  let d; try{d=await J('/trends');}catch(e){d={series:[]};}
+  const s=d.series||[]; if(!s.length){v.innerHTML=page('Insight','Trends','')+'<div class="card"><p class="muted">No history yet — run the metrics snapshot (13_cco_metrics) or a reset to seed the series.</p></div>';return;}
+  const last=s[s.length-1], first=s[0];
+  const card=(title,key,color,fmt,lower)=>{const lv=last[key],fv=first[key];const delta=(parseFloat(lv)-parseFloat(fv));const good=lower?delta<0:delta>0;return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${title}</h2><div style="font-size:20px;font-weight:800">${fmtv(lv,fmt)} <span style="font-size:12px;color:${good?'#059669':'#dc2626'}">${delta>0?'▲':'▼'}${Math.abs(Math.round(delta*10)/10)} / 12w</span></div></div><div style="margin-top:8px">${spark(s,key,color,lower)}</div></div>`;};
+  v.innerHTML=page('Insight','Trends','Direction, not just today — how the book has moved over the last 12 weeks. (Snapshotted daily; the series re-anchors on each demo reset.)')
+    +`<div class="grid2">
+      ${card('% Auto-closed','pct_auto_closed','#7c3aed','pct',false)}
+      ${card('Leakage rate','leakage_rate','#f59e0b','pct',true)}
+      ${card('Avg settlement (days)','avg_settle_days','#2563eb','days',true)}
+      ${card('Past-SLA % of open','sla_breach_pct','#ef4444','pct',true)}
+      ${card('Recovery identified','recoverable_total','#10b981','gbp',false)}
+      ${card('Open inventory','open_inv','#64748b','num',true)}
+    </div>`;
+}
 
 // ============ CLAIMS AI (matches the Solvency-2 supervisor page) ============
 const ASK_QS=[

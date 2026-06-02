@@ -246,21 +246,30 @@ df = (
     .withColumn("_settle_days",
                 F.expr("greatest(CAST(round(_base_days * (1 + (_chan_mult - 1) * _chan_damp)) AS INT), 3)"))
     .withColumn("_modeled_settle_date", F.expr("date_add(report_date, _settle_days)"))
-    # A bronze-closed claim has actually settled only if its modeled settlement
-    # date has already arrived; otherwise it's still being worked.
-    .withColumn("_settled_now",
-                F.expr("src_claim_status = 'closed' AND _modeled_settle_date <= current_date()"))
+    # Status is AGE-DRIVEN (a real book settles claims as their modeled settle date
+    # passes), NOT frozen from the source feed — otherwise old claims stay open forever
+    # and the open inventory becomes implausibly large/old. A claim has settled once its
+    # modeled settlement date has arrived.
+    .withColumn("_settle_passed", F.expr("_modeled_settle_date <= current_date()"))
+    # A small long-tail of complex / large losses stays open past its modeled date
+    # (litigation / dispute) — the genuine backlog a head of claims worries about.
+    .withColumn("_litigating", F.expr(
+        "_settle_passed AND _severity IN ('large_loss','high') "
+        "AND pmod(crc32(concat(claim_public_id, '|lit')), 100) < (CASE _severity WHEN 'large_loss' THEN 18 ELSE 6 END)"))
+    .withColumn("_settled_now", F.expr("_settle_passed AND NOT _litigating"))
 )
 
 # --- claim lifecycle status ---
+# Open inventory = claims whose modeled settle date hasn't arrived yet (recent) plus
+# the small litigation tail (old, complex, genuinely outstanding). Everything older
+# has settled/declined/withdrawn. This makes open inventory realistic and recent.
 df = df.withColumn("claim_status", F.expr("""
     CASE
         WHEN _settled_now AND is_potential_fraud
              AND pmod(crc32(concat(claim_public_id, '|st')), 100) < 40 THEN 'declined'
         WHEN _settled_now AND pmod(crc32(concat(claim_public_id, '|st')), 100) < 5 THEN 'withdrawn'
         WHEN _settled_now                          THEN 'settled'
-        WHEN src_claim_status = 'closed'           THEN 'under_investigation'
-        WHEN src_claim_status = 'reopened'         THEN 'under_investigation'
+        WHEN _litigating                           THEN 'under_investigation'
         WHEN is_potential_fraud                    THEN 'under_investigation'
         ELSE 'open'
     END

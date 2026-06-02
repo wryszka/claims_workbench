@@ -18,6 +18,26 @@ from server.sql import execute_query
 logger = logging.getLogger(__name__)
 CAT, SCH = config.CATALOG, config.SCHEMA
 
+# --- CCO framing constants (illustrative, documented) ---
+HANDLER_COST_PER_CLAIM = 45.0     # £ fully-loaded handling cost avoided per auto-close
+HANDLER_MINS_PER_CLAIM = 25       # handler-minutes freed per auto-close
+PERIL_SLA = {"motor_tp": 30, "home_fire": 60}   # days; default 45
+DEFAULT_SLA = 45
+# Book targets for the RAG status on each tile.
+TARGETS = {"pct_auto_closed": 15.0, "leakage_rate": 6.0, "avg_settle_days": 35.0,
+           "fraud_refer_rate": 5.0, "sla_breach_pct": 10.0}
+
+
+def _rag(value, target, lower_is_better, amber_mult=1.5):
+    """green / amber / red vs a target."""
+    try:
+        v, t = float(value), float(target)
+    except Exception:
+        return "info"
+    if lower_is_better:
+        return "green" if v <= t else ("amber" if v <= t * amber_mult else "red")
+    return "green" if v >= t else ("amber" if v >= t * 0.6 else "red")
+
 
 def _fq(table: str) -> str:
     return f"`{CAT}`.`{SCH}`.{table}"
@@ -297,28 +317,34 @@ def reset_available() -> bool:
 # --------------------------------------------------------------------------
 # Phase 11 Stage B — Control Tower, auto-close slider, monitoring lens, ask-window
 # --------------------------------------------------------------------------
+def _sla_sql() -> str:
+    cases = " ".join(f"WHEN '{p}' THEN {d}" for p, d in PERIL_SLA.items())
+    return f"(CASE peril_type {cases} ELSE {DEFAULT_SLA} END)"
+
+
 async def control_tower() -> dict:
-    """All the landing-page status tiles in a few queries over silver + disposition."""
+    """Control-tower tiles with per-peril SLA, targets/RAG, £-FTE framing, the recovery
+    and reserve headlines, and trend vs the last metrics snapshot."""
     s = _fq("silver_claims_enriched")
     d = _fq("gold_claim_disposition")
-    # Claims by status + book-level money/quality metrics.
+    sla = _sla_sql()
     base = (await execute_query(f"""
-        SELECT
-          count(*) total,
+        SELECT count(*) total,
           sum(CASE WHEN claim_status='open' THEN 1 ELSE 0 END) open,
-          sum(CASE WHEN claim_status IN ('open','under_investigation','reopened') THEN 1 ELSE 0 END) outstanding,
+          sum(CASE WHEN claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) open_inv,
+          sum(CASE WHEN claim_status='under_investigation' THEN 1 ELSE 0 END) investigating,
           sum(CASE WHEN claim_status='settled' THEN 1 ELSE 0 END) closed,
           sum(CASE WHEN claim_status='declined' THEN 1 ELSE 0 END) declined,
-          sum(CASE WHEN claim_status IN ('open','under_investigation','reopened')
-                    AND datediff(current_date(), report_date) > 30 THEN 1 ELSE 0 END) aged,
-          sum(CASE WHEN total_incurred > 50000 THEN 1 ELSE 0 END) large_losses,
-          round(sum(CASE WHEN claim_status IN ('open','under_investigation','reopened')
-                         THEN ultimate_reserve ELSE 0 END)) total_reserves,
+          sum(CASE WHEN claim_status IN ('open','under_investigation')
+                    AND datediff(current_date(), report_date) > {sla} THEN 1 ELSE 0 END) past_sla,
+          sum(CASE WHEN total_incurred > 50000 AND claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) large_losses,
+          round(sum(CASE WHEN claim_status IN ('open','under_investigation') THEN ultimate_reserve ELSE 0 END)) total_reserves,
           round(100.0 * avg(CASE WHEN leakage_flag THEN 1 ELSE 0 END), 1) leakage_rate,
           round(avg(CASE WHEN days_to_settle IS NOT NULL THEN days_to_settle END), 1) avg_settle_days,
-          round(100.0 * avg(CASE WHEN coalesce(is_potential_fraud,false) THEN 1 ELSE 0 END), 1) fraud_refer_rate
+          round(100.0 * avg(CASE WHEN coalesce(is_potential_fraud,false) THEN 1 ELSE 0 END), 1) fraud_refer_rate,
+          sum(CASE WHEN recovery_flag AND claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) recovery_count,
+          round(sum(CASE WHEN recovery_flag AND claim_status IN ('open','under_investigation') THEN recoverable_amount ELSE 0 END)) recoverable_total
         FROM {s}"""))[0]
-    # Disposition split (auto-closed / escalated) — guarded if the table is absent.
     try:
         disp = (await execute_query(f"""
             SELECT sum(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END) auto_closed,
@@ -327,15 +353,74 @@ async def control_tower() -> dict:
             FROM {d}"""))[0]
     except Exception:
         disp = {"auto_closed": 0, "escalated": 0, "pct_auto_closed": 0}
-    # Geo snapshot — top NW escape-of-water districts.
+    # Reserve under-reserving headline (escape of water).
     try:
-        geo = await execute_query(f"""
-            SELECT postcode_district, claim_count, round(claims_per_1000_policies,1) per_1000
-            FROM {_fq('gold_geo_clustering')} WHERE peril_type='home_escape_water'
-            ORDER BY claims_per_1000_policies DESC LIMIT 5""")
+        rd = (await execute_query(f"""
+            SELECT round(sum(sum_ultimate_reserve)/nullif(sum(sum_initial_reserve),0),3) dev_ratio,
+                   round(sum(sum_ultimate_reserve) - sum(sum_initial_reserve)) gap
+            FROM {_fq('gold_reserve_development')} WHERE peril_type='home_escape_water'"""))[0]
     except Exception:
-        geo = []
-    return {**{k: base[k] for k in base}, **{k: disp[k] for k in disp}, "geo": geo}
+        rd = {"dev_ratio": None, "gap": None}
+    # Trend vs the most recent prior metrics snapshot.
+    prev = {}
+    try:
+        rows = await execute_query(f"""
+            SELECT pct_auto_closed, leakage_rate, avg_settle_days, sla_breach_pct, recoverable_total
+            FROM {_fq('gold_cco_metrics_daily')} WHERE snapshot_date < current_date()
+            ORDER BY snapshot_date DESC LIMIT 1""")
+        prev = rows[0] if rows else {}
+    except Exception:
+        prev = {}
+
+    open_inv = int(base["open_inv"]) or 1
+    past_sla = int(base["past_sla"])
+    sla_breach_pct = round(100.0 * past_sla / open_inv, 1)
+    ac = int(disp["auto_closed"])
+    gbp_saved = round(ac * HANDLER_COST_PER_CLAIM)
+    hours_freed = round(ac * HANDLER_MINS_PER_CLAIM / 60)
+
+    def trend(key, cur, lower_is_better):
+        if not prev or prev.get(key) is None:
+            return None
+        try:
+            delta = round(float(cur) - float(prev[key]), 1)
+        except Exception:
+            return None
+        good = (delta < 0) if lower_is_better else (delta > 0)
+        return {"delta": delta, "dir": "up" if delta > 0 else ("down" if delta < 0 else "flat"), "good": good}
+
+    tiles = [
+        {"key": "open", "label": "Open inventory", "value": int(base["open_inv"]), "fmt": "num",
+         "sub": f"{int(base['investigating']):,} under investigation", "rag": "info", "worklist": "aged"},
+        {"key": "sla", "label": "Past SLA", "value": past_sla, "fmt": "num",
+         "sub": f"{sla_breach_pct}% of open · per-peril SLA", "rag": _rag(sla_breach_pct, TARGETS["sla_breach_pct"], True), "worklist": "aged"},
+        {"key": "large", "label": "Large losses (open)", "value": int(base["large_losses"]), "fmt": "num",
+         "sub": "over £50,000 — senior review", "rag": "info", "worklist": "large"},
+        {"key": "reserves", "label": "Open reserves", "value": int(base["total_reserves"]), "fmt": "gbp",
+         "sub": "outstanding liability", "rag": "info", "worklist": None},
+        {"key": "leakage", "label": "Leakage rate", "value": base["leakage_rate"], "fmt": "pct",
+         "sub": f"target ≤ {TARGETS['leakage_rate']}% of claims", "rag": _rag(base["leakage_rate"], TARGETS["leakage_rate"], True),
+         "trend": trend("leakage_rate", base["leakage_rate"], True), "worklist": None},
+        {"key": "settle", "label": "Avg settlement", "value": base["avg_settle_days"], "fmt": "days",
+         "sub": f"target ≤ {TARGETS['avg_settle_days']} days", "rag": _rag(base["avg_settle_days"], TARGETS["avg_settle_days"], True),
+         "trend": trend("avg_settle_days", base["avg_settle_days"], True), "worklist": None},
+        {"key": "fraud", "label": "Fraud-refer rate", "value": base["fraud_refer_rate"], "fmt": "pct",
+         "sub": "elevated signals → SIU", "rag": "info", "worklist": "high_fraud"},
+        {"key": "closed", "label": "Settled", "value": int(base["closed"]), "fmt": "num", "sub": "lifetime", "rag": "info", "worklist": None},
+    ]
+    return {
+        "total": int(base["total"]), "open_inv": int(base["open_inv"]),
+        "hero": {"pct_auto_closed": disp["pct_auto_closed"], "auto_closed": ac, "escalated": int(disp["escalated"]),
+                 "gbp_saved": gbp_saved, "hours_freed": hours_freed, "target": TARGETS["pct_auto_closed"],
+                 "rag": _rag(disp["pct_auto_closed"], TARGETS["pct_auto_closed"], False),
+                 "trend": trend("pct_auto_closed", disp["pct_auto_closed"], False)},
+        "recovery": {"count": int(base["recovery_count"]), "total": int(base["recoverable_total"] or 0),
+                     "trend": trend("recoverable_total", base["recoverable_total"] or 0, False)},
+        "reserve": {"dev_ratio": float(rd["dev_ratio"]) if rd.get("dev_ratio") is not None else None,
+                    "gap": int(float(rd["gap"])) if rd.get("gap") is not None else None},
+        "sla": {"open_inv": int(base["open_inv"]), "past_sla": past_sla, "breach_pct": sla_breach_pct},
+        "tiles": tiles,
+    }
 
 
 async def segment_auto_close(conf: float, cap: float, fraud: float) -> dict:
@@ -366,23 +451,154 @@ async def auto_close_config() -> dict:
         return {"conf_threshold": 85.0, "amount_cap": 2000.0, "fraud_floor": 20.0}
 
 
-async def monitoring_lens() -> dict:
-    """"What needs your attention and why" — a deterministic portfolio lens built
-    from the control-tower tiles (always works; can be supervisor-enriched later)."""
+async def monday_brief() -> dict:
+    """The Monday-morning brief — prioritised, money-framed, and each item links to a
+    worklist you can act on. Grouped: needs you now / money on the table / risk."""
     t = await control_tower()
-    items = []
-    if int(t.get("aged") or 0):
-        items.append(f"{int(t['aged']):,} outstanding claims have passed 30 days since notification — SLA-breach risk; prioritise these.")
-    if int(t.get("large_losses") or 0):
-        items.append(f"{int(t['large_losses']):,} large losses (over £50,000) warrant senior review and reserve scrutiny.")
-    if t.get("pct_auto_closed") is not None:
-        items.append(f"{t['pct_auto_closed']}% of claims auto-closed straight-through, freeing handlers for the {int(t.get('escalated') or 0):,} escalated cases.")
-    if t.get("fraud_refer_rate") is not None:
-        items.append(f"{t['fraud_refer_rate']}% of claims carry elevated fraud signals — the Fraud agent and SIU referrals focus here.")
-    if t.get("geo"):
-        top = t["geo"][0]
-        items.append(f"Escape-of-water concentration is highest in {top['postcode_district']} ({top['per_1000']} per 1,000 policies) — a pricing/claims feedback signal.")
-    return {"headline": "What needs your attention", "items": items}
+    sla, rec, res, hero = t["sla"], t["recovery"], t["reserve"], t["hero"]
+    needs, money, risk = [], [], []
+    if sla["past_sla"]:
+        needs.append({"text": f"{sla['past_sla']:,} open claims are past their per-peril SLA ({sla['breach_pct']}% of open) — reallocate or chase.",
+                      "action": "Open the SLA worklist", "worklist": "aged"})
+    large = next((x["value"] for x in t["tiles"] if x["key"] == "large"), 0)
+    if large:
+        needs.append({"text": f"{large:,} large losses (over £50,000) are open — confirm reserves and senior ownership.",
+                      "action": "Open large-loss worklist", "worklist": "large"})
+    needs.append({"text": f"{hero['escalated']:,} claims escalated to handlers; {hero['pct_auto_closed']}% auto-closed straight-through, freeing ≈{hero['hours_freed']:,} handler-hours (≈£{hero['gbp_saved']:,}).",
+                  "action": "Review auto-close appetite", "worklist": "autoclose"})
+    if rec["total"]:
+        money.append({"text": f"£{rec['total']:,} is recoverable across {rec['count']:,} open claims — recovery is chronically under-pursued.",
+                      "action": "Open recovery worklist", "worklist": "recovery"})
+    if res.get("dev_ratio") and res["dev_ratio"] > 1.1:
+        money.append({"text": f"Escape-of-water is developing at {res['dev_ratio']}× initial reserve (~{round((res['dev_ratio']-1)*100)}% under-reserved) — a ≈£{abs(res['gap']):,} provision gap.",
+                      "action": "See under-reserved claims", "worklist": "underreserved"})
+    leak = next((x for x in t["tiles"] if x["key"] == "leakage"), {})
+    if leak.get("rag") in ("amber", "red"):
+        risk.append({"text": f"Leakage is {leak['value']}% (target ≤ {TARGETS['leakage_rate']}%){_trend_phrase(leak.get('trend'))}.",
+                     "action": None, "worklist": None})
+    fr = next((x for x in t["tiles"] if x["key"] == "fraud"), {})
+    risk.append({"text": f"{fr.get('value','—')}% of claims carry elevated fraud signals — SIU focus.",
+                 "action": "Open fraud queue", "worklist": "high_fraud"})
+    return {"sections": [
+        {"title": "Needs you now", "icon": "⏰", "items": needs},
+        {"title": "Money on the table", "icon": "💷", "items": money},
+        {"title": "Risk to watch", "icon": "⚠️", "items": risk}]}
+
+
+def _trend_phrase(tr):
+    if not tr:
+        return ""
+    return f", { 'up' if tr['dir']=='up' else 'down' } {abs(tr['delta'])} vs last snapshot"
+
+
+# Backwards-compatible alias.
+async def monitoring_lens() -> dict:
+    return await monday_brief()
+
+
+# --------------------------------------------------------------------------
+# Worklists — turn a number into an actionable, clickable queue of claims.
+# --------------------------------------------------------------------------
+_WORKLISTS = {
+    "recovery": {"title": "Recovery / subrogation opportunities",
+                 "where": "recovery_flag AND claim_status IN ('open','under_investigation')",
+                 "order": "recoverable_amount DESC", "metric": ("recoverable_amount", "gbp", "Recoverable")},
+    "aged": {"title": "Open claims past their SLA",
+             "where": f"claim_status IN ('open','under_investigation') AND datediff(current_date(), report_date) > {_sla_sql() if False else ''}",
+             "order": "report_date ASC", "metric": ("age_days", "days", "Age")},
+    "large": {"title": "Open large losses (over £50,000)",
+              "where": "total_incurred > 50000 AND claim_status IN ('open','under_investigation')",
+              "order": "total_incurred DESC", "metric": ("total_incurred", "gbp", "Incurred")},
+    "underreserved": {"title": "Under-reserved escape-of-water (open)",
+                      "where": "peril_type='home_escape_water' AND claim_status IN ('open','under_investigation') AND ultimate_reserve > initial_reserve",
+                      "order": "(ultimate_reserve - initial_reserve) DESC",
+                      "metric": ("reserve_gap", "gbp", "Reserve gap")},
+    "high_fraud": {"title": "High fraud-score open claims (SIU queue)",
+                   "where": "fraud_score > 70 AND claim_status IN ('open','under_investigation')",
+                   "order": "fraud_score DESC", "metric": ("fraud_score", "num", "Fraud score")},
+    "autoclose": {"title": "Auto-closed straight-through (this run)",
+                  "where": None, "order": None, "metric": ("model_confidence", "pct", "Confidence")},
+}
+
+
+async def worklist(kind: str, limit: int = 100) -> dict:
+    spec = _WORKLISTS.get(kind)
+    if not spec:
+        return {"kind": kind, "title": "Unknown worklist", "rows": []}
+    s = _fq("silver_claims_enriched")
+    if kind == "autoclose":
+        rows = await execute_query(f"""
+            SELECT claim_public_id, model_decision, round(model_confidence,1) metric, total_incurred
+            FROM {_fq('gold_claim_disposition')} WHERE disposition='auto_closed'
+            ORDER BY model_confidence DESC LIMIT {int(limit)}""")
+        return {"kind": kind, "title": spec["title"], "metric_label": "Confidence", "metric_fmt": "pct", "rows": rows}
+    mcol, mfmt, mlabel = spec["metric"]
+    where = spec["where"]
+    if kind == "aged":
+        where = f"claim_status IN ('open','under_investigation') AND datediff(current_date(), report_date) > {_sla_sql()}"
+        msel = "datediff(current_date(), report_date) AS metric"
+    elif kind == "underreserved":
+        msel = "(ultimate_reserve - initial_reserve) AS metric"
+    else:
+        msel = f"{mcol} AS metric"
+    rows = await execute_query(f"""
+        SELECT claim_public_id, peril_type, total_incurred, claim_status, {msel}
+        FROM {s} WHERE {where} ORDER BY {spec['order']} LIMIT {int(limit)}""")
+    return {"kind": kind, "title": spec["title"], "metric_label": mlabel, "metric_fmt": mfmt, "rows": rows}
+
+
+# --------------------------------------------------------------------------
+# Handler / team performance (wires in the orphaned gold_handler_scorecard).
+# --------------------------------------------------------------------------
+async def handlers() -> dict:
+    sc = _fq("gold_handler_scorecard")
+    try:
+        teams = await execute_query(f"""
+            SELECT team, count(*) handlers, sum(caseload) caseload,
+                   round(avg(avg_days_to_settle),1) avg_settle, round(avg(leakage_rate_pct),2) leakage_pct
+            FROM {sc} GROUP BY team ORDER BY leakage_pct DESC""")
+        worst = await execute_query(f"""
+            SELECT handler_id, grade, team, caseload, avg_days_to_settle, leakage_rate_pct
+            FROM {sc} WHERE caseload > 0 ORDER BY leakage_rate_pct DESC LIMIT 10""")
+        overall = (await execute_query(f"""
+            SELECT count(*) handlers, sum(caseload) caseload, round(avg(avg_days_to_settle),1) avg_settle,
+                   round(avg(leakage_rate_pct),2) leakage_pct FROM {sc}"""))[0]
+        return {"teams": teams, "worst": worst, "overall": overall}
+    except Exception:
+        return {"teams": [], "worst": [], "overall": {}}
+
+
+# --------------------------------------------------------------------------
+# Fraud & SIU view.
+# --------------------------------------------------------------------------
+async def fraud_view() -> dict:
+    s = _fq("silver_claims_enriched")
+    buckets = await execute_query(f"""
+        SELECT CASE WHEN fraud_score>70 THEN '70-100 (high)' WHEN fraud_score>=40 THEN '40-69 (medium)' ELSE '0-39 (low)' END band,
+               count(*) n FROM {s} GROUP BY 1 ORDER BY 1 DESC""")
+    summary = (await execute_query(f"""
+        SELECT round(100.0*avg(CASE WHEN coalesce(is_potential_fraud,false) THEN 1 ELSE 0 END),1) refer_rate,
+               sum(CASE WHEN fraud_score>70 AND claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) high_open,
+               round(avg(fraud_score),1) avg_score FROM {s}"""))[0]
+    queue = await execute_query(f"""
+        SELECT claim_public_id, peril_type, total_incurred, fraud_score, prior_claims_12m, reporting_lag_days
+        FROM {s} WHERE fraud_score>70 AND claim_status IN ('open','under_investigation')
+        ORDER BY fraud_score DESC LIMIT 15""")
+    return {"summary": summary, "buckets": buckets, "queue": queue}
+
+
+# --------------------------------------------------------------------------
+# Trends — time series from the daily metrics snapshot.
+# --------------------------------------------------------------------------
+async def trends() -> dict:
+    try:
+        rows = await execute_query(f"""
+            SELECT cast(snapshot_date AS string) d, pct_auto_closed, leakage_rate, avg_settle_days,
+                   sla_breach_pct, recoverable_total, open_inv
+            FROM {_fq('gold_cco_metrics_daily')} ORDER BY snapshot_date""")
+        return {"series": rows}
+    except Exception:
+        return {"series": []}
 
 
 async def ask(question: str, cid: str | None = None, use_cache: bool | None = None) -> dict:
