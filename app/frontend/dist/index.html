@@ -509,7 +509,7 @@ function renderLearn(){ document.getElementById('view').innerHTML=page('Referenc
   <div class="card"><h2>📖 Glossary — insurance 101</h2><div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:160px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div><p class="muted" style="margin-top:8px">Drafted insurance-101 glossary — swap in your standard text if you have one.</p></div>`; }
 
 // ============ ROADMAP ============
-function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform's reach honestly.')+roadmapStrip(); }
+function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform’s reach honestly.')+roadmapStrip(); }
 
 // ============ boot ============
 (async function(){ renderNav(); try{const cfg=await J('/config');state.host=cfg.workspace_host||'';}catch(e){} await initFoot(); await loadClaims(); render(); })();
