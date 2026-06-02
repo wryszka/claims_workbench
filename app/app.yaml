@@ -1,0 +1,24 @@
+# Claims Intelligence Workbench — Databricks App (dev values).
+command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+env:
+  - name: CATALOG_NAME
+    value: "lr_serverless_aws_us_catalog"
+  - name: SCHEMA_NAME
+    value: "claims_workbench"
+  - name: WAREHOUSE_ID
+    value: "ab79eced8207d29b"
+  - name: USE_CACHE
+    value: "true"
+  - name: CLAIMS_EP_FRAUD
+    value: "agents_lr_serverless_aws_us_catalog-claims_workbench-agent_frau"
+  - name: CLAIMS_EP_CONTEXT
+    value: "agents_lr_serverless_aws_us_catalog-claims_workbench-agent_cont"
+  # Set once the managed Supervisor is created (RUNBOOK Stage C); blank => Context fallback.
+  - name: CLAIMS_EP_SUPERVISOR
+    value: ""
+  - name: GENIE_SPACE_ID
+    value: "01f15e4e509f1410b5596f5c90b20ca4"
+  - name: DASHBOARD_ID
+    value: ""
+  - name: RESET_JOB_NAME
+    value: "claims_workbench_99_reset_demo"
