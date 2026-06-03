@@ -18,6 +18,8 @@ env:
     value: ""
   - name: GENIE_SPACE_ID
     value: "01f15eb364831515a59b63ce49d23e9a"
+  - name: GENIE_JOINED_SPACE_ID
+    value: "01f15eb3659715dab5f3e3d705db4c9e"
   - name: DASHBOARD_ID
     value: ""
   - name: RESET_JOB_NAME

@@ -144,7 +144,12 @@ async function initFoot(){ try{const d=await J('/cache-mode');state.cache=d.use_
 async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
 let _rt=null;
 async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…'; try{const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){m.textContent=d.message||'unavailable';return;} document.getElementById('resetBtn').disabled=true; pollReset(d.run_id,Date.now());}catch(e){m.textContent='unavailable';} }
-function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000); if((r.life_cycle||'').includes('TERMINATED')){clearInterval(_rt);document.getElementById('resetBtn').disabled=false;m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed';if((r.result||'').includes('SUCCESS'))location.reload();}else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
+function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000);
+  const lc=(r.life_cycle||''),res=(r.result||'');
+  // Terminal = any of TERMINATED / INTERNAL_ERROR / SKIPPED, or a result_state is set.
+  const done=/TERMINATED|INTERNAL_ERROR|SKIPPED/.test(lc)||res!==''||mins>=30;
+  if(done){clearInterval(_rt);document.getElementById('resetBtn').disabled=false; const ok=res.includes('SUCCESS'); m.textContent=ok?'✓ Reset complete':(mins>=30&&!res?'Reset timed out — check the job':'Reset failed — check the job'); if(ok)location.reload();}
+  else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
 function render(){ const f={control:renderControl,insight:renderInsight,myqueue:renderMyQueue,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
 function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
@@ -155,7 +160,7 @@ function page(eyebrow,title,lead,desc){ return `<div class="eyebrow">${eyebrow}<
 
 // ============ CONTROL TOWER ============
 const DISCLAIMER="Bricksurance SE is a synthetic insurer. All data is generated — there is no real Guidewire integration and no real customer data. Figures illustrate the Databricks platform, not a real book. Decisions are model and workflow outputs with a human in the loop; the AI agents reason and give a second opinion and have no payment authority.";
-async function renderControl(){ const v=document.getElementById('view'); v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you on Monday, the money on the table, and a live auto-close risk-appetite dial.','Loading portfolio…');
+async function renderControl(){ const v=document.getElementById('view'); v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you now, the money on the table, and a live auto-close risk-appetite dial.','Loading portfolio…');
   try{state.ct=await J('/control-tower');}catch(e){v.innerHTML=page('Control Tower','Control Tower','')+'<p class="muted">Unavailable.</p>';return;}
   try{state.brief=await J('/monday-brief');}catch(e){state.brief=null;}
   try{state.cfg=await J('/auto-close/config');}catch(e){state.cfg={conf_threshold:85,amount_cap:2000,fraud_floor:20};}
@@ -165,7 +170,7 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
   const heroCard=`<div class="tile hero"><div class="l">% Auto-closed — straight-through</div><div class="n">${pct(h.pct_auto_closed)}${trendArrow(h.trend)}</div><div class="s">${num(h.auto_closed)} claims · ≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs saved · target ${h.target}%</div></div>`;
   const recCard=`<div class="tile" style="border-left:3px solid #10b981;cursor:pointer" onclick="goWork('recovery')"><div class="l">💷 Recovery on the table</div><div class="n">${gbp(rec.total)}${trendArrow(rec.trend)}</div><div class="s">${num(rec.count)} open claims · view →</div></div>`;
   const resCard=res.dev_ratio?`<div class="tile" style="border-left:3px solid ${res.dev_ratio>1.15?'#ef4444':'#f59e0b'};cursor:pointer" onclick="goWork('underreserved')"><div class="l">⚠️ EoW reserve development</div><div class="n">${res.dev_ratio}×</div><div class="s">~${Math.round((res.dev_ratio-1)*100)}% under-reserved · gap ≈${gbp(Math.abs(res.gap||0))} · view →</div></div>`:`<div class="tile"><div class="l">Reserve development</div><div class="n">—</div></div>`;
-  v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you on Monday, the money on the table, and a live auto-close risk-appetite dial.')
+  v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you now, the money on the table, and a live auto-close risk-appetite dial.')
     +`<div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
     <div class="grid3" style="margin-bottom:16px">${heroCard}${recCard}${resCard}</div>
     <div class="eyebrow" style="margin:4px 0 8px">⚙️ Efficiency — how well we run claims</div>
@@ -173,7 +178,7 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
     <div class="eyebrow" style="margin:4px 0 8px">🎯 Effectiveness — how well we protect the P&amp;L</div>
     <div class="grid4" style="margin-bottom:22px">${(t.effectiveness||[]).map(tileEl).join('')}</div>
     <div class="grid2">
-      <div class="card"><h2>🗓️ Monday brief — what needs you</h2>${briefHtml()}<p class="muted" style="margin-top:8px">Prioritised from the live book — each line opens a worklist you can act on.</p></div>
+      <div class="card"><h2>🗓️ Daily brief — what needs you</h2>${briefHtml()}<p class="muted" style="margin-top:8px">Prioritised from the live book — each line opens a worklist you can act on.</p></div>
       <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
         <div class="srow"><label>Min confidence</label><input type="range" id="s_conf" min="50" max="99" value="${Math.round(state.cfg.conf_threshold)}" oninput="segChange()"><span class="val" id="v_conf">${Math.round(state.cfg.conf_threshold)}%</span></div>
         <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
@@ -287,7 +292,7 @@ function renderClaimsAIView(){ const v=document.getElementById('view'); const a=
   let ans=''; if(a){ ans = a.loading?'<p class="muted" style="margin-top:12px">Routing through the supervisor…</p>'
       : a.__err?'<p class="muted" style="margin-top:12px">Ask unavailable.</p>'
       : `<div class="synth" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><p>${esc(a.text)}</p>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:8px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
-  const agc=ag=>`<div class="agcard ac-${ag.color}"><div class="top"><div class="nm">${ag.icon||'•'} ${esc(ag.name)}</div><span class="agtag">${ag.kind.toUpperCase()}</span></div><p>${esc(ag.desc)}</p><div class="ep">Endpoint: <span class="mono">${esc(ag.endpoint||'—')}</span>${ag.url?` <a class="link" href="${ag.url}" target="_blank">↗</a>`:''}</div></div>`;
+  const agc=ag=>`<div class="agcard ac-${ag.color}" ${ag.url?`onclick="window.open('${esc(ag.url)}','_blank')" style="cursor:pointer"`:''}><div class="top"><div class="nm">${ag.icon||'•'} ${esc(ag.name)}</div><span class="agtag">${ag.kind.toUpperCase()}</span></div><p>${esc(ag.desc)}</p><div class="ep">${ag.url?'Open in Databricks ':'Endpoint: '}<span class="mono">${esc(ag.endpoint||'—')}</span>${ag.url?' ↗':''}</div></div>`;
   const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge / Second-Opinion':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾','Triage model':'🎯','Reserve model':'💰','Ask the Book':'📊','Ask Pricing + Claims':'📈','Senior Reserving Actuary':'📐','Senior Loss Adjuster':'🔧','Coverage Counsel':'⚖️','Consumer-Duty Reviewer':'🤝'};
   const all=(r.agents||[]).map(x=>({...x,icon:ICON[x.name]||'•'})); const genie=(r.genie||[]).map(x=>({...x,icon:ICON[x.name]||'•'}));
   const main=all.filter(a=>a.kind==='agent'), experts=all.filter(a=>a.kind==='expert'), tools=all.filter(a=>a.kind==='tool');
@@ -305,7 +310,7 @@ function renderClaimsAIView(){ const v=document.getElementById('view'); const a=
     <div class="eyebrow" style="margin:30px 0 4px">What Claims AI fronts</div>
     <p class="lead">Five specialist agents, two model tools and two Genie spaces — one address. Each is a Unity-Catalog-registered MLflow agent with tracing, independently deployable and auditable. The supervisor classifies the question and dispatches.</p>
     <div class="agwrap">
-      <div class="supcard"><div class="e">Claims AI</div><h3>Supervisor</h3><p>${esc(sup.desc||'')}</p><div class="ep">Endpoint: <span class="mono">${esc(sup.endpoint||'(managed supervisor — RUNBOOK Stage C)')}</span>${sup.url?` <a class="link" href="${sup.url}" target="_blank">↗</a>`:''}</div></div>
+      <div class="supcard" ${sup.url?`onclick="window.open('${esc(sup.url)}','_blank')" style="cursor:pointer"`:''}><div class="e">Claims AI</div><h3>Supervisor</h3><p>${esc(sup.desc||'')}</p><div class="ep">${sup.url?'Open in Databricks ':'Endpoint: '}<span class="mono">${esc(sup.endpoint||'(managed supervisor — RUNBOOK Stage C)')}</span>${sup.url?' ↗':''}</div></div>
       <div class="grid3">${main.map(agc).join('')}</div>
       <div class="eyebrow" style="margin:20px 0 8px">Expert reviewers — a second set of eyes</div>
       <div class="grid3">${experts.map(agc).join('')}</div>

@@ -1112,7 +1112,7 @@ def _agent_roster_sync() -> dict:
          "endpoint": "genie", "url": f"{host}/genie/rooms/{config.GENIE_SPACE_ID}" if config.GENIE_SPACE_ID else None},
         {"name": "Ask Pricing + Claims", "color": "teal", "kind": "genie",
          "desc": "Cross-domain questions spanning claims and the policy/pricing population — loss ratio, premium adequacy, leakage vs premium.",
-         "endpoint": "genie", "url": None},
+         "endpoint": "genie", "url": f"{host}/genie/rooms/{config.GENIE_JOINED_SPACE_ID}" if config.GENIE_JOINED_SPACE_ID else None},
     ]
     return {"supervisor": {"name": "Claims AI Supervisor", **ep(sup),
                            "desc": "Reads the question, classifies it against the specialist catalogue in a single Foundation-Model call, dispatches to the right one, synthesises the answer with source citations, and writes the routing decision to the audit log.",

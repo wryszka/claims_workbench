@@ -40,6 +40,7 @@ ENDPOINT_SUPERVISOR = _env("CLAIMS_EP_SUPERVISOR", default="")
 
 # Governance & Portfolio section (Stage B)
 GENIE_SPACE_ID = _env("GENIE_SPACE_ID", default="01f15e4e509f1410b5596f5c90b20ca4")
+GENIE_JOINED_SPACE_ID = _env("GENIE_JOINED_SPACE_ID", default="")
 DASHBOARD_ID = _env("DASHBOARD_ID", default="")
 
 # Reset-demo job (built in Phase 9 — the app triggers it by name; absent = graceful).

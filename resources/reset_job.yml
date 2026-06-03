@@ -105,6 +105,7 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
           environment_key: serverless
 
         # 8 — refresh ingestion metadata (sources + DLT quality scorecard) and
