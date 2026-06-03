@@ -110,21 +110,20 @@
 </div>
 <button class="fab" onclick="go('claimsai')">🤖 Claims AI</button>
 <script>
+// Persona lanes — a viewer self-locates in 2 seconds. Worklists / Roadmap stay
+// routable as drill-downs (reached from Control Tower / Learn) but off the nav;
+// Performance + Trends fold into Insight; Enrichment is folded into the claim view.
 const SECTIONS=[
-  {id:'control',label:'🎛️ Control Tower',grp:'Operate'},
-  {id:'myqueue',label:'👩‍💼 My Queue',grp:'Operate'},
-  {id:'worklists',label:'✅ Worklists',grp:'Operate'},
-  {id:'claim',label:'📋 Work a claim',grp:'Operate'},
-  {id:'newclaim',label:'➕ New claim',grp:'Operate'},
-  {id:'claimsai',label:'🤖 Claims AI',grp:'Operate'},
-  {id:'performance',label:'📊 Performance',grp:'Insight'},
-  {id:'fraud',label:'🔍 Fraud & SIU',grp:'Insight'},
-  {id:'trends',label:'📈 Trends',grp:'Insight'},
-  {id:'ingestion',label:'📥 Ingestion',grp:'Pipeline'},
-  {id:'enrichment',label:'🧩 Enrichment',grp:'Pipeline'},
-  {id:'governance',label:'🛡️ Governance',grp:'Govern'},
-  {id:'learn',label:'🎓 Learn',grp:'Reference'},
-  {id:'roadmap',label:'🚧 Roadmap',grp:'Reference'},
+  {id:'control',label:'🎛️ Control Tower',grp:'Head of Claims'},
+  {id:'insight',label:'📊 Insight',grp:'Head of Claims'},
+  {id:'myqueue',label:'👩‍💼 My Queue',grp:'Handler'},
+  {id:'claim',label:'📋 Work a claim',grp:'Handler'},
+  {id:'newclaim',label:'➕ Try a claim',grp:'Handler'},
+  {id:'fraud',label:'🔍 Fraud & SIU',grp:'Fraud & SIU'},
+  {id:'ingestion',label:'📥 Ingestion',grp:'Data & Governance'},
+  {id:'governance',label:'🛡️ Governance',grp:'Data & Governance'},
+  {id:'claimsai',label:'🤖 Claims AI',grp:'The platform'},
+  {id:'learn',label:'🎓 Learn',grp:'The platform'},
 ];
 const state={ section:'control', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
   ct:null, lens:null, cfg:null, ask:null, asking:false, roster:null, govtab:'collected', gcid:'cc:900001', track:null, trackCid:'cc:900001',
@@ -146,7 +145,7 @@ async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:
 let _rt=null;
 async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…'; try{const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){m.textContent=d.message||'unavailable';return;} document.getElementById('resetBtn').disabled=true; pollReset(d.run_id,Date.now());}catch(e){m.textContent='unavailable';} }
 function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000); if((r.life_cycle||'').includes('TERMINATED')){clearInterval(_rt);document.getElementById('resetBtn').disabled=false;m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed';if((r.result||'').includes('SUCCESS'))location.reload();}else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={control:renderControl,myqueue:renderMyQueue,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderPerformance,fraud:renderFraud,trends:renderTrends,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={control:renderControl,insight:renderInsight,myqueue:renderMyQueue,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
 function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
 const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
@@ -206,13 +205,21 @@ async function renderWorklists(){ const v=document.getElementById('view'); const
 }
 
 // ============ PERFORMANCE (handler scorecard) ============
-async function renderPerformance(){ const v=document.getElementById('view'); v.innerHTML=page('Insight','Team & handler performance','Caseload, settlement speed, leakage and overrides by team and handler — from the gold handler scorecard.','Loading…');
-  let d; try{d=await J('/handlers');}catch(e){d={teams:[],worst:[],overall:{}};}
-  const o=d.overall||{};
+// Insight hub — Performance + Trends folded into one tabbed page (was two nav peers).
+function setInsTab(t){ state.insTab=t; renderInsight(); }
+async function renderInsight(){ const v=document.getElementById('view'); const tab=state.insTab||'performance';
+  v.innerHTML=page('Head of Claims','Insight — performance & trends','How well the desk runs and where the book is heading. Settlement speed and leakage by team today; direction of travel over the last 12 weeks.','Loading…');
+  let H,T; try{H=await J('/handlers');}catch(e){H={teams:[],worst:[],overall:{}};}
+  try{T=await J('/trends');}catch(e){T={series:[]};}
+  const TABS=[['performance','📊 Performance'],['trends','📈 Trends']];
+  const tabbar=`<div style="display:flex;gap:8px;margin-bottom:14px">${TABS.map(t=>`<button class="${tab===t[0]?'btnv':'ghost'}" style="padding:6px 14px;font-size:13px" onclick="setInsTab('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
+  v.innerHTML=page('Head of Claims','Insight — performance & trends','How well the desk runs and where the book is heading. Settlement speed and leakage by team today; direction of travel over the last 12 weeks.')
+    +tabbar+(tab==='trends'?trendsBody(T):perfBody(H));
+}
+function perfBody(d){ const o=d.overall||{};
   const teamRows=(d.teams||[]).map(t=>`<tr><td><b>${esc(t.team||'—')}</b></td><td style="text-align:right">${num(t.handlers)}</td><td style="text-align:right">${num(t.caseload)}</td><td style="text-align:right">${t.avg_settle??'—'} d</td><td style="text-align:right;color:${t.leakage_pct>8?'#dc2626':t.leakage_pct>6?'#b45309':'#047857'}">${t.leakage_pct}%</td></tr>`).join('');
   const worstRows=(d.worst||[]).map(h=>`<tr><td class="mono">${esc(h.handler_id)}</td><td>${esc(h.grade)}</td><td>${esc(h.team)}</td><td style="text-align:right">${num(h.caseload)}</td><td style="text-align:right">${h.avg_days_to_settle??'—'} d</td><td style="text-align:right;color:${h.leakage_rate_pct>8?'#dc2626':'#b45309'}">${h.leakage_rate_pct}%</td></tr>`).join('');
-  v.innerHTML=page('Insight','Team & handler performance','Caseload, settlement speed, leakage and overrides by team and handler — from the gold handler scorecard.')
-    +`<div class="grid4" style="margin-bottom:18px">
+  return `<div class="grid4" style="margin-bottom:18px">
       <div class="tile"><div class="l">Handlers</div><div class="n">${num(o.handlers)}</div></div>
       <div class="tile"><div class="l">Open caseload</div><div class="n">${num(o.caseload)}</div></div>
       <div class="tile"><div class="l">Avg settlement</div><div class="n">${o.avg_settle??'—'} d</div></div>
@@ -223,12 +230,12 @@ async function renderPerformance(){ const v=document.getElementById('view'); v.i
 }
 
 // ============ FRAUD & SIU ============
-async function renderFraud(){ const v=document.getElementById('view'); v.innerHTML=page('Insight','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.','Loading…');
+async function renderFraud(){ const v=document.getElementById('view'); v.innerHTML=page('Fraud & SIU','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.','Loading…');
   let d; try{d=await J('/fraud');}catch(e){d={summary:{},buckets:[],queue:[]};}
   const s=d.summary||{};
   const bucket=(d.buckets||[]).map(b=>`<div class="srow"><label style="width:130px">${esc(b.band)}</label><div class="bar" style="flex:1"><div style="width:${Math.min(100,(b.n/Math.max(...d.buckets.map(x=>x.n))*100))}%;background:${b.band[0]==='7'?'#ef4444':b.band[0]==='4'?'#f59e0b':'#10b981'}"></div></div><span class="val">${num(b.n)}</span></div>`).join('');
   const q=(d.queue||[]).map(r=>`<tr style="cursor:pointer" onclick="openClaim('${esc(r.claim_public_id)}')"><td class="mono link">${esc(r.claim_public_id)}</td><td>${esc(PERIL[r.peril_type]||r.peril_type)}</td><td>${gbp(r.total_incurred)}</td><td style="text-align:right;font-weight:700;color:#b91c1c">${r.fraud_score}</td><td style="text-align:right">${r.prior_claims_12m}</td><td style="text-align:right">${r.reporting_lag_days}d</td></tr>`).join('');
-  v.innerHTML=page('Insight','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.')
+  v.innerHTML=page('Fraud & SIU','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.')
     +`<div class="grid3" style="margin-bottom:18px">
       <div class="tile"><div class="l">Refer rate</div><div class="n">${pct(s.refer_rate)}</div><div class="s">elevated-signal claims</div></div>
       <div class="tile" style="border-left:3px solid #ef4444"><div class="l">High-score open (SIU queue)</div><div class="n">${num(s.high_open)}</div><div class="s">fraud score &gt; 70</div></div>
@@ -243,13 +250,10 @@ function spark(series,key,color,lowerBetter){ const vals=series.map(r=>parseFloa
   const pts=vals.map((x,i)=>`${(i/(vals.length-1)*W).toFixed(1)},${(H-((x-mn)/rng)*H).toFixed(1)}`).join(' ');
   const first=vals[0],last=vals[vals.length-1]; const good=lowerBetter?last<first:last>first; const dc=good?'#059669':'#dc2626';
   return `<svg width="${W}" height="${H}" style="overflow:visible"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2"/><circle cx="${W}" cy="${(H-((last-mn)/rng)*H).toFixed(1)}" r="3" fill="${dc}"/></svg>`; }
-async function renderTrends(){ const v=document.getElementById('view'); v.innerHTML=page('Insight','Trends','Direction, not just today — how the book has moved over the last 12 weeks. (Snapshotted daily; the series re-anchors on each demo reset.)','Loading…');
-  let d; try{d=await J('/trends');}catch(e){d={series:[]};}
-  const s=d.series||[]; if(!s.length){v.innerHTML=page('Insight','Trends','')+'<div class="card"><p class="muted">No history yet — run the metrics snapshot (13_cco_metrics) or a reset to seed the series.</p></div>';return;}
+function trendsBody(d){ const s=d.series||[]; if(!s.length) return '<div class="card"><p class="muted">No history yet — run the metrics snapshot (13_cco_metrics) or a reset to seed the series.</p></div>';
   const last=s[s.length-1], first=s[0];
   const card=(title,key,color,fmt,lower)=>{const lv=last[key],fv=first[key];const delta=(parseFloat(lv)-parseFloat(fv));const good=lower?delta<0:delta>0;return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${title}</h2><div style="font-size:20px;font-weight:800">${fmtv(lv,fmt)} <span style="font-size:12px;color:${good?'#059669':'#dc2626'}">${delta>0?'▲':'▼'}${Math.abs(Math.round(delta*10)/10)} / 12w</span></div></div><div style="margin-top:8px">${spark(s,key,color,lower)}</div></div>`;};
-  v.innerHTML=page('Insight','Trends','Direction, not just today — how the book has moved over the last 12 weeks. (Snapshotted daily; the series re-anchors on each demo reset.)')
-    +`<div class="grid2">
+  return `<div class="grid2">
       ${card('% Auto-closed','pct_auto_closed','#7c3aed','pct',false)}
       ${card('Leakage rate','leakage_rate','#f59e0b','pct',true)}
       ${card('Avg settlement (days)','avg_settle_days','#2563eb','days',true)}
@@ -261,6 +265,7 @@ async function renderTrends(){ const v=document.getElementById('view'); v.innerH
 
 // ============ CLAIMS AI (matches the Solvency-2 supervisor page) ============
 const ASK_QS=[
+  ['Does the photo on cc:900003 match the reported account?','Fraud','cc:900003'],
   ['How should I handle claim cc:900001?','Claims AI Supervisor','cc:900001'],
   ['Why did claim cc:900002 auto-close?','Audit / Reasoning','cc:900002'],
   ['Give me the full dossier for cc:900001','Claim 360 / Dossier','cc:900001'],
@@ -287,10 +292,13 @@ function renderClaimsAIView(){ const v=document.getElementById('view'); const a=
   const all=(r.agents||[]).map(x=>({...x,icon:ICON[x.name]||'•'})); const genie=(r.genie||[]).map(x=>({...x,icon:ICON[x.name]||'•'}));
   const main=all.filter(a=>a.kind==='agent'), experts=all.filter(a=>a.kind==='expert'), tools=all.filter(a=>a.kind==='tool');
   const sup=r.supervisor||{};
-  v.innerHTML=page('Claims AI','One supervisor. Nine specialists. Every claim audited.',
-    'Type a question — the supervisor classifies it, dispatches to the right specialist, and writes a routing trace. Architecture below; every node clicks through to the actual Databricks artefact.')
+  const STEPS=[['🎯','Models decide','Triage & reserve score every claim'],['🧠','Agents reason','Specialists explain — fraud, dossier, recovery'],['🔬','Experts review','A senior second opinion on demand'],['🧾','Every step audited','Reasoning logged, regulator-viewable']];
+  const howStrip=`<div class="grid4" style="margin-bottom:18px">${STEPS.map((s,i)=>`<div class="tile" style="border-left:3px solid var(--v)"><div style="font-size:20px">${s[0]}</div><div class="l" style="margin-top:2px">${s[1]}</div><div class="s">${s[2]}</div></div>`).join('')}</div>`;
+  v.innerHTML=page('Claims AI','One supervisor. A bench of specialists. Every claim audited.',
+    'Ask in plain English — the supervisor classifies the question, dispatches to the right specialist, and writes a routing trace. Start with the discrepancy catch below: the FNOL photo on cc:900003 says severe, the report says £600.')
+    +howStrip
     +`<div class="ask"><div class="hd"><b>🤖 Ask the supervisor</b><span class="ro">${state.cache?'CACHE: CACHED':'CACHE: LIVE'}</span></div><div class="bd">
-      <p class="muted" style="margin:0 0 4px">The supervisor classifies your question and dispatches to the specialist best positioned to answer. Try one:</p>
+      <p class="muted" style="margin:0 0 4px">The supervisor classifies your question and dispatches to the specialist best positioned to answer. Try one — the first is the live fraud-vs-photo catch:</p>
       <div class="qgrid">${ASK_QS.map(q=>`<div class="qcell" onclick="doAsk('${esc(q[0]).replace(/'/g,"\\'")}','${q[2]}')"><div class="q">💬 ${esc(q[0])}</div><div class="r">→ ${esc(q[1])}</div></div>`).join('')}</div>
       <div class="askbox"><input id="askbox" placeholder="Ask the supervisor anything…" onkeydown="if(event.key==='Enter')askFromBox()" value="${a&&!a.loading?esc(a.q):''}"><button class="btnv" onclick="askFromBox()" ${state.asking?'disabled':''}>${state.asking?'…':'➤ Send'}</button></div>
       ${ans}</div></div>
