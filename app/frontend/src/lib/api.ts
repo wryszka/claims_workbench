@@ -63,6 +63,12 @@ export const api = {
     fetchJson<any>(`/claim/expert?cid=${encodeURIComponent(cid)}&role=${role}`),
   getFairOutcomes: () => fetchJson<any>('/governance/fair-outcomes'),
   getRules: () => fetchJson<any>('/rules'),
+  // Phase 12 Stage B — handler persona + create-a-claim
+  getHandlerQueue: () => fetchJson<any>('/handler/queue'),
+  getCreateClaimScenario: () => fetchJson<any>('/create-claim/scenario'),
+  createClaim: (body: any) =>
+    fetchJson<any>('/create-claim', { method: 'POST', body: JSON.stringify(body) }),
+  getSandboxClaims: () => fetchJson<any>('/sandbox-claims'),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

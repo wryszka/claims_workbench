@@ -112,8 +112,10 @@
 <script>
 const SECTIONS=[
   {id:'control',label:'🎛️ Control Tower',grp:'Operate'},
+  {id:'myqueue',label:'👩‍💼 My Queue',grp:'Operate'},
   {id:'worklists',label:'✅ Worklists',grp:'Operate'},
   {id:'claim',label:'📋 Work a claim',grp:'Operate'},
+  {id:'newclaim',label:'➕ New claim',grp:'Operate'},
   {id:'claimsai',label:'🤖 Claims AI',grp:'Operate'},
   {id:'performance',label:'📊 Performance',grp:'Insight'},
   {id:'fraud',label:'🔍 Fraud & SIU',grp:'Insight'},
@@ -125,7 +127,8 @@ const SECTIONS=[
   {id:'roadmap',label:'🚧 Roadmap',grp:'Reference'},
 ];
 const state={ section:'control', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
-  ct:null, lens:null, cfg:null, ask:null, asking:false, roster:null, govtab:'collected', gcid:'cc:900001', track:null, trackCid:'cc:900001' };
+  ct:null, lens:null, cfg:null, ask:null, asking:false, roster:null, govtab:'collected', gcid:'cc:900001', track:null, trackCid:'cc:900001',
+  queue:null, nc:null };
 const gbp=v=>{const n=parseFloat(v);return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0});};
 const num=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toLocaleString('en-GB');};
 const pct=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toFixed(1)+'%';};
@@ -143,7 +146,8 @@ async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:
 let _rt=null;
 async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…'; try{const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){m.textContent=d.message||'unavailable';return;} document.getElementById('resetBtn').disabled=true; pollReset(d.run_id,Date.now());}catch(e){m.textContent='unavailable';} }
 function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000); if((r.life_cycle||'').includes('TERMINATED')){clearInterval(_rt);document.getElementById('resetBtn').disabled=false;m.textContent=(r.result||'').includes('SUCCESS')?'✓ Reset complete':'Reset failed';if((r.result||'').includes('SUCCESS'))location.reload();}else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={control:renderControl,worklists:renderWorklists,claim:renderClaim,claimsai:renderClaimsAI,performance:renderPerformance,fraud:renderFraud,trends:renderTrends,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={control:renderControl,myqueue:renderMyQueue,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderPerformance,fraud:renderFraud,trends:renderTrends,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
 const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
 const fmtv=(v,f)=>f==='gbp'?gbp(v):f==='pct'?pct(v):f==='days'?((v??'—')+' d'):num(v);
@@ -380,6 +384,94 @@ function actionBar(){ const c=state.confirmation,t=(state.panels&&state.panels.t
   return `<span class="muted">Human-in-the-loop — record the handler's decision:</span><span class="spacer"></span><button class="btnv" onclick="decide('accept')">✓ Accept</button><button class="ghost" onclick="state.overriding=true;renderClaimView()">Override</button>`; }
 async function decide(action){ const t=(state.panels&&state.panels.triage)||{}; const reason=action==='override'?(document.getElementById('ovr')||{}).value||'Other':'';
   try{state.confirmation=await J('/decision',{method:'POST',body:JSON.stringify({claim_public_id:state.cid,model_recommendation:t.decision||'',model_confidence:t.confidence??null,handler_action:action,override_flag:action==='override',override_reason:reason})});state.overriding=false;}catch(e){alert('Decision failed');} renderClaimView(); }
+
+// ============ MY QUEUE (handler persona: Sarah Chen) ============
+const QTONE={red:'#ef4444',amber:'#f59e0b',slate:'#94a3b8'};
+function qChip(txt,cls){ return `<span class="badge ${cls}" style="margin:1px 3px 1px 0">${esc(txt)}</span>`; }
+function qRow(i){ const fcol=i.fraud_score>70?'#ef4444':i.fraud_score>=40?'#f59e0b':'#10b981';
+  const why=(i.why||[]).map(w=>qChip(w, w.indexOf('SIU')>=0||w.indexOf('Fraud')>=0||w.indexOf('breached')>=0?'b-red':w.indexOf('High')>=0||w.indexOf('escalate')>=0?'b-amber':'b-slate')).join('');
+  return `<div class="qrow" onclick="openWork('${esc(i.claim_public_id)}')" style="display:flex;gap:12px;align-items:center;padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;background:#fff">
+    <div style="flex:0 0 118px"><b style="font-size:13px">${i.hero?'★ ':''}${esc(i.claim_public_id)}</b><div class="muted" style="font-size:11px">${esc(PERIL[i.peril]||i.peril)}</div></div>
+    <div style="flex:0 0 92px;text-align:right"><b style="font-size:15px">${gbp(i.total_incurred)}</b><div class="muted" style="font-size:11px">${i.days_open}d open</div></div>
+    <div style="flex:0 0 64px;text-align:center"><span style="font-weight:800;color:${fcol}">${i.fraud_score}</span><div class="muted" style="font-size:10px">fraud</div></div>
+    <div style="flex:1 1 auto">${why}</div>
+    <div style="flex:0 0 auto"><span class="link">Open →</span></div></div>`; }
+async function renderMyQueue(){ const v=document.getElementById('view');
+  v.innerHTML=page('Handler view','My Queue','Your prioritised worklist — what needs you today, this week, and when you can. The triage layer and your agents have already done the sifting.','Loading your worklist…');
+  let q; try{q=await J('/handler/queue');}catch(e){v.innerHTML=page('Handler view','My Queue','')+'<p class="muted">Unavailable.</p>';return;} state.queue=q;
+  const p=q.persona||{};
+  const personaCard=`<div class="card" style="display:flex;gap:16px;align-items:center;margin-bottom:14px">
+    <div style="flex:0 0 56px;height:56px;border-radius:50%;background:var(--v);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800">${esc(p.initials||'SC')}</div>
+    <div style="flex:1 1 auto"><b style="font-size:17px">${esc(p.name||'Sarah Chen')}</b><div class="muted">${esc(p.subtitle||'Senior Claims Handler · Motor Complex desk')}</div></div>
+    <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--v)">${q.worklist}</div><div class="muted" style="font-size:11px">on your worklist · ${num(q.total_open)} open on the book</div></div>
+    <div style="text-align:right"><div style="font-size:22px;font-weight:800">${gbp(q.exposure)}</div><div class="muted" style="font-size:11px">exposure</div></div></div>`;
+  const monitor=`<div class="card" style="border-left:4px solid var(--v);margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:13px">🛰️ Monitoring agent — your morning brief</b><span class="pill live">live</span></div><p style="font-size:14px;color:#334155;line-height:1.5;margin:0">${esc(q.summary||'')}</p></div>`;
+  const bucketCard=b=>`<div class="card" style="border-top:3px solid ${QTONE[b.tone]||'#94a3b8'}"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(b.title)}</h2><span class="badge b-slate">${b.count}</span></div><p class="muted" style="margin:4px 0 12px">${esc(b.blurb)}</p>${b.items.length?b.items.map(qRow).join(''):'<p class="muted">Nothing here right now.</p>'}</div>`;
+  v.innerHTML=page('Handler view','My Queue','Your prioritised worklist — what needs you today, this week, and when you can. The triage layer and your agents have already done the sifting.')
+    +personaCard+monitor+(q.buckets||[]).map(bucketCard).join('')
+    +`<p class="muted" style="text-align:center;margin-top:6px">Sarah Chen is an illustrative persona; her queue is a curated view of the live book — the sacred demo claims are never reassigned. Click any claim to work it.</p>`;
+}
+
+// ============ NEW CLAIM (create-a-claim — synchronous real scoring) ============
+const NC_PERILS=[['motor_tp','Motor Third Party'],['home_escape_water','Home — Escape of Water'],['home_storm','Home — Storm'],['home_fire','Home — Fire']];
+const NC_CHANNELS=[['digital','Digital'],['phone','Phone'],['broker_email','Broker email']];
+async function renderNewClaim(){ const v=document.getElementById('view');
+  if(!state.nc){ v.innerHTML=page('Handler view','New claim','Loading…');
+    let m; try{m=await J('/create-claim/scenario');}catch(e){v.innerHTML=page('Handler view','New claim','')+'<p class="muted">Unavailable.</p>';return;}
+    const first=(m.presets||[])[0]||{}; state.nc={meta:m, presetKey:first.key, inputs:{...first}, policy:'', result:null, scoring:false};
+    try{state.nc.sandbox=await J('/sandbox-claims');}catch(e){state.nc.sandbox=[];}
+  }
+  renderNewClaimView();
+}
+function selectPreset(k){ const m=state.nc.meta; const p=(m.presets||[]).find(x=>x.key===k)||{}; state.nc.presetKey=k; state.nc.inputs={...p}; state.nc.result=null; renderNewClaimView(); }
+function renderNewClaimView(){ const v=document.getElementById('view'); const nc=state.nc, m=nc.meta, i=nc.inputs||{};
+  const presetPills=(m.presets||[]).map(p=>`<button class="${p.key===nc.presetKey?'btnv':'ghost'}" style="padding:6px 12px;font-size:12px;margin:0 6px 6px 0" onclick="selectPreset('${p.key}')">${esc(p.label)}</button>`).join('');
+  const hint=(m.presets||[]).find(p=>p.key===nc.presetKey)?.hint||'';
+  const perilOpts=NC_PERILS.map(o=>`<option value="${o[0]}" ${o[0]===i.peril_type?'selected':''}>${o[1]}</option>`).join('');
+  const chanOpts=NC_CHANNELS.map(o=>`<option value="${o[0]}" ${o[0]===i.report_channel?'selected':''}>${o[1]}</option>`).join('');
+  const polOpts=`<option value="">— none (use preset sum insured) —</option>`+(m.policies||[]).map(p=>`<option value="${esc(p.policy_number)}" data-si="${p.sum_insured}" data-tn="${p.policy_tenure_years}">${esc(p.policy_number)} · ${esc(p.product)} · SI ${gbp(p.sum_insured)}</option>`).join('');
+  const fld=(lab,id,val,step)=>`<div style="flex:1 1 120px"><label class="muted" style="font-size:11px;display:block;margin-bottom:3px">${lab}</label><input id="${id}" type="number" ${step?`step="${step}"`:''} value="${val}" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px"></div>`;
+  const sel=(lab,id,opts,onch)=>`<div style="flex:1 1 160px"><label class="muted" style="font-size:11px;display:block;margin-bottom:3px">${lab}</label><select id="${id}" ${onch||''} style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px">${opts}</select></div>`;
+  const form=`<div class="card"><h2>① Pick a scenario</h2><div style="margin-bottom:6px">${presetPills}</div><p class="muted" style="margin:0 0 14px">${esc(hint)}</p>
+    <h2>② Adjust the facts</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">${sel('Peril','nc_peril',perilOpts)}${sel('Channel','nc_channel',chanOpts)}${sel('Attach to policy','nc_policy',polOpts,'onchange="ncPolicy()"')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">${fld('Reported amount £','nc_amount',i.reported_amount)}${fld('Sum insured £','nc_si',i.sum_insured)}${fld('Fraud score','nc_fraud',i.fraud_score)}${fld('Prior claims (12m)','nc_prior',i.prior_claims_12m)}${fld('Reporting lag (days)','nc_lag',i.reporting_lag_days)}</div>
+    <button class="btnv" onclick="scoreClaim()" ${nc.scoring?'disabled':''}>${nc.scoring?'Scoring…':'⚡ Score this claim'}</button>
+    <span class="muted" style="margin-left:12px;font-size:12px">Live scoring against the champion triage + reserve endpoints — not the batch pipeline.</span></div>`;
+  v.innerHTML=page('Handler view','New claim — score it live','Create a hypothetical FNOL, score it synchronously against the real models, and watch the rule engine decide — in seconds. Created claims are ephemeral; the Reset button wipes them and the sacred demo claims are never touched.')
+    +form+ncResult()+ncSandbox();
+}
+function ncPolicy(){ const s=document.getElementById('nc_policy'); const o=s.options[s.selectedIndex]; if(o&&o.dataset.si){ document.getElementById('nc_si').value=Math.round(parseFloat(o.dataset.si)); } }
+async function scoreClaim(){ const nc=state.nc;
+  const inp={ scenario:nc.presetKey, policy_number:document.getElementById('nc_policy').value||null,
+    peril_type:document.getElementById('nc_peril').value, report_channel:document.getElementById('nc_channel').value,
+    reported_amount:+document.getElementById('nc_amount').value, sum_insured:+document.getElementById('nc_si').value,
+    fraud_score:+document.getElementById('nc_fraud').value, prior_claims_12m:+document.getElementById('nc_prior').value,
+    reporting_lag_days:+document.getElementById('nc_lag').value,
+    policy_tenure_years:nc.inputs.policy_tenure_years, weather_risk_composite:nc.inputs.weather_risk_composite,
+    at_fault:nc.inputs.at_fault, third_party_involved:nc.inputs.third_party_involved, flood_risk_score:nc.inputs.flood_risk_score };
+  nc.inputs={...nc.inputs,...inp}; nc.scoring=true; nc.result=null; renderNewClaimView();
+  try{ nc.result=await J('/create-claim',{method:'POST',body:JSON.stringify(inp)}); }catch(e){ nc.result={__err:true}; }
+  nc.scoring=false; renderNewClaimView();
+  // the ephemeral row persists in the background — refresh the sandbox list a beat later.
+  setTimeout(async()=>{ try{const sb=await J('/sandbox-claims'); state.nc.sandbox=sb; if(state.section==='newclaim')renderNewClaimView();}catch(e){} }, 1600);
+}
+function ncResult(){ const r=state.nc.result; if(!r)return ''; if(r.__err)return '<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c;margin-top:16px">Scoring failed — check the model endpoints are READY.</div>';
+  const auto=r.disposition==='auto_closed'; const col=auto?'#059669':'#f59e0b';
+  const dcol=r.triage.decision==='refer_siu'?'#dc2626':r.triage.decision==='escalate'?'#f59e0b':'#059669';
+  const head=auto?`✅ AUTO-CLOSED &amp; PAID (simulated)`:'⚠️ ESCALATED — routed to a handler';
+  const checks=(r.checks||[]).map(c=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f4f5f8"><span style="font-size:13px">${c.passed?'✓':'✗'} <b>${esc(c.code.toUpperCase())}</b> · ${esc(c.label)}</span><span class="muted" style="font-size:12px">${esc(c.value)}</span></div>`).join('');
+  return `<div class="card" style="border-color:${col};border-left:4px solid ${col};margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:16px;color:${col}">${head}</b><span class="muted">new claim ${esc(r.claim_public_id)} · ephemeral</span></div></div>
+  <div class="grid3" style="margin-top:14px">
+    <div class="card"><h2>✨ Triage</h2><div class="decision" style="background:${dcol}"><div class="d">${DLABEL[r.triage.decision]||esc(r.triage.decision)||'—'}</div><div class="c">confidence ${pct(r.triage.confidence)}</div></div><p class="muted" style="font-size:11px;margin-top:8px">Live from <span class="mono">${esc((r.triage.endpoint||'').slice(-30))}</span></p></div>
+    <div class="card"><h2>💰 Reserve</h2><div style="background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:14px;text-align:center"><b style="font-size:22px">${esc(r.reserve.bracket)||'—'}</b><div class="muted">${esc(r.reserve.range)}</div></div><p class="muted" style="font-size:11px;margin-top:8px">Live from <span class="mono">${esc((r.reserve.endpoint||'').slice(-30))}</span></p></div>
+    <div class="card"><h2>⚙️ Rule engine</h2><p class="muted" style="margin:0 0 6px">${r.fired_rules.length?('Fired: '+r.fired_rules.join(', ')):'No rules fired — clean.'}</p>${checks}</div>
+  </div>
+  <p class="muted" style="text-align:center;margin-top:12px">Models + the rule engine decide · the agents would reason · the human acts. This claim is sandbox-only and cleared on Reset.</p>`;
+}
+function ncSandbox(){ const sb=state.nc.sandbox||[]; if(!sb.length)return '';
+  const rows=sb.map(s=>`<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #f4f5f8;font-size:13px"><span style="flex:0 0 110px" class="mono">${esc(s.claim_public_id)}</span><span style="flex:0 0 140px" class="muted">${esc(s.scenario)}</span><span style="flex:0 0 90px;text-align:right">${gbp(s.reported_amount)}</span><span style="flex:1 1 auto">${qChip((DLABEL[s.model_decision]||s.model_decision||''),'b-slate')} ${qChip(s.disposition==='auto_closed'?'auto-closed':'escalated',s.disposition==='auto_closed'?'b-green':'b-amber')}</span></div>`).join('');
+  return `<div class="card" style="margin-top:16px"><h2>🧪 Sandbox claims you have created</h2><p class="muted" style="margin:0 0 8px">Ephemeral — persisted only to <span class="mono">app_sandbox_claims</span>, wiped by the Reset button. The sacred demo claims (cc:900001/2/3) are never touched.</p>${rows}</div>`; }
 
 // ============ INGESTION ============
 async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML=page('Pipeline','Ingestion — Guidewire CDA → governed bronze','Your ClaimCenter feed lands in Databricks and passes a quality gate. Bad records are quarantined and visible — never silently dropped.','Loading pipeline status…');

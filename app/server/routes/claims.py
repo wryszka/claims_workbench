@@ -182,6 +182,45 @@ async def fair_outcomes():
     return await svc.fair_outcomes()
 
 
+# --- Phase 12 Stage B1: Handler "My Queue" (persona: Sarah Chen) ---
+@router.get("/handler/queue")
+async def handler_queue():
+    return await svc.handler_queue()
+
+
+# --- Phase 12 Stage B2: Create a claim (synchronous real scoring, ephemeral) ---
+@router.get("/create-claim/scenario")
+async def create_claim_scenario():
+    return await svc.create_claim_scenario()
+
+
+class CreateClaimIn(BaseModel):
+    scenario: str | None = "custom"
+    policy_number: str | None = None
+    peril_type: str | None = None
+    report_channel: str | None = None
+    reported_amount: float | None = None
+    sum_insured: float | None = None
+    fraud_score: int | None = None
+    prior_claims_12m: int | None = None
+    reporting_lag_days: int | None = None
+    policy_tenure_years: float | None = None
+    weather_risk_composite: float | None = None
+    at_fault: int | None = None
+    third_party_involved: int | None = None
+    flood_risk_score: float | None = None
+
+
+@router.post("/create-claim")
+async def create_claim(c: CreateClaimIn):
+    return await svc.create_claim(c.model_dump())
+
+
+@router.get("/sandbox-claims")
+async def sandbox_claims(limit: int = 20):
+    return await svc.sandbox_claims(limit)
+
+
 @router.get("/reset-status")
 async def reset_status():
     import asyncio

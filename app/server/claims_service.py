@@ -9,6 +9,7 @@ gold_handler_decisions.
 import asyncio
 import json
 import logging
+import math
 import uuid
 
 from utils import config
@@ -1021,6 +1022,385 @@ async def fair_outcomes() -> dict:
     except Exception:
         by_channel, by_peril, watch = [], [], {}
     return {"by_channel": by_channel, "by_peril": by_peril, "watch": watch}
+
+
+# ==========================================================================
+# Phase 12 · Stage B1 — Handler "My Queue" (persona lens: Sarah Chen)
+# --------------------------------------------------------------------------
+# Sarah Chen is a PERSONA, not a data row — she's a Senior handler on the
+# Motor Complex desk. Her queue is a curated VIEW (peril + status filter), not
+# a handler_id reassignment, so the sacred heroes' real data is never mutated.
+# cc:900001 (motor, under_investigation, refer_siu) lands in "Needs you today";
+# cc:900002 (home) is correctly absent. Each row opens the Work-a-claim detail.
+# ==========================================================================
+HANDLER_PERSONA = {"name": "Sarah Chen", "initials": "SC", "grade": "Senior",
+                   "desk": "Motor Complex", "subtitle": "Senior Claims Handler · Motor Complex desk"}
+_MOTOR_SLA = PERIL_SLA.get("motor_tp", 30)
+
+
+def _parse_rules(v) -> list:
+    """fired_rules arrives as a JSON string from the SQL statement API (or already a list)."""
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            return json.loads(v)
+        except Exception:
+            return [x for x in v.strip("[]").replace('"', "").split(",") if x]
+    return []
+
+
+async def handler_queue() -> dict:
+    s = _fq("silver_claims_enriched")
+    d = _fq("gold_claim_disposition")
+    # The whole motor book is thousands of open claims — far too many for one desk.
+    # The triage layer has already sifted it; Sarah's worklist is a curated, bounded
+    # slice (the material claims), with the heroes pinned in regardless of ranking.
+    cols = ("claim_public_id, peril_type, loss_cause, CAST(total_incurred AS double) total_incurred, "
+            "CAST(fraud_score AS int) fraud_score, claim_status, triage_decision, "
+            "CAST(coalesce(prior_claims_12m,0) AS int) prior_claims_12m, "
+            "CAST(is_high_value AS int) is_high_value, days_open, postcode_district, "
+            "disposition, fired_rules, CAST(model_confidence AS double) model_confidence")
+    base = f"""
+        SELECT s.claim_public_id, s.peril_type, s.loss_cause, s.total_incurred, s.fraud_score,
+               s.claim_status, s.triage_decision, s.prior_claims_12m,
+               CAST(s.is_high_value AS int) is_high_value,
+               datediff(current_date(), s.report_date) days_open, s.postcode_district,
+               d.disposition, d.fired_rules, d.model_confidence
+        FROM {s} s LEFT JOIN {d} d ON s.claim_public_id = d.claim_public_id
+        WHERE s.peril_type = 'motor_tp' AND s.claim_status IN ('open','under_investigation')"""
+    rows = await execute_query(f"""
+        WITH base AS ({base})
+        SELECT {cols}, 'today' AS bucket FROM base WHERE claim_public_id IN ('cc:900001','cc:900003')
+        UNION ALL
+        SELECT {cols}, 'today' AS bucket FROM (SELECT * FROM base
+            WHERE claim_public_id NOT IN ('cc:900001','cc:900003')
+              AND (triage_decision IN ('refer_siu','escalate') OR fraud_score > 70)
+            ORDER BY fraud_score DESC, total_incurred DESC LIMIT 7)
+        UNION ALL
+        SELECT {cols}, 'week' AS bucket FROM (SELECT * FROM base
+            WHERE claim_public_id NOT IN ('cc:900001','cc:900003')
+              AND is_high_value = 1 AND triage_decision NOT IN ('refer_siu','escalate') AND fraud_score <= 70
+              AND days_open <= 120
+            ORDER BY total_incurred DESC LIMIT 7)
+        UNION ALL
+        SELECT {cols}, 'later' AS bucket FROM (SELECT * FROM base
+            WHERE claim_public_id NOT IN ('cc:900001','cc:900003')
+              AND triage_decision = 'pay_direct' AND fraud_score <= 40 AND is_high_value = 0
+              AND days_open <= {_MOTOR_SLA}
+            ORDER BY days_open DESC LIMIT 8)
+    """)
+    total_open = int((await execute_query(
+        f"SELECT count(*) c FROM {s} WHERE peril_type='motor_tp' AND claim_status IN ('open','under_investigation')"))[0]["c"])
+    by_bucket = {"today": [], "week": [], "later": []}
+    exposure = 0.0
+    for r in rows:
+        fired = _parse_rules(r.get("fired_rules"))
+        days = int(r.get("days_open") or 0)
+        fraud = int(r.get("fraud_score") or 0)
+        triage = r.get("triage_decision")
+        incurred = float(r.get("total_incurred") or 0)
+        is_hv = int(r.get("is_high_value") or 0) == 1
+        exposure += incurred
+        breached = days > _MOTOR_SLA
+        why = []
+        if triage == "refer_siu":
+            why.append("Referred to SIU")
+        elif triage == "escalate":
+            why.append("Triage: escalate")
+        if fraud > 70:
+            why.append(f"Fraud {fraud}/100")
+        if breached:
+            why.append(f"{days}d open — SLA {_MOTOR_SLA}d breached")
+        elif days > (_MOTOR_SLA - 7):
+            why.append(f"{days}d open — SLA in {max(_MOTOR_SLA - days, 0)}d")
+        if is_hv:
+            why.append("High value")
+        if fired and len(why) < 3:
+            why.append("Rules: " + ", ".join(fired))
+        item = {
+            "claim_public_id": r["claim_public_id"], "peril": r["peril_type"],
+            "loss_cause": r.get("loss_cause"), "total_incurred": incurred,
+            "fraud_score": fraud, "status": r.get("claim_status"), "triage": triage,
+            "days_open": days, "postcode": r.get("postcode_district"),
+            "disposition": r.get("disposition"), "fired_rules": fired,
+            "confidence": r.get("model_confidence"),
+            "why": why[:3], "hero": r["claim_public_id"] in ("cc:900001", "cc:900003"),
+        }
+        by_bucket.get(r.get("bucket"), by_bucket["later"]).append(item)
+    today, week, later = by_bucket["today"], by_bucket["week"], by_bucket["later"]
+
+    worklist = len(today) + len(week) + len(later)
+    n_siu = sum(1 for i in today if i["triage"] in ("refer_siu", "escalate"))
+    n_breach = sum(1 for i in (today + week) if i["days_open"] > _MOTOR_SLA)
+    n_fraud = sum(1 for i in today if i["fraud_score"] > 70)
+    summary = (
+        f"Morning, Sarah. The triage layer sifted {total_open:,} open motor claims down to "
+        f"{worklist} that need a senior's eyes. {len(today)} are for today — {n_siu} escalated / SIU, "
+        f"{n_breach} past their {_MOTOR_SLA}-day SLA, {n_fraud} with a high fraud score. "
+        f"Start with cc:900001 (SIU referral) — the model and your agents already have the dossier ready."
+    )
+    buckets = [
+        {"key": "today", "title": "Needs you today", "tone": "red",
+         "blurb": "Escalations, SIU referrals, SLA breaches and fired rules.",
+         "count": len(today), "items": today},
+        {"key": "week", "title": "This week", "tone": "amber",
+         "blurb": "High-value or approaching their service deadline.",
+         "count": len(week), "items": week},
+        {"key": "later", "title": "When you can", "tone": "slate",
+         "blurb": "Routine open motor claims, progressing within SLA.",
+         "count": len(later), "items": later},
+    ]
+    return {"persona": HANDLER_PERSONA, "summary": summary, "worklist": worklist,
+            "total_open": total_open, "exposure": exposure, "buckets": buckets}
+
+
+# ==========================================================================
+# Phase 12 · Stage B2 — Create a claim (synchronous REAL scoring, ephemeral)
+# --------------------------------------------------------------------------
+# Scores the champion triage + reserve serving endpoints LIVE via ai_query on a
+# feature vector built in-flight (no batch DLT), then runs the same R1-R7 rule
+# engine inline. Created claims are EPHEMERAL — persisted only to the isolated
+# app_sandbox_claims table (truncated by the Reset job); silver and the sacred
+# heroes are never touched.
+# ==========================================================================
+_PERIL_ENC = {"home_escape_water": 0, "home_fire": 1, "home_storm": 2, "motor_tp": 3}
+_CHANNEL_ENC = {"broker_email": 0, "digital": 1, "phone": 2}
+_TRIAGE_ENC = {"escalate": 0, "pay_direct": 1, "refer_siu": 2}
+_RESERVE_BRACKETS = ["LOW", "MEDIUM", "HIGH", "LARGE LOSS"]
+_RESERVE_RANGE = {"LOW": "under £2,000", "MEDIUM": "£2,000–£10,000",
+                  "HIGH": "£10,000–£50,000", "LARGE LOSS": "over £50,000"}
+_model_eps: dict | None = None
+
+SCENARIO_PRESETS = [
+    {"key": "clean_motor", "label": "Clean motor knock", "peril_type": "motor_tp",
+     "report_channel": "digital", "reported_amount": 900, "sum_insured": 24000,
+     "fraud_score": 6, "prior_claims_12m": 0, "reporting_lag_days": 1, "policy_tenure_years": 4.0,
+     "weather_risk_composite": 0.15, "at_fault": 0, "third_party_involved": 1, "flood_risk_score": 0.1,
+     "hint": "Low value, prompt, clean history → expect pay & auto-close."},
+    {"key": "late_suspicious", "label": "Late, suspicious motor", "peril_type": "motor_tp",
+     "report_channel": "phone", "reported_amount": 8500, "sum_insured": 22000,
+     "fraud_score": 78, "prior_claims_12m": 3, "reporting_lag_days": 25, "policy_tenure_years": 0.4,
+     "weather_risk_composite": 0.2, "at_fault": 1, "third_party_involved": 1, "flood_risk_score": 0.1,
+     "hint": "High fraud, repeat, reported late → expect SIU / escalate, rules fire."},
+    {"key": "escape_water", "label": "Escape of water (home)", "peril_type": "home_escape_water",
+     "report_channel": "digital", "reported_amount": 3200, "sum_insured": 350000,
+     "fraud_score": 8, "prior_claims_12m": 0, "reporting_lag_days": 2, "policy_tenure_years": 6.0,
+     "weather_risk_composite": 0.3, "at_fault": 0, "third_party_involved": 0, "flood_risk_score": 0.2,
+     "hint": "Clean but above the £2,000 pay cap → expect a handler review."},
+    {"key": "large_fire", "label": "Large home fire", "peril_type": "home_fire",
+     "report_channel": "broker_email", "reported_amount": 85000, "sum_insured": 420000,
+     "fraud_score": 10, "prior_claims_12m": 1, "reporting_lag_days": 3, "policy_tenure_years": 9.0,
+     "weather_risk_composite": 0.25, "at_fault": 0, "third_party_involved": 0, "flood_risk_score": 0.15,
+     "hint": "Major loss well over the pay cap → expect escalation for a handler."},
+]
+PRESET_FIELDS = ["peril_type", "report_channel", "reported_amount", "sum_insured",
+                 "fraud_score", "prior_claims_12m", "reporting_lag_days", "policy_tenure_years",
+                 "weather_risk_composite", "at_fault", "third_party_involved", "flood_risk_score"]
+
+
+def _resolve_model_endpoints() -> dict:
+    global _model_eps
+    if _model_eps is not None:
+        return _model_eps
+    from server.sql import _client
+    triage = reserve = None
+    try:
+        names = [e.name for e in _client().serving_endpoints.list()]
+        triage = next((n for n in names if n.endswith("claims-workbench-triage")), None)
+        reserve = next((n for n in names if n.endswith("claims-workbench-reserve")), None)
+    except Exception as e:
+        logger.warning("model endpoint resolution failed: %s", e)
+    _model_eps = {"triage": triage, "reserve": reserve}
+    return _model_eps
+
+
+async def list_policies(limit: int = 8) -> list[dict]:
+    """A few REAL policies from silver to attach a sandbox claim to (picker)."""
+    return await execute_query(f"""
+        SELECT policy_number, any_value(product) product,
+               CAST(any_value(sum_insured) AS double) sum_insured,
+               CAST(any_value(annual_premium) AS double) annual_premium,
+               CAST(max(policy_tenure_years) AS double) policy_tenure_years
+        FROM {_fq('silver_claims_enriched')}
+        WHERE policy_number IS NOT NULL AND sum_insured IS NOT NULL
+        GROUP BY policy_number ORDER BY policy_number LIMIT {int(limit)}
+    """)
+
+
+async def create_claim_scenario() -> dict:
+    """Form metadata for the create-a-claim panel."""
+    policies = await list_policies()
+    return {"presets": SCENARIO_PRESETS, "policies": policies, "fields": PRESET_FIELDS}
+
+
+async def _score_models(inp: dict) -> dict:
+    """One SQL round-trip: ai_query the triage endpoint, derive the decision, then
+    ai_query the reserve endpoint with the resulting triage encoding. Synchronous."""
+    eps = await asyncio.to_thread(_resolve_model_endpoints)
+    if not eps["triage"] or not eps["reserve"]:
+        raise RuntimeError("triage/reserve serving endpoints not found")
+    peril_e = _PERIL_ENC.get(inp["peril_type"], -1)
+    chan_e = _CHANNEL_ENC.get(inp["report_channel"], -1)
+    amt = float(inp["reported_amount"]); si = float(inp["sum_insured"]) or 1.0
+    amt_log = math.log1p(amt); si_log = math.log1p(si)
+    ratio = round(amt / si, 4) if si else 0.0
+    is_hv = 1 if amt > 10000 else 0
+    fraud = int(inp["fraud_score"]); prior = int(inp["prior_claims_12m"])
+    lag = int(inp["reporting_lag_days"]); tenure = float(inp["policy_tenure_years"])
+    weather = float(inp["weather_risk_composite"]); flood = float(inp["flood_risk_score"])
+    at_fault = int(inp["at_fault"]); tp = int(inp["third_party_involved"])
+    triage_struct = (
+        f"named_struct('peril_type_encoded',{peril_e}.0,'report_channel_encoded',{chan_e}.0,"
+        f"'reported_amount_log',{amt_log},'sum_insured_to_reported_ratio',{ratio},"
+        f"'fraud_score',{fraud}.0,'prior_claims_12m',{prior}.0,'reporting_lag_days',{lag}.0,"
+        f"'policy_tenure_years',{tenure},'weather_risk_composite',{weather},'is_high_value',{is_hv}.0,"
+        f"'at_fault',{at_fault}.0,'third_party_involved',{tp}.0,'postcode_flood_risk',{flood})")
+    # reserve uses the triage decision encoding (derived in-query), handler_grade=senior(1), days_open=0.
+    reserve_struct = (
+        "named_struct('peril_type_encoded',{pe}.0,'handler_grade_encoded',1.0,"
+        "'reported_amount_log',{al},'fraud_score',{fr}.0,'prior_claims_12m',{pr}.0,"
+        "'weather_risk_composite',{we},'days_open',0.0,'triage_decision_encoded',tde,"
+        "'sum_insured_log',{sl})").format(pe=peril_e, al=amt_log, fr=fraud, pr=prior, we=weather, sl=si_log)
+    sql = f"""
+      WITH t AS (SELECT ai_query('{eps['triage']}', {triage_struct}, 'ARRAY<DOUBLE>') AS p),
+      td AS (SELECT p,
+               element_at(array('escalate','pay_direct','refer_siu'), CAST(array_position(p, array_max(p)) AS INT)) AS decision,
+               round(array_max(p)*100, 1) AS confidence FROM t),
+      r AS (SELECT decision, confidence,
+               CAST(decision='escalate' AS INT)*0 + CAST(decision='pay_direct' AS INT)*1 + CAST(decision='refer_siu' AS INT)*2 AS tde
+            FROM td)
+      SELECT decision, confidence,
+             element_at(array('LOW','MEDIUM','HIGH','LARGE LOSS'),
+               CAST(ai_query('{eps['reserve']}',
+                 {reserve_struct.replace('tde', '(SELECT tde FROM r)')}, 'DOUBLE') AS INT) + 1) AS bracket
+      FROM r
+    """
+    rows = await execute_query(sql)
+    out = rows[0] if rows else {}
+    return {"decision": out.get("decision"), "confidence": float(out.get("confidence") or 0),
+            "bracket": out.get("bracket"), "triage_endpoint": eps["triage"], "reserve_endpoint": eps["reserve"]}
+
+
+async def _rule_params(peril_type: str) -> dict:
+    """One SQL round-trip: risk-appetite band + rule thresholds + per-peril severity norm."""
+    rows = await execute_query(f"""
+        SELECT a.conf_threshold, a.amount_cap, a.fraud_floor,
+               r.lag_limit, r.velocity_limit, r.ratio_ceiling, r.severity_mult,
+               (SELECT CAST(avg(total_incurred) AS double) FROM {_fq('silver_claims_enriched')}
+                 WHERE peril_type='{_esc(peril_type)}') AS peril_avg
+        FROM (SELECT * FROM {_fq('auto_close_config')} WHERE config_key='default') a
+        CROSS JOIN (SELECT * FROM {_fq('rule_config')} WHERE config_key='default') r
+    """)
+    return rows[0] if rows else {}
+
+
+def _rule_engine(inp: dict, decision: str, confidence: float, params: dict) -> dict:
+    """Replicate the 10_auto_close disposition (band + R1-R7) inline for one new claim.
+    R6 (telematics) and R7 (image) pass — a brand-new claim has neither yet."""
+    cfg = params or {}
+    CONF = float(cfg.get("conf_threshold") or 85.0); CAP = float(cfg.get("amount_cap") or 2000.0)
+    FLOOR = float(cfg.get("fraud_floor") or 20.0)
+    LAG = float(cfg.get("lag_limit") or 14.0); VEL = float(cfg.get("velocity_limit") or 1.0)
+    RATIOC = float(cfg.get("ratio_ceiling") or 0.9); SEVM = float(cfg.get("severity_mult") or 5.0)
+    peril_avg = float(cfg["peril_avg"]) if cfg.get("peril_avg") is not None else None
+    amt = float(inp["reported_amount"]); si = float(inp["sum_insured"]) or 1.0
+    ratio = amt / si if si else 0.0
+    fraud = int(inp["fraud_score"]); prior = int(inp["prior_claims_12m"]); lag = int(inp["reporting_lag_days"])
+
+    checks = [
+        ("band", "triage = pay_direct", decision == "pay_direct", f"triage={decision}"),
+        ("band", f"confidence ≥ {CONF:.0f}%", confidence >= CONF, f"{confidence:.1f}%"),
+        ("band", f"amount ≤ £{CAP:,.0f}", amt <= CAP, f"£{amt:,.0f}"),
+        ("band", "FNOL data complete", True, "complete"),
+        ("R1", f"fraud ≤ {FLOOR:.0f}", fraud <= FLOOR, f"fraud {fraud}"),
+        ("R2", f"reporting-lag ≤ {LAG:.0f}d", lag <= LAG, f"{lag}d"),
+        ("R3", f"prior-claims ≤ {VEL:.0f}", prior <= VEL, f"{prior} prior"),
+        ("R4", "amount/sum-insured ok", ratio <= RATIOC, f"ratio {ratio:.3f}"),
+        ("R5", "severity consistent", peril_avg is None or amt <= SEVM * peril_avg,
+         f"£{amt:,.0f} vs norm £{(peril_avg or 0):,.0f}"),
+        ("R6", "speed vs limit", True, "no telematics"),
+        ("R7", "image severity vs reported", True, "no photo"),
+    ]
+    results = [{"code": c, "label": lab, "passed": bool(ok), "value": val} for c, lab, ok, val in checks]
+    fired = [r["code"] for r in results if not r["passed"] and r["code"].startswith("R")]
+    band_ok = all(r["passed"] for r in results if r["code"] == "band")
+    auto_ok = all(r["passed"] for r in results)
+    disposition = "auto_closed" if auto_ok else "escalated"
+    return {"disposition": disposition, "auto_ok": auto_ok, "band_ok": band_ok,
+            "fired_rules": fired, "checks": results,
+            "thresholds": {"conf": CONF, "cap": CAP, "fraud_floor": FLOOR}}
+
+
+async def _ensure_sandbox_table():
+    await execute_query(f"""
+        CREATE TABLE IF NOT EXISTS {_fq('app_sandbox_claims')} (
+          claim_public_id STRING, created_ts TIMESTAMP, scenario STRING, policy_number STRING,
+          peril_type STRING, reported_amount DOUBLE, sum_insured DOUBLE, fraud_score INT,
+          prior_claims_12m INT, reporting_lag_days INT, model_decision STRING, model_confidence DOUBLE,
+          reserve_bracket STRING, disposition STRING, fired_rules STRING
+        ) USING DELTA
+        COMMENT 'EPHEMERAL app-created sandbox claims (Phase 12 B2). Truncated by the Reset job. Never joined to silver/heroes.'
+    """)
+
+
+async def create_claim(inputs: dict) -> dict:
+    """Synchronous real scoring of a new ephemeral claim + inline rule engine."""
+    inp = {f: inputs.get(f) for f in PRESET_FIELDS}
+    # coerce / default
+    inp["peril_type"] = inp.get("peril_type") or "motor_tp"
+    inp["report_channel"] = inp.get("report_channel") or "digital"
+    for f, d in (("reported_amount", 1000), ("sum_insured", 25000), ("fraud_score", 10),
+                 ("prior_claims_12m", 0), ("reporting_lag_days", 2), ("policy_tenure_years", 3.0),
+                 ("weather_risk_composite", 0.2), ("at_fault", 0), ("third_party_involved", 0),
+                 ("flood_risk_score", 0.1)):
+        if inp.get(f) is None:
+            inp[f] = d
+    scored, params = await asyncio.gather(_score_models(inp), _rule_params(inp["peril_type"]))
+    rules = _rule_engine(inp, scored["decision"], scored["confidence"], params)
+    cid = "cc:sb-" + uuid.uuid4().hex[:6]
+    # Persist OFF the critical path — the scored result returns immediately; the
+    # ephemeral sandbox row is written in the background (the UI re-reads the
+    # sandbox list a beat later). Keeps interactive scoring fast.
+    async def _persist():
+        try:
+            await _ensure_sandbox_table()
+            await execute_query(f"""
+                INSERT INTO {_fq('app_sandbox_claims')} VALUES
+                ('{cid}', current_timestamp(), '{_esc(str(inputs.get('scenario','custom')))}',
+                 '{_esc(str(inputs.get('policy_number','') or ''))}', '{_esc(inp['peril_type'])}',
+                 {float(inp['reported_amount'])}, {float(inp['sum_insured'])}, {int(inp['fraud_score'])},
+                 {int(inp['prior_claims_12m'])}, {int(inp['reporting_lag_days'])},
+                 '{_esc(scored['decision'] or '')}', {scored['confidence']},
+                 '{_esc(scored['bracket'] or '')}', '{rules['disposition']}',
+                 '{_esc(json.dumps(rules['fired_rules']))}')
+            """)
+        except Exception as e:
+            logger.warning("sandbox persist failed (non-fatal): %s", e)
+    asyncio.create_task(_persist())
+    return {
+        "claim_public_id": cid, "inputs": inp,
+        "scenario": inputs.get("scenario", "custom"), "policy_number": inputs.get("policy_number"),
+        "triage": {"decision": scored["decision"], "confidence": scored["confidence"],
+                   "endpoint": scored["triage_endpoint"]},
+        "reserve": {"bracket": scored["bracket"],
+                    "range": _RESERVE_RANGE.get(scored["bracket"], ""),
+                    "endpoint": scored["reserve_endpoint"]},
+        "disposition": rules["disposition"], "fired_rules": rules["fired_rules"],
+        "checks": rules["checks"], "thresholds": rules["thresholds"], "ephemeral": True,
+    }
+
+
+async def sandbox_claims(limit: int = 20) -> list[dict]:
+    try:
+        return await execute_query(f"""
+            SELECT claim_public_id, cast(created_ts AS string) created_ts, scenario, peril_type,
+                   reported_amount, model_decision, model_confidence, reserve_bracket,
+                   disposition, fired_rules
+            FROM {_fq('app_sandbox_claims')} ORDER BY created_ts DESC LIMIT {int(limit)}
+        """)
+    except Exception:
+        return []
 
 
 async def governance_inventory() -> dict:

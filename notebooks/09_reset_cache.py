@@ -43,6 +43,17 @@ CID = "cc:900001"
 spark.sql(f"TRUNCATE TABLE `{catalog}`.`{schema}`.cache_agent_responses")
 print("cache cleared.")
 
+# 1b) Wipe ephemeral app-created sandbox claims (Phase 12 B2) — sacred heroes untouched.
+try:
+    if spark.catalog.tableExists(f"`{catalog}`.`{schema}`.app_sandbox_claims"):
+        n = spark.table(f"`{catalog}`.`{schema}`.app_sandbox_claims").count()
+        spark.sql(f"TRUNCATE TABLE `{catalog}`.`{schema}`.app_sandbox_claims")
+        print(f"sandbox claims wiped: {n} row(s).")
+    else:
+        print("sandbox claims table not present (nothing to wipe).")
+except Exception as e:
+    print(f"sandbox wipe skipped: {e}")
+
 # 2) Re-warm the vivid claim — synthesis (exact app input) + both sub-agents.
 warmed = {}
 syn = asyncio.run(svc.get_synthesis(CID, use_cache=False))      # bypass -> real + save
