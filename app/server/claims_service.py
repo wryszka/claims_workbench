@@ -699,15 +699,16 @@ async def monday_brief() -> dict:
     worklist you can act on. Grouped: needs you now / money on the table / risk."""
     t = await control_tower()
     sla, rec, res, hero = t["sla"], t["recovery"], t["reserve"], t["hero"]
+    tiles = (t.get("efficiency") or []) + (t.get("effectiveness") or [])   # was t["tiles"] (renamed)
     needs, money, risk = [], [], []
     if sla["past_sla"]:
         needs.append({"text": f"{sla['past_sla']:,} open claims are past their per-peril SLA ({sla['breach_pct']}% of open) — reallocate or chase.",
                       "action": "Open the SLA worklist", "worklist": "aged"})
-    large = next((x["value"] for x in t["tiles"] if x["key"] == "large"), 0)
+    large = next((x["value"] for x in tiles if x["key"] == "large"), 0)
     if large:
         needs.append({"text": f"{large:,} large losses (over £50,000) are open — confirm reserves and senior ownership.",
                       "action": "Open large-loss worklist", "worklist": "large"})
-    needs.append({"text": f"{hero['escalated']:,} claims escalated to handlers; {hero['pct_auto_closed']}% auto-closed straight-through, freeing ≈{hero['hours_freed']:,} handler-hours (≈£{hero['gbp_saved']:,}).",
+    needs.append({"text": f"{hero['pct_auto_closed']}% of eligible claims auto-close straight-through, freeing ≈{hero['hours_freed']:,} handler-hours (≈£{hero['gbp_saved']:,}). Lifting the appetite frees more.",
                   "action": "Review auto-close appetite", "worklist": "autoclose"})
     if rec["total"]:
         money.append({"text": f"£{rec['total']:,} is recoverable across {rec['count']:,} open claims — recovery is chronically under-pursued.",
@@ -715,11 +716,11 @@ async def monday_brief() -> dict:
     if res.get("dev_ratio") and res["dev_ratio"] > 1.1:
         money.append({"text": f"Escape-of-water is developing at {res['dev_ratio']}× initial reserve (~{round((res['dev_ratio']-1)*100)}% under-reserved) — a ≈£{abs(res['gap']):,} provision gap.",
                       "action": "See under-reserved claims", "worklist": "underreserved"})
-    leak = next((x for x in t["tiles"] if x["key"] == "leakage"), {})
+    leak = next((x for x in tiles if x["key"] == "leakage"), {})
     if leak.get("rag") in ("amber", "red"):
         risk.append({"text": f"Leakage is {leak['value']}% (target ≤ {TARGETS['leakage_rate']}%){_trend_phrase(leak.get('trend'))}.",
                      "action": None, "worklist": None})
-    fr = next((x for x in t["tiles"] if x["key"] == "fraud"), {})
+    fr = next((x for x in tiles if x["key"] == "fraud"), {})
     risk.append({"text": f"{fr.get('value','—')}% of claims carry elevated fraud signals — SIU focus.",
                  "action": "Open fraud queue", "worklist": "high_fraud"})
     return {"sections": [

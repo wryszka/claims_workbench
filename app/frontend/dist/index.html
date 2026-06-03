@@ -167,16 +167,24 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
   const t=state.ct, h=t.hero||{}, rec=t.recovery||{}, res=t.reserve||{};
   const tileEl=x=>`<div class="tile" style="border-left:3px solid ${RAGC[x.rag||'info']};${x.worklist?'cursor:pointer':''}" ${x.worklist?`onclick="goWork('${x.worklist}')"`:''}><div class="l">${esc(x.label)}${x.illustrative?' <span class="badge b-slate" style="font-size:9px">illustrative</span>':''}</div><div class="n">${fmtv(x.value,x.fmt)}${trendArrow(x.trend)}</div><div class="s">${esc(x.sub||'')}${x.worklist?' · view →':''}</div></div>`;
   const BUILT_ON='Built on the Databricks Smart Claims solution accelerator and the EY Future of Claims Management framework — extended to personal lines with Guidewire CDA ingestion, Agent Bricks multi-agent supervision, auto-close, and full governance.';
-  const heroCard=`<div class="tile hero"><div class="l">% Auto-closed — straight-through</div><div class="n">${pct(h.pct_auto_closed)}${trendArrow(h.trend)}</div><div class="s">${num(h.auto_closed)} claims · ≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs saved · target ${h.target}%</div></div>`;
-  const recCard=`<div class="tile" style="border-left:3px solid #10b981;cursor:pointer" onclick="goWork('recovery')"><div class="l">💷 Recovery on the table</div><div class="n">${gbp(rec.total)}${trendArrow(rec.trend)}</div><div class="s">${num(rec.count)} open claims · view →</div></div>`;
-  const resCard=res.dev_ratio?`<div class="tile" style="border-left:3px solid ${res.dev_ratio>1.15?'#ef4444':'#f59e0b'};cursor:pointer" onclick="goWork('underreserved')"><div class="l">⚠️ EoW reserve development</div><div class="n">${res.dev_ratio}×</div><div class="s">~${Math.round((res.dev_ratio-1)*100)}% under-reserved · gap ≈${gbp(Math.abs(res.gap||0))} · view →</div></div>`:`<div class="tile"><div class="l">Reserve development</div><div class="n">—</div></div>`;
-  v.innerHTML=page('Control Tower','Your claims book, at a glance','Open vs auto-closed vs escalated, what needs you now, the money on the table, and a live auto-close risk-appetite dial.')
+  // The FOUR vital signs that matter — one efficiency win, one service risk, one money lever, one reserving risk.
+  const slaT=(t.efficiency||[]).find(x=>x.key==='sla')||{};
+  const vital=(icon,label,big,sub,color,worklist)=>`<div class="card" style="border-top:4px solid ${color};${worklist?'cursor:pointer':''};padding:16px" ${worklist?`onclick="goWork('${worklist}')"`:''}><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${icon} ${label}</div><div style="font-size:32px;font-weight:800;line-height:1.05;margin:7px 0 4px">${big}</div><div class="muted" style="font-size:12px;line-height:1.4">${sub}${worklist?' · <span class="link">view →</span>':''}</div></div>`;
+  const vitals=
+     vital('✅','Straight-through processing', pct(h.pct_auto_closed)+trendArrow(h.trend),
+           `≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs freed · target ${h.target}%`, '#7c3aed','autoclose')
+   + vital('⏰','Aged — past SLA', num(t.sla.past_sla),
+           `${t.sla.breach_pct}% of open claims breaching their per-peril SLA`, RAGC[slaT.rag||'amber'],'aged')
+   + vital('💷','Recovery on the table', gbp(rec.total)+trendArrow(rec.trend),
+           `${num(rec.count)} open claims with subrogation potential`, '#10b981','recovery')
+   + (res.dev_ratio
+      ? vital('⚠️','Escape-of-water under-reserved', res.dev_ratio+'×',
+              `~${Math.round((res.dev_ratio-1)*100)}% light · ≈${gbp(Math.abs(res.gap||0))} provision gap`, res.dev_ratio>1.15?'#ef4444':'#f59e0b','underreserved')
+      : vital('🛡️','Reserve adequacy', pct(res.adequacy), 'initial ÷ ultimate (open)', '#f59e0b','underreserved'));
+  v.innerHTML=page('Control Tower','Your claims book, at a glance','The four things that need your attention, what to do about them, and a live auto-close risk-appetite dial.')
     +`<div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
-    <div class="grid3" style="margin-bottom:16px">${heroCard}${recCard}${resCard}</div>
-    <div class="eyebrow" style="margin:4px 0 8px">⚙️ Efficiency — how well we run claims</div>
-    <div class="grid4" style="margin-bottom:18px">${(t.efficiency||[]).map(tileEl).join('')}</div>
-    <div class="eyebrow" style="margin:4px 0 8px">🎯 Effectiveness — how well we protect the P&amp;L</div>
-    <div class="grid4" style="margin-bottom:22px">${(t.effectiveness||[]).map(tileEl).join('')}</div>
+    <div class="eyebrow" style="margin:2px 0 8px">📌 Vital signs — what needs attention</div>
+    <div class="grid4" style="margin-bottom:18px">${vitals}</div>
     <div class="grid2">
       <div class="card"><h2>🗓️ Daily brief — what needs you</h2>${briefHtml()}<p class="muted" style="margin-top:8px">Prioritised from the live book — each line opens a worklist you can act on.</p></div>
       <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
@@ -184,7 +192,14 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
         <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
         <div class="srow"><label>Max fraud score</label><input type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
         <div style="margin-top:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:var(--v)" id="seg_pct">${pct(h.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(h.auto_closed)} auto-closed · ${num(h.escalated)} escalated</div></div></div></div>
-    <div class="card" style="margin-top:16px"><h2>🚧 Roadmap — under construction</h2>${roadmapStrip()}<p class="muted" style="margin-top:8px">Greyed = intentionally not built. Full detail on the Roadmap page.</p></div>
+    <div style="margin:18px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="ghost" onclick="var e=document.getElementById('ctScore');var sh=e.style.display==='none';e.style.display=sh?'block':'none';this.textContent=(sh?'▴ Hide':'▾ Show')+' full KPI scorecard';">▾ Show full KPI scorecard</button>
+      <span class="muted" style="font-size:12px">All ${(t.efficiency||[]).length+(t.effectiveness||[]).length} operational &amp; financial KPIs · or see <a class="link" onclick="go('insight')">Insight</a> for trends &amp; performance.</span></div>
+    <div id="ctScore" style="display:none;margin-top:14px">
+      <div class="eyebrow" style="margin:4px 0 8px">⚙️ Efficiency — how well we run claims</div>
+      <div class="grid4" style="margin-bottom:18px">${(t.efficiency||[]).map(tileEl).join('')}</div>
+      <div class="eyebrow" style="margin:4px 0 8px">🎯 Effectiveness — how well we protect the P&amp;L</div>
+      <div class="grid4">${(t.effectiveness||[]).map(tileEl).join('')}</div></div>
     <div class="card" style="margin-top:16px;border-left:3px solid var(--v)"><div class="eyebrow">🏗️ Built on</div><p style="font-size:13px;color:#334155;line-height:1.55;margin:4px 0 0">${esc(BUILT_ON)}</p><p class="muted" style="margin-top:6px">Same foundation, advanced — full provenance in <a class="link" onclick="go('learn')">Learn</a>.</p></div>`;
 }
 function briefHtml(){ const b=state.brief; if(!b||!b.sections)return '<p class="muted">Unavailable.</p>';
