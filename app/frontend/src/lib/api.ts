@@ -73,6 +73,10 @@ export const api = {
   getIngestionQuarantine: (reason?: string) =>
     fetchJson<any>('/ingestion/quarantine' + (reason ? `?reason=${encodeURIComponent(reason)}` : '')),
   getIngestionDocuments: () => fetchJson<any>('/ingestion/documents'),
+  getIngestionProfile: () => fetchJson<any>('/ingestion/profile'),
+  getIngestionAnalytics: () => fetchJson<any>('/ingestion/analytics'),
+  getIngestionSample: (table: string) =>
+    fetchJson<any>(`/ingestion/sample?table=${encodeURIComponent(table)}`),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

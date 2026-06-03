@@ -81,6 +81,21 @@ async def ingestion_documents(limit: int = 20):
     return await svc.ingestion_documents(limit)
 
 
+@router.get("/ingestion/profile")
+async def ingestion_profile():
+    return await svc.ingestion_profile()
+
+
+@router.get("/ingestion/analytics")
+async def ingestion_analytics():
+    return await svc.ingestion_analytics()
+
+
+@router.get("/ingestion/sample")
+async def ingestion_sample(table: str, limit: int = 8):
+    return await svc.ingestion_sample(table, limit)
+
+
 @router.get("/claim/enrichment")
 async def enrichment(cid: str):
     return await svc.enrichment(cid)

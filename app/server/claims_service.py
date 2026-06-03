@@ -199,6 +199,27 @@ def _pipeline_link() -> dict:
     return {"pipeline_name": PIPELINE_NAME, "state": None, "pipeline_url": None}
 
 
+# Rule → (bronze table, DLT action) — known from 01_bronze_dlt_pipeline. expect_or_drop
+# rows are quarantined; expect rows are tracked + retained (visible, not dropped).
+_DQ_RULE_META = {
+    "valid_loss_cause":   ("bronze_gw_cc_claim", "DROP → quarantine"),
+    "fraud_score_range":  ("bronze_fraud_signals_raw", "DROP → quarantine"),
+    "valid_policy_number":("bronze_gw_cc_claim", "track + retain"),
+    "valid_report_channel":("bronze_gw_cc_claim", "track + retain"),
+    "non_negative_amounts":("bronze_gw_cc_exposure", "track + retain"),
+    "valid_policy_dates": ("bronze_gw_pc_policy", "track + retain"),
+    "non_negative_speed": ("bronze_telematics", "track + retain"),
+}
+# Tables a viewer may inspect (whitelist — no arbitrary SQL).
+_INSPECTABLE = {
+    "bronze_gw_cc_claim": "Guidewire ClaimCenter — claims",
+    "bronze_gw_pc_policy": "Guidewire PolicyCenter — policies",
+    "bronze_fraud_signals_raw": "Fraud signals",
+    "bronze_weather_raw": "Weather & peril enrichment",
+    "bronze_telematics": "Motor telematics",
+    "bronze_quarantine_claims": "Quarantine — claims",
+}
+
 # Medallion layers surfaced as freshness/row-count evidence (read via SQL).
 _LAYERS = [
     ("Landing", "raw, pre-quality", "landing_gw_cc_claim"),
@@ -218,8 +239,13 @@ async def ingestion_status() -> dict:
     try:
         q = await execute_query(
             f"SELECT rule, passed, failed, dataset FROM {_fq('gold_ingestion_quality')} ORDER BY failed DESC, rule")
-        out["expectations"] = [{"name": r["rule"], "passed": int(r["passed"]),
-                                "failed": int(r["failed"]), "dataset": r.get("dataset")} for r in q]
+        def _exp(r):
+            p, f = int(r["passed"]), int(r["failed"])
+            meta = _DQ_RULE_META.get(r["rule"], (r.get("dataset"), "track + retain"))
+            return {"name": r["rule"], "passed": p, "failed": f, "dataset": r.get("dataset"),
+                    "table": meta[0], "action": meta[1],
+                    "pass_rate": round(100 * p / max(p + f, 1), 2)}
+        out["expectations"] = [_exp(r) for r in q]
         tp = sum(e["passed"] for e in out["expectations"])
         tf = sum(e["failed"] for e in out["expectations"])
         out["pass_rate"] = round(100 * tp / max(tp + tf, 1), 2)
@@ -258,8 +284,96 @@ async def ingestion_status() -> dict:
             f"SELECT count(*) c FROM {_fq('gold_document_extractions')}"))[0]["c"])
     except Exception:
         out["documents_count"] = 0
+    # "When was it ingested" — latest CDA batch + report date.
+    try:
+        fr = (await execute_query(
+            f"SELECT cast(max(cda_batch_ts) AS string) last_batch, cast(max(report_date) AS string) last_report, "
+            f"count(*) c FROM {_fq('bronze_gw_cc_claim')}"))[0]
+        out["freshness"] = {"last_batch": fr.get("last_batch"), "last_report": fr.get("last_report"),
+                            "claims": int(fr.get("c") or 0)}
+    except Exception:
+        out["freshness"] = {}
+    out["inspectable"] = [{"table": t, "label": lab} for t, lab in _INSPECTABLE.items()]
     out.update(await asyncio.to_thread(_pipeline_link))
     return out
+
+
+async def ingestion_profile() -> list[dict]:
+    """Sensible data-quality checks across dimensions (computed live on silver).
+    Completeness / uniqueness / validity / referential integrity / timeliness."""
+    s = _fq("silver_claims_enriched")
+    try:
+        r = (await execute_query(f"""
+            SELECT count(*) n,
+                   sum(CASE WHEN claim_public_id IS NULL THEN 1 ELSE 0 END) null_id,
+                   sum(CASE WHEN total_incurred IS NULL THEN 1 ELSE 0 END) null_amt,
+                   sum(CASE WHEN loss_date IS NULL OR report_date IS NULL THEN 1 ELSE 0 END) null_dates,
+                   count(*) - count(DISTINCT claim_public_id) dup_id,
+                   sum(CASE WHEN sum_insured IS NULL THEN 1 ELSE 0 END) no_policy,
+                   round(avg(reporting_lag_days),1) avg_lag,
+                   round(100.0*avg(CASE WHEN reporting_lag_days <= 7 THEN 1 ELSE 0 END),1) within7,
+                   sum(CASE WHEN reporting_lag_days < 0 THEN 1 ELSE 0 END) neg_lag
+            FROM {s}"""))[0]
+    except Exception:
+        return []
+    n = int(r["n"] or 1)
+    def pct_ok(bad):
+        return round(100 * (n - int(bad or 0)) / max(n, 1), 2)
+    def st(v, warn):
+        return "pass" if v >= warn else "warn"
+    rows = [
+        ("Completeness", "Key fields populated (id, amount, dates)",
+         f"{pct_ok(int(r['null_id'] or 0)+int(r['null_amt'] or 0)+int(r['null_dates'] or 0))}%",
+         st(pct_ok(int(r['null_id'] or 0)+int(r['null_amt'] or 0)+int(r['null_dates'] or 0)), 99)),
+        ("Uniqueness", "No duplicate claim IDs", f"{int(r['dup_id'] or 0)} dupes",
+         "pass" if int(r["dup_id"] or 0) == 0 else "warn"),
+        ("Referential integrity", "Claim resolves to a policy",
+         f"{pct_ok(r['no_policy'])}% matched", st(pct_ok(r["no_policy"]), 97)),
+        ("Timeliness", "Reported within 7 days of loss", f"{r['within7']}% (avg {r['avg_lag']}d)",
+         st(float(r["within7"] or 0), 50)),
+        ("Plausibility", "No negative reporting lag", f"{int(r['neg_lag'] or 0)} anomalies",
+         "pass" if int(r["neg_lag"] or 0) == 0 else "warn"),
+    ]
+    return [{"dimension": d, "check": c, "value": v, "status": s} for d, c, v, s in rows]
+
+
+async def ingestion_analytics() -> dict:
+    """Basic analytics over the ingested book — by peril, channel, volume over time, amount bands."""
+    s = _fq("silver_claims_enriched")
+    out = {"by_peril": [], "by_channel": [], "by_month": [], "amount_bands": []}
+    try:
+        out["by_peril"] = await execute_query(f"""
+            SELECT peril_type peril, count(*) n, CAST(round(avg(total_incurred),0) AS double) avg_incurred
+            FROM {s} GROUP BY peril_type ORDER BY n DESC""")
+        out["by_channel"] = await execute_query(f"""
+            SELECT report_channel channel, count(*) n FROM {s} GROUP BY report_channel ORDER BY n DESC""")
+        out["by_month"] = await execute_query(f"""
+            SELECT date_format(date_trunc('month', report_date),'yyyy-MM') month, count(*) n
+            FROM {s} WHERE report_date >= add_months(current_date(), -12)
+            GROUP BY 1 ORDER BY 1""")
+        out["amount_bands"] = await execute_query(f"""
+            SELECT CASE WHEN total_incurred < 1000 THEN '1 · < £1k'
+                        WHEN total_incurred < 5000 THEN '2 · £1k–5k'
+                        WHEN total_incurred < 25000 THEN '3 · £5k–25k'
+                        WHEN total_incurred < 100000 THEN '4 · £25k–100k'
+                        ELSE '5 · £100k+' END band, count(*) n
+            FROM {s} GROUP BY 1 ORDER BY 1""")
+    except Exception:
+        pass
+    return out
+
+
+async def ingestion_sample(table: str, limit: int = 8) -> dict:
+    """Inspect the input — a sample of raw rows + the schema for a whitelisted source table."""
+    if table not in _INSPECTABLE:
+        return {"error": "table not inspectable", "columns": [], "rows": []}
+    try:
+        cols = await execute_query(f"DESCRIBE {_fq(table)}")
+        colnames = [c["col_name"] for c in cols if c.get("col_name") and not c["col_name"].startswith("#")][:12]
+        rows = await execute_query(f"SELECT {', '.join(colnames)} FROM {_fq(table)} LIMIT {int(limit)}")
+        return {"table": table, "label": _INSPECTABLE[table], "columns": colnames, "rows": rows}
+    except Exception as e:
+        return {"error": str(e)[:160], "columns": [], "rows": []}
 
 
 async def ingestion_quarantine(reason: str | None = None, limit: int = 25) -> dict:
