@@ -740,6 +740,38 @@ async def monitoring_lens() -> dict:
     return await monday_brief()
 
 
+async def operations_view() -> dict:
+    """Where the claims are right now — by status, by peril, by age, and by team
+    (with SLA breach). The 'which claims are where' operational picture."""
+    s = _fq("silver_claims_enriched")
+    sla = _sla_sql()
+    out = {"by_status": [], "open_by_peril": [], "open_by_age": [], "by_team": []}
+    try:
+        out["by_status"] = await execute_query(f"""
+            SELECT claim_status status, count(*) n FROM {s} GROUP BY claim_status ORDER BY n DESC""")
+        out["open_by_peril"] = await execute_query(f"""
+            SELECT peril_type peril, count(*) n,
+                   sum(CASE WHEN datediff(current_date(), report_date) > {sla} THEN 1 ELSE 0 END) breached
+            FROM {s} WHERE claim_status IN ('open','under_investigation')
+            GROUP BY peril_type ORDER BY n DESC""")
+        out["open_by_age"] = await execute_query(f"""
+            SELECT CASE WHEN datediff(current_date(), report_date) <= 30 THEN '1 · 0–30 days'
+                        WHEN datediff(current_date(), report_date) <= 90 THEN '2 · 31–90 days'
+                        WHEN datediff(current_date(), report_date) <= 180 THEN '3 · 91–180 days'
+                        ELSE '4 · 180+ days' END bucket, count(*) n
+            FROM {s} WHERE claim_status IN ('open','under_investigation') GROUP BY 1 ORDER BY 1""")
+        out["by_team"] = await execute_query(f"""
+            SELECT coalesce(h.team,'unassigned') team, count(*) n,
+                   sum(CASE WHEN datediff(current_date(), s.report_date) > {sla} THEN 1 ELSE 0 END) breached,
+                   round(avg(s.fraud_score),0) avg_fraud
+            FROM {s} s LEFT JOIN {_fq('ref_handlers')} h ON s.handler_id = h.handler_id
+            WHERE s.claim_status IN ('open','under_investigation')
+            GROUP BY h.team ORDER BY n DESC""")
+    except Exception as e:
+        logger.warning("operations_view failed: %s", e)
+    return out
+
+
 # --------------------------------------------------------------------------
 # Worklists — turn a number into an actionable, clickable queue of claims.
 # --------------------------------------------------------------------------

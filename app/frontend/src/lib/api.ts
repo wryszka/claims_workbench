@@ -56,6 +56,7 @@ export const api = {
   getMondayBrief: () => fetchJson<any>('/monday-brief'),
   getWorklist: (kind: string) => fetchJson<any>(`/worklist?kind=${kind}`),
   getHandlers: () => fetchJson<any>('/handlers'),
+  getOperations: () => fetchJson<any>('/operations'),
   getFraud: () => fetchJson<any>('/fraud'),
   getTrends: () => fetchJson<any>('/trends'),
   getExperts: () => fetchJson<any>('/experts'),

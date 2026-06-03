@@ -146,6 +146,11 @@ async def handlers():
     return await svc.handlers()
 
 
+@router.get("/operations")
+async def operations():
+    return await svc.operations_view()
+
+
 @router.get("/fraud")
 async def fraud():
     return await svc.fraud_view()

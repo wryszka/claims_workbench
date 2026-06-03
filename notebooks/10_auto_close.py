@@ -52,7 +52,12 @@ print(f"[target] {catalog}.{schema}")
 
 # COMMAND ----------
 
-DEFAULTS = {"conf_threshold": 85.0, "amount_cap": 2000.0, "fraud_floor": 20.0}
+# Risk-appetite default. The triage model flags ~30% of claims as pay_direct (the natural
+# straight-through ceiling); this appetite — clean pay_direct claims up to GBP 5k, fraud <= 50,
+# <= 1 prior, reported promptly — straight-through-processes ~29% of the book. Conservative
+# desks dial it down with the Control Tower slider; nothing escalation-worthy auto-closes
+# (high fraud, photo discrepancy, large losses still route to a handler).
+DEFAULTS = {"conf_threshold": 80.0, "amount_cap": 5000.0, "fraud_floor": 50.0}
 
 spark.sql(f"""
 CREATE TABLE IF NOT EXISTS {tbl('auto_close_config')} (
@@ -89,7 +94,7 @@ print(f"thresholds: confidence >= {CONF}% | amount <= GBP {CAP:,.0f} | fraud_sco
 
 # COMMAND ----------
 
-RULE_DEFAULTS = {"lag_limit": 14.0, "velocity_limit": 1.0, "ratio_ceiling": 0.9, "severity_mult": 5.0,
+RULE_DEFAULTS = {"lag_limit": 45.0, "velocity_limit": 1.0, "ratio_ceiling": 0.9, "severity_mult": 5.0,
                  "speed_margin": 10.0, "severe_min_amount": 5000.0, "minor_max_amount": 20000.0}
 RULE_COLS = list(RULE_DEFAULTS.keys())
 # Recreate the config if its schema drifted (CREATE-IF-NOT-EXISTS keeps an old schema,

@@ -227,14 +227,33 @@ async function renderWorklists(){ const v=document.getElementById('view'); const
 // ============ PERFORMANCE (handler scorecard) ============
 // Insight hub — Performance + Trends folded into one tabbed page (was two nav peers).
 function setInsTab(t){ state.insTab=t; renderInsight(); }
-async function renderInsight(){ const v=document.getElementById('view'); const tab=state.insTab||'performance';
-  v.innerHTML=page('Head of Claims','Insight — performance & trends','How well the desk runs and where the book is heading. Settlement speed and leakage by team today; direction of travel over the last 12 weeks.','Loading…');
-  let H,T; try{H=await J('/handlers');}catch(e){H={teams:[],worst:[],overall:{}};}
-  try{T=await J('/trends');}catch(e){T={series:[]};}
-  const TABS=[['performance','📊 Performance'],['trends','📈 Trends']];
+const INS_LEAD='Where the claims are, who is carrying them, and where the book is heading — the operational detail behind the Control Tower.';
+async function renderInsight(){ const v=document.getElementById('view'); const tab=state.insTab||'ops';
+  v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends',INS_LEAD,'Loading…');
+  let H={},T={},O={};
+  if(tab==='performance'){ try{H=await J('/handlers');}catch(e){} }
+  else if(tab==='trends'){ try{T=await J('/trends');}catch(e){} }
+  else { try{O=await J('/operations');}catch(e){} }
+  const TABS=[['ops','🗺️ Where claims are'],['performance','👥 Handler performance'],['trends','📈 Trends']];
   const tabbar=`<div style="display:flex;gap:8px;margin-bottom:14px">${TABS.map(t=>`<button class="${tab===t[0]?'btnv':'ghost'}" style="padding:6px 14px;font-size:13px" onclick="setInsTab('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
-  v.innerHTML=page('Head of Claims','Insight — performance & trends','How well the desk runs and where the book is heading. Settlement speed and leakage by team today; direction of travel over the last 12 weeks.')
-    +tabbar+(tab==='trends'?trendsBody(T):perfBody(H));
+  const body = tab==='trends'?trendsBody(T) : tab==='performance'?perfBody(H) : opsBody(O);
+  v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends',INS_LEAD)+tabbar+body;
+}
+function opsBody(o){
+  const bars=(rows,labelKey,valKey,color)=>{const mx=Math.max(...rows.map(r=>parseFloat(r[valKey])||0),1);
+    return rows.map(r=>`<div style="display:flex;align-items:center;gap:8px;margin:5px 0"><span style="flex:0 0 150px;font-size:12px">${esc(PERIL[r[labelKey]]||r[labelKey])}</span><div class="bar" style="flex:1"><div style="width:${Math.round((parseFloat(r[valKey])||0)/mx*100)}%;background:${color||'var(--v)'}"></div></div><span class="val" style="font-size:12px">${num(r[valKey])}</span></div>`).join('');};
+  const status=o.by_status||[], peril=o.open_by_peril||[], age=o.open_by_age||[], team=o.by_team||[];
+  const totalOpen=peril.reduce((a,r)=>a+(parseFloat(r.n)||0),0);
+  const teamRows=team.map(t=>{const br=parseInt(t.breached)||0,n=parseInt(t.n)||0,pct=n?Math.round(100*br/n):0;
+    return `<tr><td><b>${esc(t.team)}</b></td><td style="text-align:right">${num(t.n)}</td><td style="text-align:right;color:${pct>40?'#dc2626':pct>20?'#b45309':'#047857'}">${num(br)} (${pct}%)</td><td style="text-align:right">${t.avg_fraud??'—'}</td></tr>`;}).join('');
+  const perilRows=peril.map(p=>{const br=parseInt(p.breached)||0,n=parseInt(p.n)||0,pct=n?Math.round(100*br/n):0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0"><span style="flex:0 0 150px;font-size:12px">${esc(PERIL[p.peril]||p.peril)}</span><div class="bar" style="flex:1"><div style="width:${Math.round(n/Math.max(...peril.map(x=>parseFloat(x.n)||0),1)*100)}%;background:var(--v)"></div></div><span class="val" style="font-size:12px">${num(n)} · <span style="color:${pct>40?'#dc2626':'#b45309'}">${pct}% aged</span></span></div>`;}).join('');
+  return `<div class="grid2">
+    <div class="card"><h2>📦 Open claims by peril</h2><p class="muted" style="margin:0 0 6px">${num(totalOpen)} open · the % past their per-peril SLA is flagged.</p>${perilRows||'<p class="muted">No data.</p>'}</div>
+    <div class="card"><h2>⏳ Open claims by age</h2><p class="muted" style="margin:0 0 6px">How long open claims have been sitting.</p>${bars(age,'bucket','n','#f59e0b')}</div></div>
+  <div class="grid2" style="margin-top:16px">
+    <div class="card"><h2>🗂️ Whole book by status</h2>${bars(status,'status','n','#64748b')}</div>
+    <div class="card"><h2>👥 Open caseload by team</h2><table><tr><th>Team</th><th style="text-align:right">Open</th><th style="text-align:right">Past SLA</th><th style="text-align:right">Avg fraud</th></tr>${teamRows||'<tr><td colspan=4 class="muted">No data.</td></tr>'}</table><p class="muted" style="margin-top:8px">Motor Complex &amp; SIU carry the most aged, high-fraud work — where senior handlers and SIU focus.</p></div></div>`;
 }
 function perfBody(d){ const o=d.overall||{};
   const teamRows=(d.teams||[]).map(t=>`<tr><td><b>${esc(t.team||'—')}</b></td><td style="text-align:right">${num(t.handlers)}</td><td style="text-align:right">${num(t.caseload)}</td><td style="text-align:right">${t.avg_settle??'—'} d</td><td style="text-align:right;color:${t.leakage_pct>8?'#dc2626':t.leakage_pct>6?'#b45309':'#047857'}">${t.leakage_pct}%</td></tr>`).join('');
