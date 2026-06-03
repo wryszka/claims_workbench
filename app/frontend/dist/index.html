@@ -474,20 +474,58 @@ function ncSandbox(){ const sb=state.nc.sandbox||[]; if(!sb.length)return '';
   return `<div class="card" style="margin-top:16px"><h2>🧪 Sandbox claims you have created</h2><p class="muted" style="margin:0 0 8px">Ephemeral — persisted only to <span class="mono">app_sandbox_claims</span>, wiped by the Reset button. The sacred demo claims (cc:900001/2/3) are never touched.</p>${rows}</div>`; }
 
 // ============ INGESTION ============
-async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML=page('Pipeline','Ingestion — Guidewire CDA → governed bronze','Your ClaimCenter feed lands in Databricks and passes a quality gate. Bad records are quarantined and visible — never silently dropped.','Loading pipeline status…');
+const ING_LEAD='Guidewire is the system of record — but a claim is also photos, telematics, weather, fraud signals and broker feeds. Every channel and format lands in one governed lakehouse, with a quality contract and no silent data loss.';
+const SRC_ICON={'System of record':'🏛️','Risk & fraud':'🛡️','Third-party enrichment':'🌦️','Telematics & IoT':'📡','Documents & photos':'📸','FNOL channels':'📞'};
+async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML=page('Pipeline','Ingestion — every channel into one governed lakehouse',ING_LEAD,'Loading ingestion…');
   let d; try{d=await J('/ingestion');}catch(e){v.innerHTML=page('Pipeline','Ingestion','')+'<p class="muted">Unavailable.</p>';return;}
+  state.ing=d; let docs=[]; try{docs=await J('/ingestion/documents');}catch(e){}
+  if(!state.quar){ try{state.quar=await J('/ingestion/quarantine');}catch(e){state.quar={reasons:[],rows:[]};} }
   const q=(Number(d.quarantined_claims)||0)+(Number(d.quarantined_fraud)||0);
-  const chain=['Guidewire CDA','landing','bronze (DLT + quality)','silver (enriched)','gold (analytics + ML)'];
-  v.innerHTML=page('Pipeline','Ingestion — Guidewire CDA → governed bronze','Your ClaimCenter feed lands in Databricks and passes a quality gate. Bad records are quarantined and visible — never silently dropped.')
-    +`<div class="card" style="margin-bottom:16px"><h2>🔗 The medallion path</h2><div style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${chain.map((c,i)=>`<span class="badge ${i<2?'b-slate':i<3?'b-amber':i<4?'b-blue':'b-green'}">${esc(c)}</span>${i<chain.length-1?'<span class="muted">→</span>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Three channels feed in — digital, phone, broker. Lakeflow DLT enforces the contract on the way to bronze.</p></div>
-    <div class="grid3" style="margin-bottom:16px">
-      <div class="tile"><div class="l">Records passing all rules</div><div class="n" style="color:#059669">${d.pass_rate}%</div><div class="s">${(d.total_evaluated||0).toLocaleString()} evaluated</div></div>
-      <div class="tile"><div class="l">Quarantined (not dropped)</div><div class="n" style="color:#b45309">${q.toLocaleString()}</div><div class="s">${d.quarantined_claims||0} claims · ${d.quarantined_fraud||0} fraud</div></div>
-      <div class="tile"><div class="l">Pipeline state</div><div class="n" style="font-size:20px">${esc(d.state||'—')}</div><div class="s">${esc(d.pipeline_name||'')}</div></div></div>
-    <div class="card" style="border-color:#6ee7b7;background:#f6fffb;margin-bottom:16px"><b>No claims data lost.</b> Failed records route to quarantine tables and stay inspectable — held back, not deleted. Your data team sees exactly what failed and why.</div>
-    <div class="card"><div style="display:flex;justify-content:space-between"><h2>Data-quality expectations</h2>${d.pipeline_url?`<a class="link" href="${d.pipeline_url}" target="_blank">Open pipeline ↗</a>`:''}</div>
-      <table><tr><th>Rule</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th></tr>${(d.expectations||[]).map(e=>`<tr><td class="mono">${esc(e.name)}</td><td style="text-align:right;color:#047857">${e.passed.toLocaleString()}</td><td style="text-align:right;color:${e.failed?'#b45309':'#94a3b8'}">${e.failed.toLocaleString()}</td></tr>`).join('')}</table></div>`;
+  const chain=['Source systems','landing','bronze (DLT + quality)','silver (enriched)','gold (analytics + ML)'];
+  // --- multi-source map grouped ---
+  const groups={}; (d.sources||[]).forEach(s=>{(groups[s.source_group]=groups[s.source_group]||[]).push(s);});
+  const srcRow=s=>{const live=s.status==='live';
+    return `<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8;${live?'':'opacity:.55'}">
+      <div style="flex:1 1 auto"><b style="font-size:13px">${esc(s.source_name)}</b> <span class="badge ${live?'b-green':'b-slate'}" style="font-size:9px">${live?'live':'roadmap'}</span><div class="muted" style="font-size:11px">${esc(s.system)} · ${esc(s.note)}</div></div>
+      <div style="flex:0 0 auto;text-align:right"><span class="badge b-violet" style="font-size:10px">${esc(s.databricks_tool)}</span><div class="muted" style="font-size:10px;margin-top:3px">${esc(s.format)} · ${esc(s.latency)}</div></div>
+      <div style="flex:0 0 78px;text-align:right"><b style="font-size:13px">${s.row_count!=null?num(s.row_count):'—'}</b><div class="muted" style="font-size:10px">rows</div></div></div>`;};
+  const sourceCard=`<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2>🔌 Sources feeding the lakehouse</h2><span class="muted" style="font-size:12px">${(d.sources||[]).filter(s=>s.status==='live').length} live · ${(d.sources||[]).filter(s=>s.status!=='live').length} on the roadmap</span></div>
+    ${Object.entries(groups).map(([g,items])=>`<div style="margin-top:10px"><div class="eyebrow" style="margin-bottom:2px">${SRC_ICON[g]||'•'} ${esc(g)}</div>${items.map(srcRow).join('')}</div>`).join('')}</div>`;
+  // --- KPI tiles ---
+  const tiles=`<div class="grid3" style="margin-bottom:16px">
+    <div class="tile"><div class="l">Records passing the quality contract</div><div class="n" style="color:#059669">${d.scorecard_ready?d.pass_rate+'%':'—'}</div><div class="s">${(d.total_evaluated||0).toLocaleString()} evaluated across feeds</div></div>
+    <div class="tile" style="cursor:pointer" onclick="document.getElementById('quarCard').scrollIntoView({behavior:'smooth'})"><div class="l">Quarantined — not dropped</div><div class="n" style="color:#b45309">${q.toLocaleString()}</div><div class="s">${num(d.quarantined_claims)} claims · ${num(d.quarantined_fraud)} fraud · inspect →</div></div>
+    <div class="tile"><div class="l">Documents AI-extracted at ingest</div><div class="n" style="color:var(--v)">${num(d.documents_count)}</div><div class="s">photos / reports → structured, joined to the claim</div></div></div>`;
+  // --- quality scorecard ---
+  const scorecard=`<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><h2>✅ The quality contract — Lakeflow DLT expectations</h2>${d.pipeline_url?`<a class="link" href="${d.pipeline_url}" target="_blank">Open pipeline ↗</a>`:''}</div>
+    <p class="muted" style="margin:0 0 8px">Every record is checked on the way to bronze. ${d.state?`Pipeline state: <b>${esc(d.state)}</b>.`:''}</p>
+    <table><tr><th>Rule</th><th>Dataset</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th></tr>${(d.expectations||[]).map(e=>`<tr><td class="mono">${esc(e.name)}</td><td class="muted">${esc(e.dataset||'')}</td><td style="text-align:right;color:#047857">${num(e.passed)}</td><td style="text-align:right;color:${e.failed?'#b45309':'#94a3b8'}">${num(e.failed)}</td></tr>`).join('')||'<tr><td colspan=4 class="muted">Scorecard not yet built — run the ingest metadata step.</td></tr>'}</table></div>`;
+  // --- quarantine drill ---
+  const qr=state.quar||{reasons:[],rows:[]};
+  const reasonChips=(qr.reasons||[]).map(r=>`<span class="badge ${qr.reason===r.reason?'b-amber':'b-slate'}" style="cursor:pointer;margin:2px 4px 2px 0" onclick="drillQuar('${esc(r.reason)}')">${esc(r.reason)} · ${num(r.count)}</span>`).join('');
+  let qrows='';
+  if(qr.reason && (qr.rows||[]).length){ const keys=Object.keys(qr.rows[0]).filter(k=>k!=='at');
+    qrows=`<table style="margin-top:8px"><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr>${qr.rows.map(r=>`<tr>${keys.map(k=>`<td class="${k.includes('reason')?'':'mono'}" style="font-size:12px">${esc(k.includes('incurred')?gbp(r[k]):r[k])}</td>`).join('')}</tr>`).join('')}</table><p class="muted" style="margin-top:6px">These exact rows were held back — visible, queryable, never deleted.</p>`;}
+  else if(qr.reason){ qrows='<p class="muted" style="margin-top:8px">No rows.</p>'; }
+  const quarCard=`<div class="card" id="quarCard" style="border-color:#6ee7b7;background:#f6fffb;margin-bottom:16px"><h2>🚦 No silent data loss — inspect what failed</h2>
+    <p style="margin:0 0 8px"><b>Bad records are quarantined, not dropped.</b> Pick a failure reason to see the actual rows your data team can audit:</p>
+    <div>${reasonChips||'<span class="muted">No quarantine reasons found.</span>'}</div>${qrows}</div>`;
+  // --- unstructured spotlight ---
+  const docRow=x=>`<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8">
+    <div style="flex:0 0 30px;font-size:18px">${x.doc_type==='photo'?'🖼️':'📄'}</div>
+    <div style="flex:0 0 190px"><b style="font-size:12px" class="mono">${esc(x.file_name)}</b><div class="muted" style="font-size:11px">${esc(x.doc_type)} → ${x.claim_public_id?`<span class="link" onclick="openWork('${esc(x.claim_public_id)}')">${esc(x.claim_public_id)}</span>`:'—'}</div></div>
+    ${x.severity?`<div style="flex:0 0 80px"><span class="badge ${x.severity==='severe'?'b-red':x.severity==='moderate'?'b-amber':'b-green'}">${esc(x.severity)}</span></div>`:'<div style="flex:0 0 80px"></div>'}
+    <div style="flex:1 1 auto;font-size:12px;color:#475569">${esc(x.extracted_summary||'')}</div></div>`;
+  const docCard=docs.length?`<div class="card" style="margin-bottom:16px"><h2>📸 Unstructured at ingest — Auto Loader + a vision model</h2>
+    <p class="muted" style="margin:0 0 6px">Files land in a UC Volume → <b>Auto Loader</b> ingests each one incrementally → a <b>vision foundation model</b> reads the photo and extracts structured fields, joined back to the claim by its reference. Most claims stacks can't put pixels and policy data in one governed place — this does, and runs the AI at the point of ingest.</p>
+    ${docs.map(docRow).join('')}<p class="muted" style="margin-top:8px">Source: <span class="mono">${esc((docs[0]||{}).source_tool||'Auto Loader + vision FM')}</span> · the cc:900003 photo reads <b>severe</b> against a £600 report — the discrepancy the rule engine catches.</p></div>`:'';
+  // --- freshness strip ---
+  const layers=`<div class="card"><h2>🧱 Medallion freshness</h2><div class="grid3">${(d.layers||[]).map(L=>`<div style="padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin:4px 0"><b style="font-size:13px">${esc(L.layer)}</b> <span class="muted" style="font-size:11px">${esc(L.desc)}</span><div style="font-size:18px;font-weight:800;margin-top:2px">${num(L.rows)}</div><div class="muted mono" style="font-size:10px">${esc(L.table)}</div></div>`).join('')}</div><p class="muted" style="margin-top:6px">Auto Loader handles schema evolution; Unity Catalog tracks lineage end to end.</p></div>`;
+  v.innerHTML=page('Pipeline','Ingestion — every channel into one governed lakehouse',ING_LEAD)
+    +`<div class="card" style="margin-bottom:16px"><h2>🔗 The medallion path</h2><div style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${chain.map((c,i)=>`<span class="badge ${i<2?'b-slate':i<3?'b-amber':i<4?'b-blue':'b-green'}">${esc(c)}</span>${i<chain.length-1?'<span class="muted">→</span>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Batch (Guidewire CDA), streaming (telematics), file-arrival (photos) and connectors (weather, fraud) all converge on the same governed medallion.</p></div>`
+    +tiles+sourceCard+scorecard+quarCard+docCard+layers;
 }
+async function drillQuar(reason){ try{state.quar=await J('/ingestion/quarantine?reason='+encodeURIComponent(reason));}catch(e){} renderIngestion(); }
 
 // ============ ENRICHMENT (was Transformation) ============
 async function renderEnrichment(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();

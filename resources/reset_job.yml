@@ -106,3 +106,15 @@ resources:
               catalog: ${var.catalog}
               schema: ${var.schema}
           environment_key: serverless
+
+        # 8 — refresh ingestion metadata (sources + DLT quality scorecard) and
+        # re-run the unstructured doc ingest (Auto Loader + vision extract at ingest).
+        - task_key: doc_ingest
+          depends_on:
+            - task_key: gold
+          notebook_task:
+            notebook_path: ../notebooks/15_doc_ingest.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          environment_key: serverless

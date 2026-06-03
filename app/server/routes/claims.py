@@ -71,6 +71,16 @@ async def ingestion():
     return await svc.ingestion_status()
 
 
+@router.get("/ingestion/quarantine")
+async def ingestion_quarantine(reason: str | None = None, limit: int = 25):
+    return await svc.ingestion_quarantine(reason, limit)
+
+
+@router.get("/ingestion/documents")
+async def ingestion_documents(limit: int = 20):
+    return await svc.ingestion_documents(limit)
+
+
 @router.get("/claim/enrichment")
 async def enrichment(cid: str):
     return await svc.enrichment(cid)

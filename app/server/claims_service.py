@@ -181,56 +181,70 @@ async def recent_decisions(limit: int = 20) -> list[dict]:
 PIPELINE_NAME = "claims_workbench_01_bronze_dlt"
 
 
-def _ingestion_sync() -> dict:
-    import requests
+def _pipeline_link() -> dict:
+    """Best-effort pipeline name/url for a deep-link. Cosmetic — the scorecard no
+    longer depends on REST event-log access (the app SP can't read it)."""
     from server.sql import _client
-    w = _client()
-    host = w.config.host.rstrip("/")
-    hdr = w.config._header_factory()
-    pid = pname = state = None
     try:
-        # DAB dev mode prefixes the name (e.g. "[dev user] claims_workbench_01_bronze_dlt"),
-        # so match by substring rather than exact name.
-        pipes = list(w.pipelines.list_pipelines(filter=f"name LIKE '%{PIPELINE_NAME}%'"))
-        if not pipes:
-            pipes = [p for p in w.pipelines.list_pipelines() if PIPELINE_NAME in (p.name or "")]
+        w = _client()
+        host = w.config.host.rstrip("/")
+        pipes = [p for p in w.pipelines.list_pipelines() if PIPELINE_NAME in (p.name or "")]
         if pipes:
-            pid, pname = pipes[0].pipeline_id, pipes[0].name
-            d = w.pipelines.get(pid)
+            d = w.pipelines.get(pipes[0].pipeline_id)
             state = str(d.state).replace("PipelineState.", "") if d.state else None
-    except Exception as e:
-        logger.warning("pipeline lookup failed: %s", e)
-    expectations = {}
-    if pid:
-        try:
-            evs = requests.get(f"{host}/api/2.0/pipelines/{pid}/events?max_results=250",
-                               headers=hdr, timeout=60).json().get("events", [])
-            for e in evs:
-                dq = (e.get("details", {}).get("flow_progress", {}) or {}).get("data_quality")
-                if not dq:
-                    continue
-                for ex in dq.get("expectations", []) or []:
-                    c = expectations.setdefault(ex.get("name"), {"passed": 0, "failed": 0})
-                    c["passed"] += int(ex.get("passed_records") or 0)
-                    c["failed"] += int(ex.get("failed_records") or 0)
-        except Exception as e:
-            logger.warning("event log failed: %s", e)
-    exp_list = [{"name": k, **v} for k, v in sorted(expectations.items())]
-    tp = sum(v["passed"] for v in expectations.values())
-    tf = sum(v["failed"] for v in expectations.values())
-    return {
-        "pipeline_name": pname or PIPELINE_NAME,
-        "pipeline_id": pid,
-        "state": state,
-        "pipeline_url": f"{host}/pipelines/{pid}" if pid else None,
-        "expectations": exp_list,
-        "pass_rate": round(100 * tp / max(tp + tf, 1), 2),
-        "total_evaluated": tp + tf,
-    }
+            return {"pipeline_name": pipes[0].name, "state": state,
+                    "pipeline_url": f"{host}/pipelines/{pipes[0].pipeline_id}"}
+    except Exception:
+        pass
+    return {"pipeline_name": PIPELINE_NAME, "state": None, "pipeline_url": None}
+
+
+# Medallion layers surfaced as freshness/row-count evidence (read via SQL).
+_LAYERS = [
+    ("Landing", "raw, pre-quality", "landing_gw_cc_claim"),
+    ("Bronze", "governed + quality gate", "bronze_gw_cc_claim"),
+    ("Silver", "enriched + joined", "silver_claims_enriched"),
+    ("Gold", "analytics + disposition", "gold_claim_disposition"),
+    ("Feature", "ML-ready", "feature_triage"),
+]
 
 
 async def ingestion_status() -> dict:
-    out = await asyncio.to_thread(_ingestion_sync)
+    out = {"pipeline_name": PIPELINE_NAME, "state": None, "pipeline_url": None,
+           "sources": [], "expectations": [], "pass_rate": 0.0, "total_evaluated": 0,
+           "layers": [], "quarantined_claims": 0, "quarantined_fraud": 0,
+           "documents_count": 0, "scorecard_ready": False}
+    # Quality scorecard (governed table — SP reads via SQL).
+    try:
+        q = await execute_query(
+            f"SELECT rule, passed, failed, dataset FROM {_fq('gold_ingestion_quality')} ORDER BY failed DESC, rule")
+        out["expectations"] = [{"name": r["rule"], "passed": int(r["passed"]),
+                                "failed": int(r["failed"]), "dataset": r.get("dataset")} for r in q]
+        tp = sum(e["passed"] for e in out["expectations"])
+        tf = sum(e["failed"] for e in out["expectations"])
+        out["pass_rate"] = round(100 * tp / max(tp + tf, 1), 2)
+        out["total_evaluated"] = tp + tf
+        out["scorecard_ready"] = bool(out["expectations"])
+    except Exception as e:
+        logger.warning("quality scorecard read failed: %s", e)
+    # Multi-source map.
+    try:
+        out["sources"] = await execute_query(f"""
+            SELECT source_group, source_name, system, channel, format, latency,
+                   databricks_tool, table_name, row_count, status, note
+            FROM {_fq('gold_ingestion_sources')}
+            ORDER BY CASE status WHEN 'live' THEN 0 ELSE 1 END, source_group, source_name""")
+    except Exception:
+        out["sources"] = []
+    # Per-layer freshness / row counts.
+    try:
+        sel = ", ".join(f"(SELECT count(*) FROM {_fq(t)}) AS c{i}" for i, (_, _, t) in enumerate(_LAYERS))
+        row = (await execute_query(f"SELECT {sel}"))[0]
+        out["layers"] = [{"layer": L[0], "desc": L[1], "table": L[2], "rows": int(row[f"c{i}"])}
+                         for i, L in enumerate(_LAYERS)]
+    except Exception:
+        out["layers"] = []
+    # Quarantine totals + document count.
     try:
         qc = await execute_query(
             f"SELECT (SELECT count(*) FROM {_fq('bronze_quarantine_claims')}) AS claims, "
@@ -238,8 +252,51 @@ async def ingestion_status() -> dict:
         out["quarantined_claims"] = int(qc[0]["claims"])
         out["quarantined_fraud"] = int(qc[0]["fraud"])
     except Exception:
-        out["quarantined_claims"] = out["quarantined_fraud"] = 0
+        pass
+    try:
+        out["documents_count"] = int((await execute_query(
+            f"SELECT count(*) c FROM {_fq('gold_document_extractions')}"))[0]["c"])
+    except Exception:
+        out["documents_count"] = 0
+    out.update(await asyncio.to_thread(_pipeline_link))
     return out
+
+
+async def ingestion_quarantine(reason: str | None = None, limit: int = 25) -> dict:
+    """The 'no silent data loss' drill-down — real quarantined rows + why they failed."""
+    reasons = []
+    for src, tbl in (("claims", "bronze_quarantine_claims"), ("fraud", "bronze_quarantine_fraud_signals")):
+        try:
+            rs = await execute_query(
+                f"SELECT quarantine_reason reason, count(*) n FROM {_fq(tbl)} GROUP BY quarantine_reason")
+            for r in rs:
+                reasons.append({"source": src, "reason": r["reason"], "count": int(r["n"])})
+        except Exception:
+            pass
+    rows = []
+    if reason:
+        tbl = "bronze_quarantine_fraud_signals" if reason == "fraud_score_out_of_range" else "bronze_quarantine_claims"
+        cols = ("claim_public_id, fraud_score, prior_claims_12m, signal_source, quarantine_reason, cast(_quarantined_at AS string) at"
+                if tbl.endswith("fraud_signals")
+                else "claim_public_id, policy_number, loss_cause, report_channel, cast(total_incurred AS double) total_incurred, quarantine_reason, cast(_quarantined_at AS string) at")
+        try:
+            rows = await execute_query(
+                f"SELECT {cols} FROM {_fq(tbl)} WHERE quarantine_reason='{_esc(reason)}' LIMIT {int(limit)}")
+        except Exception:
+            rows = []
+    return {"reasons": reasons, "reason": reason, "rows": rows}
+
+
+async def ingestion_documents(limit: int = 20) -> list[dict]:
+    """Unstructured spotlight — files Auto-Loaded + AI-extracted, joined to the claim."""
+    try:
+        return await execute_query(f"""
+            SELECT file_name, doc_type, claim_public_id, severity, extracted_summary,
+                   source_tool, cast(ingested_at AS string) ingested_at
+            FROM {_fq('gold_document_extractions')} ORDER BY file_name LIMIT {int(limit)}
+        """)
+    except Exception:
+        return []
 
 
 # --------------------------------------------------------------------------

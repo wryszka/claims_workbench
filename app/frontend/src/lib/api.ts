@@ -69,6 +69,10 @@ export const api = {
   createClaim: (body: any) =>
     fetchJson<any>('/create-claim', { method: 'POST', body: JSON.stringify(body) }),
   getSandboxClaims: () => fetchJson<any>('/sandbox-claims'),
+  // Ingestion redesign — multi-source + quality contract + quarantine drill + docs
+  getIngestionQuarantine: (reason?: string) =>
+    fetchJson<any>('/ingestion/quarantine' + (reason ? `?reason=${encodeURIComponent(reason)}` : '')),
+  getIngestionDocuments: () => fetchJson<any>('/ingestion/documents'),
 };
 
 // ---- formatting helpers (£ commas, % 1dp, plain-English labels) ----

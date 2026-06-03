@@ -81,6 +81,15 @@ resources:
             base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
           environment_key: serverless
 
+        # Unstructured ingest (Auto Loader + vision extract) + ingestion metadata
+        # (multi-source map + DLT quality scorecard the app reads via SQL).
+        - task_key: doc_ingest
+          depends_on: [{task_key: gold}]
+          notebook_task:
+            notebook_path: ../notebooks/15_doc_ingest.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+          environment_key: serverless
+
         - task_key: governance
           depends_on: [{task_key: silver}]
           notebook_task:
