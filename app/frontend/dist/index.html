@@ -258,30 +258,37 @@ function setInsTab(t){ state.insTab=t; renderInsightApp(); }
 const INS_LEAD='A live Databricks Lakeview dashboard — the same BI your team builds and edits in the workspace, with Genie for natural-language questions. This is the "easy to build, change and ask" story, not a hand-coded screen.';
 // Insight = the embedded Lakeview dashboard by default; an in-app summary is one click away.
 async function renderInsight(){ const v=document.getElementById('view');
-  if(state.insApp){ return renderInsightApp(); }
-  v.innerHTML=page('Head of Claims','Insight — the Claims dashboard',INS_LEAD,'Loading dashboard…');
+  if(!state.insEmbed){ return renderInsightApp(); }   // default = the always-renders in-app view
+  v.innerHTML=page('Head of Claims','Insight — the live Databricks dashboard',INS_LEAD,'Loading dashboard…');
   if(!state.gov){ try{state.gov=await J('/governance');}catch(e){state.gov={};} }
   const g=state.gov||{};
   const bar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+     <button class="ghost" onclick="state.insEmbed=false;renderInsight()">← Back to summary</button>
      ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open full dashboard ↗</a>`:''}
-     ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask the book in Genie ↗</a>`:''}
-     <button class="ghost" onclick="state.insApp=true;renderInsight()">📋 In-app summary</button></div>`;
+     ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask the book in Genie ↗</a>`:''}</div>`;
   const frame=g.dashboard_embed_url
     ? `<div class="card" style="padding:6px"><iframe src="${g.dashboard_embed_url}" style="width:100%;height:760px;border:0;border-radius:10px" title="Claims Portfolio dashboard" loading="lazy"></iframe></div>`
     : `<div class="card"><p class="muted">Dashboard not resolved on this workspace.${g.dashboard_url?` <a class="link" href="${g.dashboard_url}" target="_blank">Open it in Databricks ↗</a>`:''}</p></div>`;
-  v.innerHTML=page('Head of Claims','Insight — the Claims dashboard',INS_LEAD)+bar+frame
-    +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview. A signed-in workspace user sees it inline; otherwise open it in a new tab. Editable in the workspace; ask it in plain English with Genie.</p>`;
+  v.innerHTML=page('Head of Claims','Insight — the live Databricks dashboard',INS_LEAD)+bar+frame
+    +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview (open it full above if it needs a workspace sign-in or a refresh).</p>`;
 }
+const INS_LEAD2='Where claims are, who is carrying them, and the trend — rendered live in the app. The very same view is a real Databricks Lakeview dashboard your team edits and can ask in plain English with Genie.';
 async function renderInsightApp(){ const v=document.getElementById('view'); const tab=state.insTab||'ops';
-  v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends','The in-app summary behind the dashboard — where claims are, who is carrying them, and the trend.','Loading…');
+  v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends',INS_LEAD2,'Loading…');
+  if(!state.gov){ try{state.gov=await J('/governance');}catch(e){state.gov={};} }
   let H={},T={},O={};
   if(tab==='performance'){ try{H=await J('/handlers');}catch(e){} }
   else if(tab==='trends'){ try{T=await J('/trends');}catch(e){} }
   else { try{O=await J('/operations');}catch(e){} }
+  const g=state.gov||{};
+  const dash=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+     ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open the live Databricks dashboard ↗</a>`:''}
+     ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask in Genie ↗</a>`:''}
+     ${g.dashboard_embed_url?`<button class="ghost" onclick="state.insEmbed=true;renderInsight()">🖥️ View embedded</button>`:''}</div>`;
   const TABS=[['ops','🗺️ Where claims are'],['performance','👥 Handler performance'],['trends','📈 Trends']];
-  const tabbar=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center"><button class="ghost" onclick="state.insApp=false;renderInsight()">← Dashboard</button><span style="width:1px;height:20px;background:var(--line)"></span>${TABS.map(t=>`<button class="${tab===t[0]?'btnv':'ghost'}" style="padding:6px 14px;font-size:13px" onclick="setInsTab('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
+  const tabbar=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">${TABS.map(t=>`<button class="${tab===t[0]?'btnv':'ghost'}" style="padding:6px 14px;font-size:13px" onclick="setInsTab('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
   const body = tab==='trends'?trendsBody(T) : tab==='performance'?perfBody(H) : opsBody(O);
-  v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends','The in-app summary behind the dashboard — where claims are, who is carrying them, and the trend.')+tabbar+body;
+  v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends',INS_LEAD2)+dash+tabbar+body;
 }
 function opsBody(o){
   const bars=(rows,labelKey,valKey,color)=>{const mx=Math.max(...rows.map(r=>parseFloat(r[valKey])||0),1);
