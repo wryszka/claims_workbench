@@ -169,18 +169,29 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
   const BUILT_ON='Built on the Databricks Smart Claims solution accelerator and the EY Future of Claims Management framework — extended to personal lines with Guidewire CDA ingestion, Agent Bricks multi-agent supervision, auto-close, and full governance.';
   // The FOUR vital signs that matter — one efficiency win, one service risk, one money lever, one reserving risk.
   const slaT=(t.efficiency||[]).find(x=>x.key==='sla')||{};
-  const vital=(icon,label,big,sub,color,worklist)=>`<div class="card" style="border-top:4px solid ${color};${worklist?'cursor:pointer':''};padding:16px" ${worklist?`onclick="goWork('${worklist}')"`:''}><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${icon} ${label}</div><div style="font-size:32px;font-weight:800;line-height:1.05;margin:7px 0 4px">${big}</div><div class="muted" style="font-size:12px;line-height:1.4">${sub}${worklist?' · <span class="link">view →</span>':''}</div></div>`;
+  // Soft tinted cards keyed to a tone — bg / accent (number, icon, border). Like the solvency2 KPI strip.
+  const TINT={violet:['#f5f3ff','#7c3aed'],green:['#ecfdf5','#059669'],amber:['#fffbeb','#b45309'],red:['#fef2f2','#dc2626'],blue:['#eff6ff','#2563eb']};
+  const PILL={green:['on target','b-green'],amber:['watch','b-amber'],red:['needs action','b-red'],info:['',null]};
+  const vital=(icon,label,big,sub,tone,rag,worklist)=>{const [bg,ac]=TINT[tone]||TINT.blue; const [pl,pc]=PILL[rag]||PILL.info;
+    return `<div class="card" style="background:${bg};border:1px solid ${ac}33;border-top:3px solid ${ac};padding:16px;${worklist?'cursor:pointer':''}" ${worklist?`onclick="goWork('${worklist}')"`:''}>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="width:36px;height:36px;border-radius:10px;background:${ac}1f;color:${ac};display:flex;align-items:center;justify-content:center;font-size:19px">${icon}</div>
+        ${pl?`<span class="badge ${pc}">${pl}</span>`:''}</div>
+      <div style="font-size:33px;font-weight:800;color:${ac};line-height:1.05;margin:11px 0 2px">${big}</div>
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${ac};opacity:.85">${label}</div>
+      <div class="muted" style="font-size:12px;line-height:1.4;margin-top:5px">${sub}${worklist?` · <span style="color:${ac};font-weight:700">view →</span>`:''}</div></div>`;};
+  const ratioRag=res.dev_ratio?(res.dev_ratio>1.15?'red':'amber'):'amber';
   const vitals=
      vital('✅','Straight-through processing', pct(h.pct_auto_closed)+trendArrow(h.trend),
-           `≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs freed · target ${h.target}%`, '#7c3aed','autoclose')
+           `≈£${num(h.gbp_saved)} &amp; ${num(h.hours_freed)} handler-hrs freed · target ${h.target}%`, 'violet', h.rag||'info','autoclose')
    + vital('⏰','Aged — past SLA', num(t.sla.past_sla),
-           `${t.sla.breach_pct}% of open claims breaching their per-peril SLA`, RAGC[slaT.rag||'amber'],'aged')
+           `${t.sla.breach_pct}% of open claims breaching their per-peril SLA`, (slaT.rag==='red'?'red':'amber'), slaT.rag||'amber','aged')
    + vital('💷','Recovery on the table', gbp(rec.total)+trendArrow(rec.trend),
-           `${num(rec.count)} open claims with subrogation potential`, '#10b981','recovery')
+           `${num(rec.count)} open claims with subrogation potential`, 'green', 'green','recovery')
    + (res.dev_ratio
       ? vital('⚠️','Escape-of-water under-reserved', res.dev_ratio+'×',
-              `~${Math.round((res.dev_ratio-1)*100)}% light · ≈${gbp(Math.abs(res.gap||0))} provision gap`, res.dev_ratio>1.15?'#ef4444':'#f59e0b','underreserved')
-      : vital('🛡️','Reserve adequacy', pct(res.adequacy), 'initial ÷ ultimate (open)', '#f59e0b','underreserved'));
+              `~${Math.round((res.dev_ratio-1)*100)}% light · ≈${gbp(Math.abs(res.gap||0))} provision gap`, ratioRag, (res.dev_ratio>1.15?'red':'amber'),'underreserved')
+      : vital('🛡️','Reserve adequacy', pct(res.adequacy), 'initial ÷ ultimate (open)', 'amber','amber','underreserved'));
   v.innerHTML=page('Control Tower','Your claims book, at a glance','The four things that need your attention, what to do about them, and a live auto-close risk-appetite dial.')
     +`<div class="disclaimer"><b>About this demo.</b> ${esc(DISCLAIMER)}</div>
     <div class="eyebrow" style="margin:2px 0 8px">📌 Vital signs — what needs attention</div>
@@ -203,7 +214,9 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
     <div class="card" style="margin-top:16px;border-left:3px solid var(--v)"><div class="eyebrow">🏗️ Built on</div><p style="font-size:13px;color:#334155;line-height:1.55;margin:4px 0 0">${esc(BUILT_ON)}</p><p class="muted" style="margin-top:6px">Same foundation, advanced — full provenance in <a class="link" onclick="go('learn')">Learn</a>.</p></div>`;
 }
 function briefHtml(){ const b=state.brief; if(!b||!b.sections)return '<p class="muted">Unavailable.</p>';
-  return b.sections.filter(s=>s.items&&s.items.length).map(sec=>`<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${sec.icon} ${esc(sec.title)}</div>${sec.items.map(it=>`<div style="font-size:13px;color:#334155;margin:5px 0;line-height:1.45">${esc(it.text)}${it.worklist?` <a class="link" onclick="goWork('${it.worklist}')">${esc(it.action||'open')} →</a>`:''}</div>`).join('')}</div>`).join(''); }
+  const SC={'Needs you now':['#fef2f2','#dc2626'],'Money on the table':['#ecfdf5','#059669'],'Risk to watch':['#fffbeb','#b45309']};
+  return b.sections.filter(s=>s.items&&s.items.length).map(sec=>{const [bg,ac]=SC[sec.title]||['#f1f5f9','#475569'];
+    return `<div style="margin-bottom:10px;border-left:3px solid ${ac};background:${bg};border-radius:0 9px 9px 0;padding:8px 11px"><div style="font-size:11px;font-weight:800;color:${ac};text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${sec.icon} ${esc(sec.title)}</div>${sec.items.map(it=>`<div style="font-size:13px;color:#334155;margin:5px 0;line-height:1.45">${esc(it.text)}${it.worklist?` <a class="link" onclick="goWork('${it.worklist}')">${esc(it.action||'open')} →</a>`:''}</div>`).join('')}</div>`;}).join(''); }
 let _st=null;
 function segChange(){ const conf=+s_conf.value,cap=+s_cap.value,fraud=+s_fraud.value; v_conf.textContent=conf+'%'; v_cap.textContent=gbp(cap); v_fraud.textContent=fraud;
   clearTimeout(_st); _st=setTimeout(async()=>{try{const r=await J(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`); seg_pct.textContent=pct(r.pct_auto_closed); seg_n.textContent=`${num(r.auto_closed)} auto-closed · ${num(r.escalated)} escalated`;}catch(e){}},250); }
