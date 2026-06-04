@@ -134,6 +134,21 @@ const pct=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toFixed(1)+'%';};
 const DLABEL={pay_direct:'PAY DIRECT',escalate:'ESCALATE',refer_siu:'REFER TO SIU'};
 const PERIL={motor_tp:'Motor Third Party',home_escape_water:'Home — Escape of Water',home_storm:'Home — Storm',home_fire:'Home — Fire'};
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Minimal, safe markdown -> HTML for agent responses (escape first, then format).
+function mdfmt(s){ if(!s)return ''; let t=esc(s);
+  t=t.replace(/^\s*#{1,4}\s*(.+)$/gm,'<b>$1</b>');
+  t=t.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+  t=t.replace(/(^|[^*])\*([^*\n]+?)\*/g,'$1<i>$2</i>');
+  const lines=t.split(/\n/); let out='',ul=false,ol=false;
+  const close=()=>{ if(ul){out+='</ul>';ul=false;} if(ol){out+='</ol>';ol=false;} };
+  for(const ln of lines){ const x=ln.trim(); let m;
+    if(!x){ close(); continue; }
+    if(m=x.match(/^[-•]\s+(.*)/)){ if(!ul){close();out+='<ul style="margin:4px 0 6px 18px">';ul=true;} out+='<li style="margin:2px 0">'+m[1]+'</li>'; }
+    else if(m=x.match(/^\d+[.)]\s+(.*)/)){ if(!ol){close();out+='<ol style="margin:4px 0 6px 18px">';ol=true;} out+='<li style="margin:2px 0">'+m[1]+'</li>'; }
+    else { close(); out+='<p style="margin:6px 0">'+x+'</p>'; }
+  }
+  close(); return out;
+}
 async function J(p,o){const r=await fetch('/api'+p,{headers:{'Content-Type':'application/json'},...o});if(!r.ok)throw new Error(r.status);return r.json();}
 
 function renderNav(){ let h='',g=''; for(const s of SECTIONS){ if(s.grp!==g){g=s.grp;h+=`<div class="navhd">${g}</div>`;} h+=`<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`; } document.getElementById('nav').innerHTML=h; }
@@ -378,7 +393,7 @@ async function renderClaimsAI(){ const v=document.getElementById('view');
 function renderClaimsAIView(){ const v=document.getElementById('view'); const a=state.ask, r=state.roster||{};
   let ans=''; if(a){ ans = a.loading?'<p class="muted" style="margin-top:12px">Routing through the supervisor…</p>'
       : a.__err?'<p class="muted" style="margin-top:12px">Ask unavailable.</p>'
-      : `<div class="synth" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><p>${esc(a.text)}</p>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:8px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
+      : `<div class="synth" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><div class="md">${mdfmt(a.text)}</div>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:8px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
   const agc=ag=>{const P=AGENT_PLUMB[ag.name];
     return `<div class="agcard ac-${ag.color}" ${P?`onclick="goPlumb('${esc(ag.name)}')" style="cursor:pointer"`:''}><div class="top"><div class="nm">${ag.icon||'•'} ${esc(ag.name)}</div><span class="agtag">${ag.kind.toUpperCase()}</span></div><p>${esc(ag.desc)}</p><div class="ep">${P?`→ See it: <b>${esc(P.label)}</b>`:`<span class="mono">${esc(ag.endpoint||'—')}</span>`}${ag.url?` · <a class="link" onclick="event.stopPropagation();window.open('${esc(ag.url)}','_blank')">endpoint ↗</a>`:''}</div></div>`;};
   const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge / Second-Opinion':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾','Triage model':'🎯','Reserve model':'💰','Ask the Book':'📊','Ask Pricing + Claims':'📈','Senior Reserving Actuary':'📐','Senior Loss Adjuster':'🔧','Coverage Counsel':'⚖️','Consumer-Duty Reviewer':'🤝'};
@@ -447,7 +462,8 @@ function renderClaimView(){ const v=document.getElementById('view'); const p=sta
         <div class="row"><span class="k">Recovery</span><span class="v">${recoveryLabel(p.recovery)}</span></div>
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
     body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
-    body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()+reasoningTrail();
+    body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()
+      +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place.</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
   }
   v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision. Pick a hero: ★ cc:900001 (escalated) or ★ cc:900002 (auto-closed).')
     +`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">Select a claim</b><select onchange="selectClaim(this.value)" style="min-width:320px">${opts}</select></div>${body}`;
@@ -460,7 +476,7 @@ function secondOpinions(){ const ops=state.expertOps||{};
     <div class="grid2">${EXPERTS.map(e=>{const o=ops[e.role]||{};
       const right = o.text?`<span class="pill ${o.cache==='hit'?'hit':'live'}">${o.cache==='hit'?'cached':'live'}</span>`
         : `<button class="btnv" style="padding:5px 12px;font-size:12px" onclick="getExpert('${e.role}')" ${o.loading?'disabled':''}>${o.loading?'…':'Get opinion'}</button>`;
-      const body = o.text?`<p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:6px 0 0">${esc(o.text)}</p>`
+      const body = o.text?`<div class="md" style="font-size:13px;color:#334155;margin:6px 0 0">${mdfmt(o.text)}</div>`
         : o.error?`<p class="muted" style="margin:6px 0 0">Opinion unavailable.</p>`
         : `<p style="margin:6px 0 0">${esc(e.blurb)}</p>`;
       return `<div class="agcard ac-${e.c}"><div class="top"><div class="nm">${e.icon} ${esc(e.name)}</div>${right}</div>${body}</div>`;}).join('')}</div></div>`;
@@ -478,7 +494,59 @@ function reasoningTrail(){ const rs=state.reason; if(rs===null)return '<div clas
   const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾'};
   return `<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail — regulator-viewable</h2>${sorted.map(r=>`<div style="border-bottom:1px solid #f4f5f8;padding:9px 0"><b style="font-size:13px">${ICON[r.agent_name]||'•'} ${esc(r.agent_name)}</b><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('')}<p class="muted" style="margin-top:8px">Persisted to agent_reasoning_log — the Audit agent and the Governance page read this.</p></div>`; }
 function synthPill(){ const s=state.synth; if(!s||s.__err)return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
-function synthBody(){ const s=state.synth; if(!s)return '<p class="muted">Synthesising…</p>'; if(s.__err)return '<p class="muted">Synthesis unavailable.</p>'; return `<p>${esc(s.text)}</p>`; }
+function synthBody(){ const s=state.synth; if(!s)return '<p class="muted">Synthesising…</p>'; if(s.__err)return '<p class="muted">Synthesis unavailable.</p>'; return `<div class="md">${mdfmt(s.text)}</div>`; }
+// One audit-ready record for the claim — opens a print/save-as-PDF document with everything.
+async function claimRecord(){ const cid=state.cid, p=state.panels||{}, d=state.disp||{}, c=state.confirmation;
+  const btn=event&&event.target; if(btn){btn.disabled=true;btn.textContent='Building…';}
+  let rs=state.reason; if(rs===null||rs===undefined){ try{rs=await J('/claim/reasoning?cid='+encodeURIComponent(cid));}catch(e){rs=[];} }
+  let track=null,docs=[]; try{track=await J('/claim/track?cid='+encodeURIComponent(cid));}catch(e){}
+  try{docs=(await J('/ingestion/documents')).filter(x=>x.claim_public_id===cid);}catch(e){}
+  if(btn){btn.disabled=false;btn.textContent='📄 Generate claim record (PDF)';}
+  const s=p.summary||{},t=p.triage||{},r=p.reserve||{},f=p.fraud||{},pol=p.policy||{},x=p.extra||{},rec=p.recovery||{},tel=p.telematics||{},img=p.image||{};
+  const sec=(title,inner)=>`<section><h2>${title}</h2>${inner}</section>`;
+  const row=(k,v)=>`<div class="r"><span class="k">${esc(k)}</span><span class="v">${v==null||v===''?'—':v}</span></div>`;
+  const auto=d.disposition==='auto_closed';
+  const disp=d.disposition?`<div class="banner ${auto?'ok':'warn'}">${auto?'AUTO-CLOSED &amp; PAID (simulated '+gbp(d.total_incurred)+')':'ESCALATED — routed to a handler'} · model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} ${pct(d.model_confidence)}</div>`:'';
+  const rules=((d.rules_passed||[]).map(z=>`<span class="chip ok">✓ ${esc(z)}</span>`).join('')+(d.rules_failed||[]).map(z=>`<span class="chip warn">✗ ${esc(z)}</span>`).join(''))||'—';
+  const order=['Claim 360 / Dossier','Fraud','Challenge','Recovery / Subrogation','Audit / Reasoning'];
+  const sorted=[...(rs||[])].sort((a,b)=>order.indexOf(a.agent_name)-order.indexOf(b.agent_name));
+  const reason=sorted.length?sorted.map(a=>`<div class="agent"><h3>${esc(a.agent_name)}</h3><div class="md">${mdfmt(a.reasoning_text)}</div></div>`).join(''):'<p class="muted">No persisted agent reasoning for this claim.</p>';
+  const photo=img.has_image?`<div class="photo"><img src="${esc(img.image_url||'')}" alt="claim photo"/><div><b>AI image assessment: ${esc((img.severity||'').toUpperCase())}</b><div class="md">${mdfmt(img.rationale||'')}</div></div></div>`:'<p class="muted">No photo on file.</p>';
+  const docRows=docs.length?docs.map(z=>`<div class="r"><span class="k">${esc(z.file_name)} (${esc(z.doc_type)})</span><span class="v">${z.severity?esc(z.severity)+' · ':''}${esc((z.extracted_summary||'').slice(0,140))}</span></div>`).join(''):'<p class="muted">No documents ingested for this claim.</p>';
+  const trackBits=track&&track.completeness!=null?`${row('File completeness', track.completeness+'%')}${(track.docs||[]).map(dd=>row(esc(dd.name||dd.doc||''), esc(dd.status||''))).join('')}`:'';
+  const human=c?`<div class="banner ok">Human decision: ${esc(c.handler_action.toUpperCase())}${c.override_flag?' — override: '+esc(c.override_reason):''} · ${esc(c.decision_id)} · ${esc(c.handler_id)} · ${esc(c.time)}</div>`:'<p class="muted">No human decision recorded in this session.</p>';
+  const now=new Date().toLocaleString('en-GB');
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Claim record ${esc(cid)}</title><style>
+   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;margin:0;padding:32px;max-width:880px;margin:0 auto}
+   .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #7c3aed;padding-bottom:10px;margin-bottom:6px}
+   .hd .t{font-size:13px;color:#7c3aed;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+   h1{font-size:24px;margin:4px 0} .meta{color:#64748b;font-size:12px}
+   section{margin:18px 0;page-break-inside:avoid} h2{font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:#475569;border-bottom:1px solid #e6e8ec;padding-bottom:4px}
+   .r{display:flex;justify-content:space-between;gap:16px;padding:4px 0;border-bottom:1px solid #f4f5f8;font-size:13px} .k{color:#64748b} .v{font-weight:600;text-align:right}
+   .banner{padding:9px 12px;border-radius:8px;font-weight:700;font-size:13px;margin:6px 0} .banner.ok{background:#ecfdf5;color:#047857;border:1px solid #6ee7b7} .banner.warn{background:#fffbeb;color:#b45309;border:1px solid #fcd34d}
+   .chip{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin:2px} .chip.ok{background:#d1fae5;color:#047857} .chip.warn{background:#fee2e2;color:#b91c1c}
+   .agent{border-left:3px solid #7c3aed;padding:4px 0 4px 12px;margin:10px 0} .agent h3{font-size:13px;margin:0 0 2px}
+   .md p{margin:6px 0;font-size:13px;line-height:1.5} .md li{font-size:13px}
+   .photo{display:flex;gap:16px;align-items:flex-start} .photo img{max-width:300px;border-radius:8px;border:1px solid #e6e8ec}
+   .quote{font-style:italic;color:#475569} .foot{margin-top:24px;border-top:1px solid #e6e8ec;padding-top:8px;color:#64748b;font-size:11px}
+   .noprint{margin:0 0 16px} button{background:#7c3aed;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer}
+   @media print{.noprint{display:none}}
+  </style></head><body>
+   <div class="noprint"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+   <div class="hd"><div><div class="t">Bricksurance SE · Claim record</div><h1>${esc(cid)} — ${esc(PERIL[s.peril_type]||s.peril_type||'')}</h1></div><div class="meta">Generated ${esc(now)}<br/>Synthetic demo — not real customer data</div></div>
+   ${disp}
+   ${sec('1 · Claim summary', row('Policy',esc(x.policy_number||pol.product||'—'))+row('Peril',esc(PERIL[s.peril_type]||s.peril_type))+row('Reported amount',gbp(s.total_incurred))+row('Status',esc(s.claim_status))+row('Channel',esc(s.report_channel))+row('Reported lag',(f.reporting_lag_days??x.reporting_lag_days??'—')+' days')+`<p class="quote">“${esc(s.incident_description||'')}”</p>`)}
+   ${sec('2 · Decision &amp; reserve', row('AI recommendation',(DLABEL[t.decision]||t.decision||'—')+' · '+pct(t.confidence))+(t.top_reasons||[]).map(z=>row('Reason','• '+esc(z))).join('')+row('Reserve bracket',esc(r.bracket)+' ('+esc(r.estimated_range||'')+')'))}
+   ${sec('3 · Risk, fraud &amp; recovery', row('Fraud score',(f.fraud_score??'—')+' / 100')+row('Prior claims (12m)',f.prior_claims_12m??'—')+row('Recovery',rec.recovery_flag?('recoverable '+gbp(rec.recoverable_amount)):'none')+(tel.has_telematics?row('Telematics',`${tel.speed_at_incident} mph in a ${tel.posted_speed_limit} zone${tel.over_limit?' — OVER LIMIT':''}`):''))}
+   ${sec('4 · Disposition &amp; rule engine', `<div>${rules}</div><p style="font-size:13px;margin-top:6px">${esc(d.reasoning||'')}</p>`)}
+   ${sec('5 · Evidence — photo &amp; documents', photo+`<div style="margin-top:10px">${docRows}</div>`)}
+   ${trackBits?sec('6 · File completeness', trackBits):''}
+   ${sec((trackBits?'7':'6')+' · Agent reasoning trail (regulator-viewable)', reason)}
+   ${sec((trackBits?'8':'7')+' · Human decision', human)}
+   <div class="foot">Complete claim record · Bricksurance SE Claims Intelligence Workbench · models + workflow decide, agents reason, the human acts · persisted to agent_reasoning_log &amp; gold_claim_disposition for audit.</div>
+  </body></html>`;
+  const win=window.open('','_blank'); if(!win){alert('Allow pop-ups to generate the record.');return;} win.document.write(html); win.document.close();
+}
 function actionBar(){ const c=state.confirmation,t=(state.panels&&state.panels.triage)||{};
   if(c)return `<span class="ok">✓ Decision logged · ${esc(c.decision_id)} · ${DLABEL[c.model_recommendation]||esc(c.model_recommendation)} · ${c.override_flag?('OVERRIDE ('+esc(c.override_reason)+')'):'ACCEPTED'} · ${esc(c.time)}</span><span class="spacer"></span><a class="link" onclick="selectClaim(state.cid)">Refresh</a>`;
   if(state.overriding){ const rs=['Insufficient evidence','Customer relationship','Local knowledge','Other']; return `<span>⚠️ Override reason:</span><select id="ovr">${rs.map(r=>`<option>${r}</option>`).join('')}</select><button class="ghost" onclick="decide('override')">Confirm override</button><a class="link" onclick="state.overriding=false;renderClaimView()">Cancel</a>`; }
