@@ -4,7 +4,7 @@
       "name": "ds_kpi",
       "displayName": "ds_kpi",
       "queryLines": [
-        "SELECT sum(CASE WHEN claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) AS open_claims, sum(CASE WHEN claim_status IN ('open','under_investigation') AND datediff(current_date(),report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS aged_past_sla, round(avg(days_to_settle),1) AS avg_days_to_settle, round(100*avg(CASE WHEN leakage_flag THEN 1 ELSE 0 END),1) AS leakage_rate_pct FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched"
+        "SELECT sum(CASE WHEN claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) AS open_claims, sum(CASE WHEN claim_status IN ('open','under_investigation') AND datediff(current_date(),report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS aged_past_sla FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched"
       ]
     },
     {
@@ -39,7 +39,7 @@
       "name": "ds_team",
       "displayName": "ds_team",
       "queryLines": [
-        "SELECT coalesce(h.team,'unassigned') AS team, count(*) AS open_claims, sum(CASE WHEN datediff(current_date(),s.report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS past_sla, round(avg(s.fraud_score),0) AS avg_fraud FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched s LEFT JOIN `lr_dev_aws_us_catalog`.`claims_workbench`.ref_handlers h ON s.handler_id=h.handler_id WHERE s.claim_status IN ('open','under_investigation') GROUP BY h.team ORDER BY open_claims DESC"
+        "SELECT coalesce(h.team,'unassigned') AS team, count(*) AS open_claims FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched s LEFT JOIN `lr_dev_aws_us_catalog`.`claims_workbench`.ref_handlers h ON s.handler_id=h.handler_id WHERE s.claim_status IN ('open','under_investigation') GROUP BY h.team ORDER BY open_claims DESC"
       ]
     },
     {
@@ -57,10 +57,10 @@
       ]
     },
     {
-      "name": "ds_handler",
-      "displayName": "ds_handler",
+      "name": "ds_handler_top",
+      "displayName": "ds_handler_top",
       "queryLines": [
-        "SELECT handler_name, grade, team, caseload, avg_days_to_settle, leakage_rate_pct FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard ORDER BY leakage_rate_pct DESC LIMIT 50"
+        "SELECT handler_name, leakage_rate_pct FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard ORDER BY leakage_rate_pct DESC LIMIT 12"
       ]
     },
     {
@@ -360,7 +360,7 @@
         },
         {
           "widget": {
-            "name": "t_status",
+            "name": "b_status",
             "queries": [
               {
                 "name": "main_query",
@@ -381,32 +381,53 @@
               }
             ],
             "spec": {
-              "version": 1,
-              "widgetType": "table",
+              "version": 3,
+              "widgetType": "bar",
               "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "claim_status",
-                    "title": "Status",
-                    "displayName": "Status",
-                    "type": "string",
-                    "displayAs": "string",
-                    "alignContent": "left"
+                "x": {
+                  "fieldName": "claim_status",
+                  "scale": {
+                    "type": "categorical"
                   },
-                  {
-                    "fieldName": "n",
-                    "title": "Claims",
-                    "displayName": "Claims",
-                    "type": "integer",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0"
+                  "displayName": "Status"
+                },
+                "y": {
+                  "fieldName": "n",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Claims"
+                },
+                "color": {
+                  "fieldName": "claim_status",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Status",
+                  "legend": {
+                    "hide": true
                   }
-                ]
+                },
+                "label": {
+                  "show": true
+                }
               },
               "frame": {
                 "showTitle": true,
                 "title": "Whole book by status"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -419,7 +440,7 @@
         },
         {
           "widget": {
-            "name": "t_team",
+            "name": "b_team",
             "queries": [
               {
                 "name": "main_query",
@@ -433,14 +454,6 @@
                     {
                       "name": "open_claims",
                       "expression": "`open_claims`"
-                    },
-                    {
-                      "name": "past_sla",
-                      "expression": "`past_sla`"
-                    },
-                    {
-                      "name": "avg_fraud",
-                      "expression": "`avg_fraud`"
                     }
                   ],
                   "disaggregated": true
@@ -448,50 +461,53 @@
               }
             ],
             "spec": {
-              "version": 1,
-              "widgetType": "table",
+              "version": 3,
+              "widgetType": "bar",
               "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "team",
-                    "title": "Team",
-                    "displayName": "Team",
-                    "type": "string",
-                    "displayAs": "string",
-                    "alignContent": "left"
+                "x": {
+                  "fieldName": "team",
+                  "scale": {
+                    "type": "categorical"
                   },
-                  {
-                    "fieldName": "open_claims",
-                    "title": "Open",
-                    "displayName": "Open",
-                    "type": "integer",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0"
+                  "displayName": "Team"
+                },
+                "y": {
+                  "fieldName": "open_claims",
+                  "scale": {
+                    "type": "quantitative"
                   },
-                  {
-                    "fieldName": "past_sla",
-                    "title": "Past SLA",
-                    "displayName": "Past SLA",
-                    "type": "integer",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0"
+                  "displayName": "Open"
+                },
+                "color": {
+                  "fieldName": "team",
+                  "scale": {
+                    "type": "categorical"
                   },
-                  {
-                    "fieldName": "avg_fraud",
-                    "title": "Avg fraud",
-                    "displayName": "Avg fraud",
-                    "type": "integer",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0"
+                  "displayName": "Team",
+                  "legend": {
+                    "hide": true
                   }
-                ]
+                },
+                "label": {
+                  "show": true
+                }
               },
               "frame": {
                 "showTitle": true,
                 "title": "Open caseload by team"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -833,32 +849,16 @@
         },
         {
           "widget": {
-            "name": "t_handler",
+            "name": "b_handler",
             "queries": [
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "ds_handler",
+                  "datasetName": "ds_handler_top",
                   "fields": [
                     {
                       "name": "handler_name",
                       "expression": "`handler_name`"
-                    },
-                    {
-                      "name": "grade",
-                      "expression": "`grade`"
-                    },
-                    {
-                      "name": "team",
-                      "expression": "`team`"
-                    },
-                    {
-                      "name": "caseload",
-                      "expression": "`caseload`"
-                    },
-                    {
-                      "name": "avg_days_to_settle",
-                      "expression": "`avg_days_to_settle`"
                     },
                     {
                       "name": "leakage_rate_pct",
@@ -870,66 +870,53 @@
               }
             ],
             "spec": {
-              "version": 1,
-              "widgetType": "table",
+              "version": 3,
+              "widgetType": "bar",
               "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "handler_name",
-                    "title": "Handler",
-                    "displayName": "Handler",
-                    "type": "string",
-                    "displayAs": "string",
-                    "alignContent": "left"
+                "x": {
+                  "fieldName": "handler_name",
+                  "scale": {
+                    "type": "categorical"
                   },
-                  {
-                    "fieldName": "grade",
-                    "title": "Grade",
-                    "displayName": "Grade",
-                    "type": "string",
-                    "displayAs": "string",
-                    "alignContent": "left"
+                  "displayName": "Handler"
+                },
+                "y": {
+                  "fieldName": "leakage_rate_pct",
+                  "scale": {
+                    "type": "quantitative"
                   },
-                  {
-                    "fieldName": "team",
-                    "title": "Team",
-                    "displayName": "Team",
-                    "type": "string",
-                    "displayAs": "string",
-                    "alignContent": "left"
+                  "displayName": "Leakage %"
+                },
+                "color": {
+                  "fieldName": "handler_name",
+                  "scale": {
+                    "type": "categorical"
                   },
-                  {
-                    "fieldName": "caseload",
-                    "title": "Caseload",
-                    "displayName": "Caseload",
-                    "type": "integer",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0"
-                  },
-                  {
-                    "fieldName": "avg_days_to_settle",
-                    "title": "Settle (d)",
-                    "displayName": "Settle (d)",
-                    "type": "float",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0.0"
-                  },
-                  {
-                    "fieldName": "leakage_rate_pct",
-                    "title": "Leakage %",
-                    "displayName": "Leakage %",
-                    "type": "float",
-                    "displayAs": "number",
-                    "alignContent": "right",
-                    "numberFormat": "0,0.0"
+                  "displayName": "Handler",
+                  "legend": {
+                    "hide": true
                   }
-                ]
+                },
+                "label": {
+                  "show": true
+                }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Handler scorecard (worst leakage first)"
+                "title": "Top 12 handlers by leakage"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -937,7 +924,7 @@
             "x": 0,
             "y": 10,
             "width": 6,
-            "height": 9
+            "height": 8
           }
         }
       ]
