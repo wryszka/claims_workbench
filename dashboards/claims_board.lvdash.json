@@ -4,63 +4,81 @@
       "name": "ds_kpi",
       "displayName": "ds_kpi",
       "queryLines": [
-        "SELECT\n",
-        "  sum(CASE WHEN claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) AS open_claims,\n",
-        "  round(avg(days_to_settle), 1) AS avg_days_to_settle,\n",
-        "  sum(CASE WHEN claim_status IN ('open','under_investigation') THEN ultimate_reserve ELSE 0 END) AS open_reserves,\n",
-        "  round(100 * avg(CASE WHEN leakage_flag THEN 1 ELSE 0 END), 2) AS leakage_rate_pct\n",
-        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched"
+        "SELECT sum(CASE WHEN claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) AS open_claims, sum(CASE WHEN claim_status IN ('open','under_investigation') AND datediff(current_date(),report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS aged_past_sla, round(avg(days_to_settle),1) AS avg_days_to_settle, round(100*avg(CASE WHEN leakage_flag THEN 1 ELSE 0 END),1) AS leakage_rate_pct FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched"
       ]
     },
     {
-      "name": "ds_reserve_dev",
-      "displayName": "ds_reserve_dev",
+      "name": "ds_autoclose",
+      "displayName": "ds_autoclose",
       "queryLines": [
-        "SELECT accident_qtr, peril_type,\n",
-        "  round(sum(sum_ultimate_reserve) / nullif(sum(sum_initial_reserve), 0), 3) AS development_ratio\n",
-        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_reserve_development\n",
-        "GROUP BY accident_qtr, peril_type ORDER BY accident_qtr"
+        "SELECT round(100.0*avg(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END),1) AS pct_auto_closed, sum(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END) AS auto_closed FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_claim_disposition"
       ]
     },
     {
-      "name": "ds_settlement_channel",
-      "displayName": "ds_settlement_channel",
+      "name": "ds_status",
+      "displayName": "ds_status",
       "queryLines": [
-        "SELECT report_channel,\n",
-        "  round(sum(avg_days_to_settle * coalesce(claims,1)) / sum(coalesce(claims,1)), 1) AS avg_days_to_settle\n",
-        "FROM (\n",
-        "  SELECT report_channel, avg_days_to_settle, 1 AS claims FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_settlement_performance\n",
-        ") GROUP BY report_channel ORDER BY report_channel"
+        "SELECT claim_status, count(*) AS n FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched GROUP BY claim_status ORDER BY n DESC"
       ]
     },
     {
-      "name": "ds_geo_eow",
-      "displayName": "ds_geo_eow",
+      "name": "ds_open_peril",
+      "displayName": "ds_open_peril",
       "queryLines": [
-        "SELECT postcode_district, claim_count, claims_per_1000_policies, weather_risk_composite\n",
-        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_geo_clustering\n",
-        "WHERE peril_type = 'home_escape_water'\n",
-        "ORDER BY claims_per_1000_policies DESC LIMIT 20"
+        "SELECT peril_type, count(*) AS open_claims, sum(CASE WHEN datediff(current_date(),report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS past_sla FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched WHERE claim_status IN ('open','under_investigation') GROUP BY peril_type ORDER BY open_claims DESC"
+      ]
+    },
+    {
+      "name": "ds_open_age",
+      "displayName": "ds_open_age",
+      "queryLines": [
+        "SELECT CASE WHEN datediff(current_date(),report_date)<=30 THEN '0-30 days' WHEN datediff(current_date(),report_date)<=90 THEN '31-90 days' WHEN datediff(current_date(),report_date)<=180 THEN '91-180 days' ELSE '180+ days' END AS age_bucket, count(*) AS n FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched WHERE claim_status IN ('open','under_investigation') GROUP BY 1 ORDER BY 1"
+      ]
+    },
+    {
+      "name": "ds_team",
+      "displayName": "ds_team",
+      "queryLines": [
+        "SELECT coalesce(h.team,'unassigned') AS team, count(*) AS open_claims, sum(CASE WHEN datediff(current_date(),s.report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS past_sla, round(avg(s.fraud_score),0) AS avg_fraud FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched s LEFT JOIN `lr_dev_aws_us_catalog`.`claims_workbench`.ref_handlers h ON s.handler_id=h.handler_id WHERE s.claim_status IN ('open','under_investigation') GROUP BY h.team ORDER BY open_claims DESC"
+      ]
+    },
+    {
+      "name": "ds_handler_kpi",
+      "displayName": "ds_handler_kpi",
+      "queryLines": [
+        "SELECT count(*) AS handlers, sum(caseload) AS caseload, round(avg(avg_days_to_settle),1) AS avg_settle, round(avg(leakage_rate_pct),1) AS leakage FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard"
+      ]
+    },
+    {
+      "name": "ds_team_perf",
+      "displayName": "ds_team_perf",
+      "queryLines": [
+        "SELECT team, round(avg(leakage_rate_pct),1) AS leakage_pct, sum(caseload) AS caseload, round(avg(avg_days_to_settle),1) AS avg_settle FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard GROUP BY team ORDER BY leakage_pct DESC"
       ]
     },
     {
       "name": "ds_handler",
       "displayName": "ds_handler",
       "queryLines": [
-        "SELECT handler_name, grade, team, caseload, avg_days_to_settle, leakage_rate_pct, customer_touchpoints_avg\n",
-        "FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard\n",
-        "ORDER BY caseload DESC LIMIT 50"
+        "SELECT handler_name, grade, team, caseload, avg_days_to_settle, leakage_rate_pct FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard ORDER BY leakage_rate_pct DESC LIMIT 50"
+      ]
+    },
+    {
+      "name": "ds_trends",
+      "displayName": "ds_trends",
+      "queryLines": [
+        "SELECT snapshot_date, pct_auto_closed, leakage_rate, avg_settle_days, sla_breach_pct FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_cco_metrics_daily ORDER BY snapshot_date"
       ]
     }
   ],
   "pages": [
     {
-      "name": "board_view",
-      "displayName": "Board View",
+      "name": "where",
+      "displayName": "Where claims are",
       "layout": [
         {
           "widget": {
-            "name": "kpi_open",
+            "name": "c_open",
             "queries": [
               {
                 "name": "main",
@@ -90,13 +108,13 @@
           "position": {
             "x": 0,
             "y": 0,
-            "width": 1,
+            "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "kpi_days",
+            "name": "c_aged",
             "queries": [
               {
                 "name": "main",
@@ -104,8 +122,8 @@
                   "datasetName": "ds_kpi",
                   "fields": [
                     {
-                      "name": "avg_days_to_settle",
-                      "expression": "`avg_days_to_settle`"
+                      "name": "aged_past_sla",
+                      "expression": "`aged_past_sla`"
                     }
                   ],
                   "disaggregated": true
@@ -117,44 +135,8 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "avg_days_to_settle",
-                  "displayName": "Avg days to settle"
-                }
-              }
-            }
-          },
-          "position": {
-            "x": 1,
-            "y": 0,
-            "width": 1,
-            "height": 3
-          }
-        },
-        {
-          "widget": {
-            "name": "kpi_reserves",
-            "queries": [
-              {
-                "name": "main",
-                "query": {
-                  "datasetName": "ds_kpi",
-                  "fields": [
-                    {
-                      "name": "open_reserves",
-                      "expression": "`open_reserves`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "open_reserves",
-                  "displayName": "Total open reserves (\u00a3)"
+                  "fieldName": "aged_past_sla",
+                  "displayName": "Aged \u2014 past SLA"
                 }
               }
             }
@@ -168,16 +150,16 @@
         },
         {
           "widget": {
-            "name": "kpi_leakage",
+            "name": "c_auto",
             "queries": [
               {
                 "name": "main",
                 "query": {
-                  "datasetName": "ds_kpi",
+                  "datasetName": "ds_autoclose",
                   "fields": [
                     {
-                      "name": "leakage_rate_pct",
-                      "expression": "`leakage_rate_pct`"
+                      "name": "pct_auto_closed",
+                      "expression": "`pct_auto_closed`"
                     }
                   ],
                   "disaggregated": true
@@ -189,8 +171,8 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "leakage_rate_pct",
-                  "displayName": "Portfolio leakage rate (%)"
+                  "fieldName": "pct_auto_closed",
+                  "displayName": "% Auto-closed"
                 }
               }
             }
@@ -204,81 +186,20 @@
         },
         {
           "widget": {
-            "name": "reserve_dev",
+            "name": "b_peril",
             "queries": [
               {
                 "name": "main",
                 "query": {
-                  "datasetName": "ds_reserve_dev",
+                  "datasetName": "ds_open_peril",
                   "fields": [
-                    {
-                      "name": "accident_qtr",
-                      "expression": "`accident_qtr`"
-                    },
-                    {
-                      "name": "development_ratio",
-                      "expression": "`development_ratio`"
-                    },
                     {
                       "name": "peril_type",
                       "expression": "`peril_type`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 3,
-              "widgetType": "line",
-              "encodings": {
-                "x": {
-                  "fieldName": "accident_qtr",
-                  "scale": {
-                    "type": "categorical"
-                  },
-                  "displayName": "Accident quarter"
-                },
-                "y": {
-                  "fieldName": "development_ratio",
-                  "scale": {
-                    "type": "quantitative"
-                  },
-                  "displayName": "Development ratio (ultimate/initial)"
-                },
-                "color": {
-                  "fieldName": "peril_type",
-                  "scale": {
-                    "type": "categorical"
-                  },
-                  "displayName": "Peril"
-                }
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 3,
-            "width": 6,
-            "height": 6
-          }
-        },
-        {
-          "widget": {
-            "name": "settle_channel",
-            "queries": [
-              {
-                "name": "main",
-                "query": {
-                  "datasetName": "ds_settlement_channel",
-                  "fields": [
-                    {
-                      "name": "report_channel",
-                      "expression": "`report_channel`"
                     },
                     {
-                      "name": "avg_days_to_settle",
-                      "expression": "`avg_days_to_settle`"
+                      "name": "open_claims",
+                      "expression": "`open_claims`"
                     }
                   ],
                   "disaggregated": true
@@ -290,53 +211,95 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "report_channel",
+                  "fieldName": "peril_type",
                   "scale": {
                     "type": "categorical"
                   },
-                  "displayName": "Channel"
+                  "displayName": "Peril"
                 },
                 "y": {
-                  "fieldName": "avg_days_to_settle",
+                  "fieldName": "open_claims",
                   "scale": {
                     "type": "quantitative"
                   },
-                  "displayName": "Avg days to settle"
+                  "displayName": "Open claims"
                 }
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 9,
+            "y": 3,
             "width": 3,
-            "height": 6
+            "height": 7
           }
         },
         {
           "widget": {
-            "name": "geo_eow",
+            "name": "b_age",
             "queries": [
               {
                 "name": "main",
                 "query": {
-                  "datasetName": "ds_geo_eow",
+                  "datasetName": "ds_open_age",
                   "fields": [
                     {
-                      "name": "postcode_district",
-                      "expression": "`postcode_district`"
+                      "name": "age_bucket",
+                      "expression": "`age_bucket`"
                     },
                     {
-                      "name": "claim_count",
-                      "expression": "`claim_count`"
+                      "name": "n",
+                      "expression": "`n`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "age_bucket",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Age"
+                },
+                "y": {
+                  "fieldName": "n",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Open claims"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "t_status",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_status",
+                  "fields": [
+                    {
+                      "name": "claim_status",
+                      "expression": "`claim_status`"
                     },
                     {
-                      "name": "claims_per_1000_policies",
-                      "expression": "`claims_per_1000_policies`"
-                    },
-                    {
-                      "name": "weather_risk_composite",
-                      "expression": "`weather_risk_composite`"
+                      "name": "n",
+                      "expression": "`n`"
                     }
                   ],
                   "disaggregated": true
@@ -349,20 +312,74 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "postcode_district",
-                    "displayName": "District"
+                    "fieldName": "claim_status",
+                    "displayName": "Status"
                   },
                   {
-                    "fieldName": "claim_count",
-                    "displayName": "EoW claims"
+                    "fieldName": "n",
+                    "displayName": "Claims"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "t_team",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_team",
+                  "fields": [
+                    {
+                      "name": "team",
+                      "expression": "`team`"
+                    },
+                    {
+                      "name": "open_claims",
+                      "expression": "`open_claims`"
+                    },
+                    {
+                      "name": "past_sla",
+                      "expression": "`past_sla`"
+                    },
+                    {
+                      "name": "avg_fraud",
+                      "expression": "`avg_fraud`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "team",
+                    "displayName": "Team"
                   },
                   {
-                    "fieldName": "claims_per_1000_policies",
-                    "displayName": "Claims / 1000 policies"
+                    "fieldName": "open_claims",
+                    "displayName": "Open"
                   },
                   {
-                    "fieldName": "weather_risk_composite",
-                    "displayName": "Weather risk"
+                    "fieldName": "past_sla",
+                    "displayName": "Past SLA"
+                  },
+                  {
+                    "fieldName": "avg_fraud",
+                    "displayName": "Avg fraud"
                   }
                 ]
               }
@@ -370,14 +387,264 @@
           },
           "position": {
             "x": 3,
-            "y": 9,
+            "y": 10,
             "width": 3,
-            "height": 8
+            "height": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "handlers",
+      "displayName": "Handler performance",
+      "layout": [
+        {
+          "widget": {
+            "name": "h_handlers",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_handler_kpi",
+                  "fields": [
+                    {
+                      "name": "handlers",
+                      "expression": "`handlers`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "handlers",
+                  "displayName": "Handlers"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 3
           }
         },
         {
           "widget": {
-            "name": "handler_scorecard",
+            "name": "h_case",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_handler_kpi",
+                  "fields": [
+                    {
+                      "name": "caseload",
+                      "expression": "`caseload`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "caseload",
+                  "displayName": "Open caseload"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 0,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "h_settle",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_handler_kpi",
+                  "fields": [
+                    {
+                      "name": "avg_settle",
+                      "expression": "`avg_settle`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_settle",
+                  "displayName": "Avg days to settle"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "h_leak",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_handler_kpi",
+                  "fields": [
+                    {
+                      "name": "leakage",
+                      "expression": "`leakage`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "leakage",
+                  "displayName": "Avg leakage %"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "b_teamleak",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_team_perf",
+                  "fields": [
+                    {
+                      "name": "team",
+                      "expression": "`team`"
+                    },
+                    {
+                      "name": "leakage_pct",
+                      "expression": "`leakage_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "team",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Team"
+                },
+                "y": {
+                  "fieldName": "leakage_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Leakage %"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "b_teamcase",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_team_perf",
+                  "fields": [
+                    {
+                      "name": "team",
+                      "expression": "`team`"
+                    },
+                    {
+                      "name": "caseload",
+                      "expression": "`caseload`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "team",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Team"
+                },
+                "y": {
+                  "fieldName": "caseload",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Open caseload"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "t_handler",
             "queries": [
               {
                 "name": "main",
@@ -407,10 +674,6 @@
                     {
                       "name": "leakage_rate_pct",
                       "expression": "`leakage_rate_pct`"
-                    },
-                    {
-                      "name": "customer_touchpoints_avg",
-                      "expression": "`customer_touchpoints_avg`"
                     }
                   ],
                   "disaggregated": true
@@ -436,19 +699,15 @@
                   },
                   {
                     "fieldName": "caseload",
-                    "displayName": "Open caseload"
+                    "displayName": "Caseload"
                   },
                   {
                     "fieldName": "avg_days_to_settle",
-                    "displayName": "Avg days to settle"
+                    "displayName": "Settle (d)"
                   },
                   {
                     "fieldName": "leakage_rate_pct",
                     "displayName": "Leakage %"
-                  },
-                  {
-                    "fieldName": "customer_touchpoints_avg",
-                    "displayName": "Avg touchpoints"
                   }
                 ]
               }
@@ -456,9 +715,215 @@
           },
           "position": {
             "x": 0,
-            "y": 17,
+            "y": 10,
             "width": 6,
-            "height": 8
+            "height": 9
+          }
+        }
+      ]
+    },
+    {
+      "name": "trends",
+      "displayName": "Trends",
+      "layout": [
+        {
+          "widget": {
+            "name": "l_auto",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_trends",
+                  "fields": [
+                    {
+                      "name": "snapshot_date",
+                      "expression": "`snapshot_date`"
+                    },
+                    {
+                      "name": "pct_auto_closed",
+                      "expression": "`pct_auto_closed`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "snapshot_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Week"
+                },
+                "y": {
+                  "fieldName": "pct_auto_closed",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "% Auto-closed"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "l_leak",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_trends",
+                  "fields": [
+                    {
+                      "name": "snapshot_date",
+                      "expression": "`snapshot_date`"
+                    },
+                    {
+                      "name": "leakage_rate",
+                      "expression": "`leakage_rate`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "snapshot_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Week"
+                },
+                "y": {
+                  "fieldName": "leakage_rate",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Leakage %"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "l_settle",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_trends",
+                  "fields": [
+                    {
+                      "name": "snapshot_date",
+                      "expression": "`snapshot_date`"
+                    },
+                    {
+                      "name": "avg_settle_days",
+                      "expression": "`avg_settle_days`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "snapshot_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Week"
+                },
+                "y": {
+                  "fieldName": "avg_settle_days",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Avg settle (days)"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "l_sla",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "ds_trends",
+                  "fields": [
+                    {
+                      "name": "snapshot_date",
+                      "expression": "`snapshot_date`"
+                    },
+                    {
+                      "name": "sla_breach_pct",
+                      "expression": "`sla_breach_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "snapshot_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Week"
+                },
+                "y": {
+                  "fieldName": "sla_breach_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Past-SLA %"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 6,
+            "width": 3,
+            "height": 6
           }
         }
       ]
