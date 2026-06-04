@@ -53,7 +53,7 @@
       "name": "ds_team_perf",
       "displayName": "ds_team_perf",
       "queryLines": [
-        "SELECT team, round(avg(leakage_rate_pct),1) AS leakage_pct, sum(caseload) AS caseload, round(avg(avg_days_to_settle),1) AS avg_settle FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard GROUP BY team ORDER BY leakage_pct DESC"
+        "SELECT team, round(avg(leakage_rate_pct),1) AS leakage_pct, sum(caseload) AS caseload FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_handler_scorecard GROUP BY team ORDER BY leakage_pct DESC"
       ]
     },
     {
@@ -75,13 +75,14 @@
     {
       "name": "where",
       "displayName": "Where claims are",
+      "pageType": "PAGE_TYPE_CANVAS",
       "layout": [
         {
           "widget": {
             "name": "c_open",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_kpi",
                   "fields": [
@@ -102,6 +103,10 @@
                   "fieldName": "open_claims",
                   "displayName": "Open claims"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open claims"
               }
             }
           },
@@ -117,7 +122,7 @@
             "name": "c_aged",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_kpi",
                   "fields": [
@@ -138,6 +143,10 @@
                   "fieldName": "aged_past_sla",
                   "displayName": "Aged \u2014 past SLA"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Aged \u2014 past SLA"
               }
             }
           },
@@ -153,7 +162,7 @@
             "name": "c_auto",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_autoclose",
                   "fields": [
@@ -172,8 +181,13 @@
               "encodings": {
                 "value": {
                   "fieldName": "pct_auto_closed",
-                  "displayName": "% Auto-closed"
+                  "displayName": "% Auto-closed",
+                  "format": "0.0"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "% Auto-closed"
               }
             }
           },
@@ -189,7 +203,7 @@
             "name": "b_peril",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_open_peril",
                   "fields": [
@@ -224,6 +238,10 @@
                   },
                   "displayName": "Open claims"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open claims by peril"
               }
             }
           },
@@ -239,7 +257,7 @@
             "name": "b_age",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_open_age",
                   "fields": [
@@ -274,6 +292,10 @@
                   },
                   "displayName": "Open claims"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open claims by age"
               }
             }
           },
@@ -289,7 +311,7 @@
             "name": "t_status",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_status",
                   "fields": [
@@ -313,13 +335,25 @@
                 "columns": [
                   {
                     "fieldName": "claim_status",
-                    "displayName": "Status"
+                    "title": "Status",
+                    "displayName": "Status",
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left"
                   },
                   {
                     "fieldName": "n",
-                    "displayName": "Claims"
+                    "title": "Claims",
+                    "displayName": "Claims",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   }
                 ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Whole book by status"
               }
             }
           },
@@ -335,7 +369,7 @@
             "name": "t_team",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_team",
                   "fields": [
@@ -367,21 +401,41 @@
                 "columns": [
                   {
                     "fieldName": "team",
-                    "displayName": "Team"
+                    "title": "Team",
+                    "displayName": "Team",
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left"
                   },
                   {
                     "fieldName": "open_claims",
-                    "displayName": "Open"
+                    "title": "Open",
+                    "displayName": "Open",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   },
                   {
                     "fieldName": "past_sla",
-                    "displayName": "Past SLA"
+                    "title": "Past SLA",
+                    "displayName": "Past SLA",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   },
                   {
                     "fieldName": "avg_fraud",
-                    "displayName": "Avg fraud"
+                    "title": "Avg fraud",
+                    "displayName": "Avg fraud",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   }
                 ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open caseload by team"
               }
             }
           },
@@ -397,13 +451,14 @@
     {
       "name": "handlers",
       "displayName": "Handler performance",
+      "pageType": "PAGE_TYPE_CANVAS",
       "layout": [
         {
           "widget": {
             "name": "h_handlers",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_handler_kpi",
                   "fields": [
@@ -424,6 +479,10 @@
                   "fieldName": "handlers",
                   "displayName": "Handlers"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Handlers"
               }
             }
           },
@@ -439,7 +498,7 @@
             "name": "h_case",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_handler_kpi",
                   "fields": [
@@ -460,6 +519,10 @@
                   "fieldName": "caseload",
                   "displayName": "Open caseload"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open caseload"
               }
             }
           },
@@ -475,7 +538,7 @@
             "name": "h_settle",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_handler_kpi",
                   "fields": [
@@ -494,8 +557,13 @@
               "encodings": {
                 "value": {
                   "fieldName": "avg_settle",
-                  "displayName": "Avg days to settle"
+                  "displayName": "Avg days to settle",
+                  "format": "0.0"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg days to settle"
               }
             }
           },
@@ -511,7 +579,7 @@
             "name": "h_leak",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_handler_kpi",
                   "fields": [
@@ -530,8 +598,13 @@
               "encodings": {
                 "value": {
                   "fieldName": "leakage",
-                  "displayName": "Avg leakage %"
+                  "displayName": "Avg leakage %",
+                  "format": "0.0"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg leakage %"
               }
             }
           },
@@ -547,7 +620,7 @@
             "name": "b_teamleak",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_team_perf",
                   "fields": [
@@ -582,6 +655,10 @@
                   },
                   "displayName": "Leakage %"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Leakage by team"
               }
             }
           },
@@ -597,7 +674,7 @@
             "name": "b_teamcase",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_team_perf",
                   "fields": [
@@ -632,6 +709,10 @@
                   },
                   "displayName": "Open caseload"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Caseload by team"
               }
             }
           },
@@ -647,7 +728,7 @@
             "name": "t_handler",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_handler",
                   "fields": [
@@ -687,29 +768,57 @@
                 "columns": [
                   {
                     "fieldName": "handler_name",
-                    "displayName": "Handler"
+                    "title": "Handler",
+                    "displayName": "Handler",
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left"
                   },
                   {
                     "fieldName": "grade",
-                    "displayName": "Grade"
+                    "title": "Grade",
+                    "displayName": "Grade",
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left"
                   },
                   {
                     "fieldName": "team",
-                    "displayName": "Team"
+                    "title": "Team",
+                    "displayName": "Team",
+                    "type": "string",
+                    "displayAs": "string",
+                    "alignContent": "left"
                   },
                   {
                     "fieldName": "caseload",
-                    "displayName": "Caseload"
+                    "title": "Caseload",
+                    "displayName": "Caseload",
+                    "type": "integer",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   },
                   {
                     "fieldName": "avg_days_to_settle",
-                    "displayName": "Settle (d)"
+                    "title": "Settle (d)",
+                    "displayName": "Settle (d)",
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   },
                   {
                     "fieldName": "leakage_rate_pct",
-                    "displayName": "Leakage %"
+                    "title": "Leakage %",
+                    "displayName": "Leakage %",
+                    "type": "float",
+                    "displayAs": "number",
+                    "alignContent": "right"
                   }
                 ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Handler scorecard (worst leakage first)"
               }
             }
           },
@@ -725,13 +834,14 @@
     {
       "name": "trends",
       "displayName": "Trends",
+      "pageType": "PAGE_TYPE_CANVAS",
       "layout": [
         {
           "widget": {
             "name": "l_auto",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_trends",
                   "fields": [
@@ -766,6 +876,10 @@
                   },
                   "displayName": "% Auto-closed"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "% Auto-closed (12 weeks)"
               }
             }
           },
@@ -781,7 +895,7 @@
             "name": "l_leak",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_trends",
                   "fields": [
@@ -816,6 +930,10 @@
                   },
                   "displayName": "Leakage %"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Leakage rate (12 weeks)"
               }
             }
           },
@@ -831,7 +949,7 @@
             "name": "l_settle",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_trends",
                   "fields": [
@@ -866,6 +984,10 @@
                   },
                   "displayName": "Avg settle (days)"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg settlement (12 weeks)"
               }
             }
           },
@@ -881,7 +1003,7 @@
             "name": "l_sla",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "ds_trends",
                   "fields": [
@@ -916,6 +1038,10 @@
                   },
                   "displayName": "Past-SLA %"
                 }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Past-SLA % (12 weeks)"
               }
             }
           },
@@ -928,5 +1054,10 @@
         }
       ]
     }
-  ]
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    }
+  }
 }
