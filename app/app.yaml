@@ -21,6 +21,6 @@ env:
   - name: GENIE_JOINED_SPACE_ID
     value: "01f15eb3659715dab5f3e3d705db4c9e"
   - name: DASHBOARD_ID
-    value: ""
+    value: "01f15eb4ebfa1476b1fba748aa1a4465"
   - name: RESET_JOB_NAME
     value: "claims_workbench_99_reset_demo"
