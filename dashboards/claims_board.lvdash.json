@@ -11,7 +11,7 @@
       "name": "ds_autoclose",
       "displayName": "ds_autoclose",
       "queryLines": [
-        "SELECT round(100.0*avg(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END),1) AS pct_auto_closed, sum(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END) AS auto_closed FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_claim_disposition"
+        "SELECT round(100.0*avg(CASE WHEN disposition='auto_closed' THEN 1 ELSE 0 END),1) AS pct_auto_closed FROM `lr_dev_aws_us_catalog`.`claims_workbench`.gold_claim_disposition"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "name": "ds_open_peril",
       "displayName": "ds_open_peril",
       "queryLines": [
-        "SELECT peril_type, count(*) AS open_claims, sum(CASE WHEN datediff(current_date(),report_date) > CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END THEN 1 ELSE 0 END) AS past_sla FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched WHERE claim_status IN ('open','under_investigation') GROUP BY peril_type ORDER BY open_claims DESC"
+        "SELECT peril_type, count(*) AS open_claims FROM `lr_dev_aws_us_catalog`.`claims_workbench`.silver_claims_enriched WHERE claim_status IN ('open','under_investigation') GROUP BY peril_type ORDER BY open_claims DESC"
       ]
     },
     {
@@ -237,11 +237,37 @@
                     "type": "quantitative"
                   },
                   "displayName": "Open claims"
+                },
+                "color": {
+                  "fieldName": "peril_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Peril",
+                  "legend": {
+                    "hide": true
+                  }
+                },
+                "label": {
+                  "show": true
                 }
               },
               "frame": {
                 "showTitle": true,
                 "title": "Open claims by peril"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -291,11 +317,37 @@
                     "type": "quantitative"
                   },
                   "displayName": "Open claims"
+                },
+                "color": {
+                  "fieldName": "age_bucket",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Age",
+                  "legend": {
+                    "hide": true
+                  }
+                },
+                "label": {
+                  "show": true
                 }
               },
               "frame": {
                 "showTitle": true,
                 "title": "Open claims by age"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -347,7 +399,8 @@
                     "displayName": "Claims",
                     "type": "integer",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0"
                   }
                 ]
               },
@@ -413,7 +466,8 @@
                     "displayName": "Open",
                     "type": "integer",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0"
                   },
                   {
                     "fieldName": "past_sla",
@@ -421,7 +475,8 @@
                     "displayName": "Past SLA",
                     "type": "integer",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0"
                   },
                   {
                     "fieldName": "avg_fraud",
@@ -429,7 +484,8 @@
                     "displayName": "Avg fraud",
                     "type": "integer",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0"
                   }
                 ]
               },
@@ -654,11 +710,37 @@
                     "type": "quantitative"
                   },
                   "displayName": "Leakage %"
+                },
+                "color": {
+                  "fieldName": "team",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Team",
+                  "legend": {
+                    "hide": true
+                  }
+                },
+                "label": {
+                  "show": true
                 }
               },
               "frame": {
                 "showTitle": true,
                 "title": "Leakage by team"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -708,11 +790,37 @@
                     "type": "quantitative"
                   },
                   "displayName": "Open caseload"
+                },
+                "color": {
+                  "fieldName": "team",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Team",
+                  "legend": {
+                    "hide": true
+                  }
+                },
+                "label": {
+                  "show": true
                 }
               },
               "frame": {
                 "showTitle": true,
                 "title": "Caseload by team"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00",
+                  "#00A972",
+                  "#FF3621",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4",
+                  "#FCA4A1",
+                  "#919191",
+                  "#BF7080"
+                ]
               }
             }
           },
@@ -796,7 +904,8 @@
                     "displayName": "Caseload",
                     "type": "integer",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0"
                   },
                   {
                     "fieldName": "avg_days_to_settle",
@@ -804,7 +913,8 @@
                     "displayName": "Settle (d)",
                     "type": "float",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0.0"
                   },
                   {
                     "fieldName": "leakage_rate_pct",
@@ -812,7 +922,8 @@
                     "displayName": "Leakage %",
                     "type": "float",
                     "displayAs": "number",
-                    "alignContent": "right"
+                    "alignContent": "right",
+                    "numberFormat": "0,0.0"
                   }
                 ]
               },
@@ -880,6 +991,11 @@
               "frame": {
                 "showTitle": true,
                 "title": "% Auto-closed (12 weeks)"
+              },
+              "mark": {
+                "colors": [
+                  "#00A972"
+                ]
               }
             }
           },
@@ -934,6 +1050,11 @@
               "frame": {
                 "showTitle": true,
                 "title": "Leakage rate (12 weeks)"
+              },
+              "mark": {
+                "colors": [
+                  "#FFAB00"
+                ]
               }
             }
           },
@@ -988,6 +1109,11 @@
               "frame": {
                 "showTitle": true,
                 "title": "Avg settlement (12 weeks)"
+              },
+              "mark": {
+                "colors": [
+                  "#8BCAE7"
+                ]
               }
             }
           },
@@ -1042,6 +1168,11 @@
               "frame": {
                 "showTitle": true,
                 "title": "Past-SLA % (12 weeks)"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621"
+                ]
               }
             }
           },
@@ -1054,10 +1185,5 @@
         }
       ]
     }
-  ],
-  "uiSettings": {
-    "theme": {
-      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
-    }
-  }
+  ]
 }
