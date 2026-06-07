@@ -97,7 +97,7 @@
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><div class="logo">🛡️</div><div><b>Claims Workbench</b><small>Bricksurance SE</small></div></div>
+    <div class="brand" onclick="go('home')" style="cursor:pointer" title="Home"><div class="logo">🛡️</div><div><b>Claims Workbench</b><small>Bricksurance SE</small></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="foot">
       <button class="fbtn" id="cacheBtn" onclick="toggleCache()">AI: …</button>
@@ -126,7 +126,7 @@ const SECTIONS=[
   {id:'claimsai',label:'🤖 Claims AI',grp:'The platform'},
   {id:'learn',label:'🎓 Learn',grp:'The platform'},
 ];
-const state={ section:'control', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
+const state={ section:'home', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
   ct:null, lens:null, cfg:null, ask:null, asking:false, roster:null, govtab:'collected', gcid:'cc:900001', track:null, trackCid:'cc:900001',
   queue:null, nc:null };
 const gbp=v=>{const n=parseFloat(v);return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0});};
@@ -166,13 +166,50 @@ function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearIn
   const done=/TERMINATED|INTERNAL_ERROR|SKIPPED/.test(lc)||res!==''||mins>=30;
   if(done){clearInterval(_rt);document.getElementById('resetBtn').disabled=false; const ok=res.includes('SUCCESS'); m.textContent=ok?'✓ Reset complete':(mins>=30&&!res?'Reset timed out — check the job':'Reset failed — check the job'); if(ok)location.reload();}
   else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={home:renderHome,control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
 function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
 const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
 const fmtv=(v,f)=>f==='gbp'?gbp(v):f==='pct'?pct(v):f==='days'?((v??'—')+' d'):num(v);
 function trendArrow(tr){ if(!tr||tr.dir==='flat')return ''; const c=tr.good?'#059669':'#dc2626'; const ar=tr.dir==='up'?'▲':'▼'; return ` <span style="color:${c};font-size:11px;font-weight:700">${ar}${Math.abs(tr.delta)}</span>`; }
 function page(eyebrow,title,lead,desc){ return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
+
+// ============ HOME — landing page ============
+// Stage -> where it leads in the app (aligned to LIFECYCLE order: FNOL, Triage, Coverage,
+// Reserving, Handling, Settlement, Recovery, Closure).
+const HOME_LINKS=['fnol360','fnol360','claim','claim','myqueue','control','control','control'];
+function renderHome(){ const v=document.getElementById('view');
+  const cta=`<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:16px">
+     <button class="btnv" style="font-size:15px;padding:12px 22px" onclick="go('control')">🎛️ Open the Control Tower →</button>
+     <button class="ghost" onclick="go('fnol360')">🛰️ See a claim decided at FNOL</button>
+     <button class="ghost" onclick="go('learn')">🎓 Learn claims</button></div>`;
+  const hero=`<div style="text-align:center;max-width:780px;margin:8px auto 0">
+     <div class="eyebrow" style="text-align:center">Bricksurance SE · Claims Intelligence Workbench</div>
+     <h1 class="big" style="font-size:36px;margin-top:4px">Claims, end to end — on one platform</h1>
+     <p class="lead" style="margin:8px auto 0;max-width:680px">From first notice of loss to closure: every source assembled at FNOL, every decision governed and audited, and AI agents helping handlers — built entirely on Databricks.</p>
+     ${cta}</div>`;
+  const disc=`<div class="disclaimer" style="max-width:880px;margin:22px auto"><b>About this demo.</b> This is <b>not a Databricks product</b>. It's an example of a real business process — <b>end-to-end claims handling</b> — built <b>purely on Databricks</b>, using standard platform services: Unity Catalog, Lakeflow Declarative Pipelines, Auto Loader, Feature Engineering, Mosaic AI (Model Serving · Agent Framework · Vector Search), AI/BI Genie, the Foundation Model API, and Databricks Apps. <b>Bricksurance SE</b> is a synthetic insurer; all data is generated — there is no real customer data.</div>`;
+  const stage=(s,i)=>`<div style="flex:0 0 auto;display:flex;align-items:stretch;gap:6px">
+     <div onclick="go('${HOME_LINKS[i]}')" style="width:150px;cursor:pointer;border:1px solid ${s[3]}33;border-top:3px solid ${s[3]};border-radius:10px;padding:9px 10px;background:#fff">
+       <div style="font-size:10px;font-weight:800;color:${s[3]}">${i+1}. ${esc(s[0])}</div>
+       <div style="font-size:11px;font-weight:700;color:#0f172a;margin:2px 0">${esc(s[1])}</div>
+       <div class="muted" style="font-size:11px;line-height:1.4">${esc(s[2])}</div>
+       <div style="color:${s[3]};font-size:10px;font-weight:700;margin-top:5px">open →</div></div>
+     ${i<LIFECYCLE.length-1?'<div style="align-self:center;color:#cbd5e1;font-size:16px">→</div>':''}</div>`;
+  const flow=`<div class="card" style="margin-bottom:16px"><h2>🔄 What this is — the claim lifecycle, end to end</h2>
+     <p style="font-size:14px;color:#334155;line-height:1.6;margin:0 0 12px">A policyholder suffers a loss and reports it; the platform assembles the full picture, decides whether to <b>close it automatically or escalate to a human</b>, sets the reserve, pays what's owed, recovers what it can, and closes the file with a full audit trail. The <b>front of the claim decides its cost</b> — so FNOL is the centre of gravity. Click any stage to jump to where it lives in the workbench.</p>
+     <div style="overflow-x:auto;padding-bottom:6px"><div style="display:flex;gap:6px;min-width:max-content">${LIFECYCLE.map(stage).join('')}</div></div></div>`;
+  const beat=(icon,title,desc,sec,col)=>`<div class="card" onclick="go('${sec}')" style="cursor:pointer;border-top:3px solid ${col}"><div style="font-size:22px">${icon}</div><h2 style="margin:6px 0 2px">${title}</h2><p class="muted" style="font-size:13px;line-height:1.5;margin:0">${desc}</p><div style="color:${col};font-size:12px;font-weight:700;margin-top:8px">open →</div></div>`;
+  const beats=`<div class="eyebrow" style="margin:4px 0 8px">The three things this platform makes possible</div>
+   <div class="grid3" style="margin-bottom:16px">
+     ${beat('🛰️','One platform — all data at FNOL','Every source assembled in real time, so you can decide to close or escalate at the front door.','fnol360','#7c3aed')}
+     ${beat('🛡️','Governance & control','See and govern the whole process — live MI, AI/BI, and every decision and reason audited. The enabler of automation.','governance','#2563eb')}
+     ${beat('🤖','AI agents that assist','A supervisor and a bench of specialists assemble the dossier, give a second opinion, catch fraud — helping handlers, never replacing them.','claimsai','#059669')}</div>`;
+  const start=`<div class="card" style="background:#0f172a;color:#fff;border:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+     <div><div class="eyebrow" style="color:#c4b5fd">Start here</div><h2 style="color:#fff;margin:2px 0 0">The Control Tower — your claims book at a glance</h2><p style="color:#cbd5e1;font-size:13px;margin:6px 0 0">The four things that need attention, the daily brief, and the live auto-close dial.</p></div>
+     <button class="btnv" style="font-size:14px;padding:11px 20px" onclick="go('control')">🎛️ Open the Control Tower →</button></div>`;
+  v.innerHTML=hero+disc+flow+beats+start;
+}
 
 // ============ CONTROL TOWER ============
 const DISCLAIMER="Bricksurance SE is a synthetic insurer. All data is generated — there is no real Guidewire integration and no real customer data. Figures illustrate the Databricks platform, not a real book. Decisions are model and workflow outputs with a human in the loop; the AI agents reason and give a second opinion and have no payment authority.";
