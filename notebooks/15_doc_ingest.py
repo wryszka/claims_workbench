@@ -226,12 +226,32 @@ SRC = [
      "structured", "near-real-time", "Structured Streaming", "bronze_telematics", "live", "Speed / harsh-braking at incident (motor)."),
     ("Documents & photos", "Claim photos & reports", "FNOL upload portal", "digital",
      "unstructured", "file arrival", "Auto Loader + vision FM", "bronze_claim_documents", "live", "Photos / reports → AI-extracted at ingest."),
+    # FNOL channels
     ("FNOL channels", "Real-time FNOL stream", "Web / IVR / mobile", "digital / phone",
      "events", "streaming", "Structured Streaming / Kafka", None, "roadmap", "First-notice events as they happen."),
-    ("Documents & photos", "Call transcripts", "Contact-centre", "phone",
-     "unstructured", "file arrival", "Auto Loader + LLM", None, "roadmap", "Speech-to-text → entity extraction."),
-    ("Third-party enrichment", "DVLA / vehicle data", "DVLA", "—",
-     "structured", "API / batch", "Lakeflow Connect", None, "roadmap", "Vehicle keeper / write-off markers."),
+    ("Documents & photos", "FNOL call transcripts", "Contact-centre", "phone",
+     "unstructured", "file arrival", "Auto Loader + LLM", None, "roadmap", "Speech-to-text → entity & fraud extraction."),
+    ("Documents & photos", "Dashcam / CCTV video", "Policyholder upload", "digital",
+     "unstructured", "file arrival", "Auto Loader + vision FM", None, "roadmap", "Frame extraction → fault & severity."),
+    # Cross-insurer registers — the data no single insurer holds
+    ("Claims history & registers", "Cross-insurer claims history (CUE)", "CUE", "—",
+     "structured", "batch", "Lakeflow Connect", None, "roadmap", "Undisclosed / repeat claims across all insurers."),
+    ("Claims history & registers", "Motor anti-fraud & theft (MIAFTR / MID)", "MIB", "—",
+     "structured", "batch", "Lakeflow Connect", None, "roadmap", "Theft / total-loss markers + insurance-in-force."),
+    ("Risk & fraud", "Fraud intelligence (Cifas / IFB)", "Cifas / IFB", "—",
+     "structured", "batch", "Lakeflow Connect", None, "roadmap", "External fraud registers + known-entity links."),
+    # IoT & connected device
+    ("Telematics & IoT", "Smart-home leak sensor", "Hive / Nest", "—",
+     "events", "streaming", "Structured Streaming", None, "roadmap", "Corroborates escape-of-water at the loss time."),
+    ("Telematics & IoT", "Connected-car crash telemetry", "OEM / black-box", "—",
+     "events", "streaming", "Structured Streaming", None, "roadmap", "G-force, airbag, harsh-braking at impact."),
+    # Third-party enrichment
+    ("Third-party enrichment", "DVLA vehicle & keeper", "DVLA", "—",
+     "structured", "API / batch", "Lakeflow Connect", None, "roadmap", "Keeper, write-off markers, vehicle spec."),
+    ("Third-party enrichment", "Geospatial & flood maps", "JBA / what3words", "—",
+     "geospatial", "API / file", "Auto Loader", None, "roadmap", "Incident geocode + flood-zone overlay."),
+    ("Third-party enrichment", "Repair & parts pricing", "Audatex / Glass's", "—",
+     "structured", "API", "Lakeflow Connect", None, "roadmap", "Validate quantum against market rates."),
 ]
 src_rows = [(g, n, sy, ch, fmt, lat, tool, t, (cnt(t) if t else None), st, note)
             for (g, n, sy, ch, fmt, lat, tool, t, st, note) in SRC]

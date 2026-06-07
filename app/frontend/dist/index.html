@@ -117,6 +117,7 @@ const SECTIONS=[
   {id:'control',label:'🎛️ Control Tower',grp:'Head of Claims'},
   {id:'insight',label:'📊 Insight',grp:'Head of Claims'},
   {id:'myqueue',label:'👩‍💼 My Queue',grp:'Handler'},
+  {id:'fnol360',label:'🛰️ FNOL 360',grp:'Handler'},
   {id:'claim',label:'📋 Work a claim',grp:'Handler'},
   {id:'newclaim',label:'➕ Try a claim',grp:'Handler'},
   {id:'fraud',label:'🔍 Fraud & SIU',grp:'Fraud & SIU'},
@@ -165,7 +166,7 @@ function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearIn
   const done=/TERMINATED|INTERNAL_ERROR|SKIPPED/.test(lc)||res!==''||mins>=30;
   if(done){clearInterval(_rt);document.getElementById('resetBtn').disabled=false; const ok=res.includes('SUCCESS'); m.textContent=ok?'✓ Reset complete':(mins>=30&&!res?'Reset timed out — check the job':'Reset failed — check the job'); if(ok)location.reload();}
   else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={control:renderControl,insight:renderInsight,myqueue:renderMyQueue,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
 function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
 const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
@@ -432,6 +433,61 @@ function renderClaimsAIView(){ const v=document.getElementById('view'); const a=
 async function doAsk(q,cid){ state.ask={q,loading:true}; state.asking=true; renderClaimsAIView();
   try{const r=await J('/ask',{method:'POST',body:JSON.stringify({question:q,cid:cid||null})}); state.ask={q,...r};}catch(e){state.ask={q,__err:true};} state.asking=false; renderClaimsAIView(); }
 function askFromBox(){ const q=document.getElementById('askbox').value.trim(); if(q)doAsk(q,null); }
+
+// ============ FNOL 360 — the front-door decision (beat 1: all data together) ============
+function setFnolCid(cid){ state.fnolCid=cid; renderFnol360(); }
+function _ruleParse(s){ const m=String(s).match(/^(.*?)\s*\[(.*)\]\s*$/); return m?[m[1].trim(),m[2].trim()]:[String(s),'']; }
+async function renderFnol360(){ const v=document.getElementById('view'); const cid=state.fnolCid||'cc:900001';
+  v.innerHTML=page('Handler view','FNOL 360 — the front-door decision','At first notice of loss there is one question: can we safely close this now, or does it need a human? It is only answerable because every source lands on one platform and assembles in real time.','Assembling the claim…');
+  let p=null,d=null;
+  try{p=await J('/claim/panels?cid='+encodeURIComponent(cid));}catch(e){}
+  try{d=await J('/claim/disposition?cid='+encodeURIComponent(cid));}catch(e){}
+  const heroes=[['cc:900001','SIU referral'],['cc:900002','clean auto-close'],['cc:900003','photo discrepancy']];
+  const picker=`<div class="card" style="margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:13px">Claim</b>${heroes.map(h=>`<button class="${cid===h[0]?'btnv':'ghost'}" style="font-size:12px" onclick="setFnolCid('${h[0]}')">${h[0]} · ${h[1]}</button>`).join('')}</div>`;
+  if(!p||p.__err){ v.innerHTML=page('Handler view','FNOL 360 — the front-door decision','')+picker+'<p class="muted">Claim unavailable.</p>'; return; }
+  const s=p.summary||{},t=p.triage||{},f=p.fraud||{},pol=p.policy||{},x=p.extra||{},tel=p.telematics||{},img=p.image||{};
+  const home=(s.peril_type||'').indexOf('home')===0;
+  const auto=d&&d.disposition==='auto_closed';
+  const dcol=auto?'#059669':'#f59e0b';
+  const decision=`<div class="card" style="border:1px solid ${dcol}55;border-top:4px solid ${dcol};margin-bottom:16px">
+    <div class="eyebrow">The one question at FNOL</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px">
+      <div style="font-size:26px;font-weight:800;color:${dcol}">${auto?'✅ CLOSE — auto-close & pay':'⚠️ ESCALATE — route to a human'}</div>
+      <div class="muted">model: <b>${DLABEL[t.decision]||esc(t.decision)||'—'}</b> @ ${pct(t.confidence)}</div></div>
+    <p class="muted" style="margin:8px 0 0">${auto?'Every signal lined up inside the risk appetite — the engine decided, no human touched it.':'One or more signals breached the band or a rule — the engine held it back for a person. The agent can add caution, never approve.'}</p></div>`;
+  // sources converging — real values where we have them, illustrative for the exotic feeds
+  const srcRow=(icon,name,system,fmt,lat,val,live)=>`<div style="display:flex;gap:11px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8">
+    <div style="flex:0 0 26px;font-size:17px">${icon}</div>
+    <div style="flex:0 0 200px"><b style="font-size:12px">${name}</b><div class="muted" style="font-size:11px">${system}</div></div>
+    <div style="flex:0 0 150px"><span class="badge b-slate" style="font-size:9px">${fmt} · ${lat}</span></div>
+    <div style="flex:1 1 auto;font-size:13px;color:#334155">${val}</div>
+    <div style="flex:0 0 auto"><span class="badge ${live?'b-green':'b-violet'}" style="font-size:9px">${live?'live':'illustrative'}</span></div></div>`;
+  const rows=[
+    srcRow('🏛️','Guidewire ClaimCenter','claim + incident · CDA','structured','batch',`${esc(PERIL[s.peril_type]||s.peril_type)} · ${gbp(s.total_incurred)} · ${esc(s.report_channel)} · ${esc(s.claim_status)}`,true),
+    srcRow('🏛️','Guidewire PolicyCenter','policy in force','structured','batch',`${esc(pol.product||x.product||'—')} · sum insured ${gbp(pol.sum_insured)} · ${pol.policy_tenure_years??'—'}yr tenure`,true),
+    srcRow('📚','Claims history (CUE)','cross-insurer register','structured','batch',`${f.prior_claims_12m??0} prior claim(s) in 12 months`,false),
+    srcRow('🛡️','Fraud intelligence','internal + Cifas / IFB','structured','batch',`fraud score <b style="color:${(f.fraud_score>70?'#dc2626':f.fraud_score>=40?'#b45309':'#047857')}">${f.fraud_score??'—'}/100</b>`,true),
+    srcRow('🌦️','Weather & peril','Met Office / flood model','structured','API',`weather composite ${x.weather_risk_composite??'—'} · flood risk ${x.flood_risk_score??'—'}`,true),
+  ];
+  if(tel&&tel.has_telematics) rows.push(srcRow('📡','Motor telematics','black-box provider','events','stream',`${tel.speed_at_incident} mph in a ${tel.posted_speed_limit} zone${tel.over_limit?' — <b style="color:#dc2626">OVER LIMIT</b>':''}${tel.harsh_braking?' · harsh braking':''}`,true));
+  if(img&&img.has_image) rows.push(srcRow('📸','FNOL photo','upload portal · vision FM','unstructured','file',`AI severity <b>${esc((img.severity||'').toUpperCase())}</b> — ${esc((img.rationale||'').slice(0,80))}`,true));
+  if(home) rows.push(srcRow('🚰','Smart-home leak sensor','Hive / Nest · IoT','events','stream','flow detected 02:14 — corroborates the escape-of-water FNOL',false));
+  rows.push(srcRow('📞','FNOL call transcript','contact centre · speech-to-text','unstructured','stream','entities, sentiment & fraud cues extracted from the call',false));
+  const sources=`<div class="card" style="margin-bottom:16px"><h2>🔌 Every source converging on this claim — in real time</h2>
+    <p class="muted" style="margin:0 0 8px">A claims system is a system of record; it can't pull this together. The lakehouse sits across all of it and assembles the full picture at the moment of the call.</p>
+    ${rows.join('')}
+    <p class="muted" style="margin-top:8px">Green = live in this demo · violet = illustrative feed on the roadmap (see <a class="link" onclick="go('ingestion')">Ingestion</a> for the full source map).</p></div>`;
+  // decision factors — datapoint → how used → result
+  const failed=(d&&d.rules_failed||[]).map(r=>{const [l,val]=_ruleParse(r);return `<tr style="background:#fff7ed"><td style="font-size:12px">${esc(l)}</td><td class="muted" style="font-size:12px">${esc(val)}</td><td style="text-align:center"><span class="badge b-red">✗ failed</span></td></tr>`;}).join('');
+  const passed=(d&&d.rules_passed||[]).map(r=>{const [l,val]=_ruleParse(r);return `<tr><td style="font-size:12px">${esc(l)}</td><td class="muted" style="font-size:12px">${esc(val)}</td><td style="text-align:center"><span class="badge b-green">✓ passed</span></td></tr>`;}).join('');
+  const drivers=(t.top_reasons||[]).map(r=>`<tr><td style="font-size:12px">${esc(r)}</td><td class="muted" style="font-size:12px">model driver</td><td style="text-align:center"><span class="badge b-violet">model</span></td></tr>`).join('');
+  const nF=(d&&d.rules_failed||[]).length, nT=(nF+(d&&d.rules_passed||[]).length);
+  const factors=`<div class="card"><h2>🧭 Decision factors — what fed this routing, and how</h2>
+    <p class="muted" style="margin:0 0 8px">${nT?`${nF} of ${nT} checks failed → ${auto?'all clear, safe to auto-close':'not auto-closeable, routed to a human'}.`:''} Every datapoint, the check it drove, and the result — the whole decision is explainable.</p>
+    <table><tr><th>Signal / check</th><th>Value</th><th style="text-align:center">Result</th></tr>${failed}${passed}${drivers||''}</table></div>`;
+  v.innerHTML=page('Handler view','FNOL 360 — the front-door decision','At first notice of loss there is one question: can we safely close this now, or does it need a human? It is only answerable because every source lands on one platform and assembles in real time.')
+    +picker+decision+sources+factors;
+}
 
 // ============ WORK A CLAIM (per-claim triage hero) ============
 async function loadClaims(){ try{state.claims=await J('/claims');}catch(e){state.claims=[];} }
