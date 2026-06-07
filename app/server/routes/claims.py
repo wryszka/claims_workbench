@@ -214,8 +214,8 @@ async def fair_outcomes():
 
 # --- Phase 12 Stage B1: Handler "My Queue" (persona: Sarah Chen) ---
 @router.get("/handler/queue")
-async def handler_queue():
-    return await svc.handler_queue()
+async def handler_queue(handler: str | None = None):
+    return await svc.handler_queue(handler)
 
 
 # --- Phase 12 Stage B2: Create a claim (synchronous real scoring, ephemeral) ---

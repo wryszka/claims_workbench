@@ -1329,7 +1329,64 @@ def _parse_rules(v) -> list:
     return []
 
 
-async def handler_queue() -> dict:
+def _sla_for(peril):
+    return PERIL_SLA.get(peril or "", DEFAULT_SLA)
+
+
+def _q_item(r):
+    """Build a queue item + its breach flag from a row (peril-aware SLA)."""
+    days = int(r.get("days_open") or 0); fraud = int(r.get("fraud_score") or 0)
+    triage = r.get("triage_decision"); incurred = float(r.get("total_incurred") or 0)
+    is_hv = int(r.get("is_high_value") or 0) == 1; fired = _parse_rules(r.get("fired_rules"))
+    sla = _sla_for(r.get("peril_type")); breached = days > sla
+    why = []
+    if triage == "refer_siu":
+        why.append("Referred to SIU")
+    elif triage == "escalate":
+        why.append("Triage: escalate")
+    if fraud > 70:
+        why.append(f"Fraud {fraud}/100")
+    if breached:
+        why.append(f"{days}d open — SLA {sla}d breached")
+    elif days > (sla - 7):
+        why.append(f"{days}d open — SLA in {max(sla - days, 0)}d")
+    if is_hv:
+        why.append("High value")
+    if fired and len(why) < 3:
+        why.append("Rules: " + ", ".join(fired))
+    item = {"claim_public_id": r["claim_public_id"], "peril": r["peril_type"],
+            "loss_cause": r.get("loss_cause"), "total_incurred": incurred, "fraud_score": fraud,
+            "status": r.get("claim_status"), "triage": triage, "days_open": days,
+            "postcode": r.get("postcode_district"), "disposition": r.get("disposition"),
+            "fired_rules": fired, "confidence": r.get("model_confidence"),
+            "why": why[:3], "hero": r["claim_public_id"] in ("cc:900001", "cc:900003")}
+    return item, breached
+
+
+async def _handler_options() -> list[dict]:
+    """The dropdown — handlers with an open caseload (Sarah is the default persona lens)."""
+    try:
+        rows = await execute_query(f"""
+            SELECT h.handler_id, h.handler_name, h.grade, h.team,
+                   sum(CASE WHEN s.claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) open_n
+            FROM {_fq('ref_handlers')} h LEFT JOIN {_fq('silver_claims_enriched')} s ON s.handler_id = h.handler_id
+            GROUP BY h.handler_id, h.handler_name, h.grade, h.team
+            HAVING open_n > 0 ORDER BY open_n DESC LIMIT 40""")
+    except Exception:
+        rows = []
+    opts = [{"id": "sarah", "name": "Sarah Chen", "grade": "Senior", "team": "Motor Complex", "open": None}]
+    for r in rows:
+        opts.append({"id": r["handler_id"], "name": r.get("handler_name") or r["handler_id"],
+                     "grade": (r.get("grade") or "").title(), "team": (r.get("team") or "").replace("_", " ").title(),
+                     "open": int(r.get("open_n") or 0)})
+    return opts
+
+
+async def handler_queue(handler: str | None = None) -> dict:
+    options = await _handler_options()
+    persona_view = (not handler) or handler == "sarah"
+    if not persona_view:
+        return await _handler_queue_real(handler, options)
     s = _fq("silver_claims_enriched")
     d = _fq("gold_claim_disposition")
     # The whole motor book is thousands of open claims — far too many for one desk.
@@ -1431,7 +1488,57 @@ async def handler_queue() -> dict:
          "count": len(later), "items": later},
     ]
     return {"persona": HANDLER_PERSONA, "summary": summary, "worklist": worklist,
-            "total_open": total_open, "exposure": exposure, "buckets": buckets}
+            "total_open": total_open, "exposure": exposure, "buckets": buckets,
+            "handlers": options, "selected": "sarah"}
+
+
+async def _handler_queue_real(handler: str, options: list[dict]) -> dict:
+    """A real handler's own open caseload (all perils), bucketed by urgency."""
+    s = _fq("silver_claims_enriched"); d = _fq("gold_claim_disposition")
+    opt = next((o for o in options if o["id"] == handler), None)
+    name = (opt or {}).get("name", handler)
+    persona = {"name": name, "initials": "".join(w[0] for w in name.split()[:2]).upper() or "—",
+               "grade": (opt or {}).get("grade", ""), "desk": (opt or {}).get("team", ""),
+               "subtitle": f"{(opt or {}).get('grade','Handler')} · {(opt or {}).get('team','')} desk"}
+    rows = await execute_query(f"""
+        SELECT s.claim_public_id, s.peril_type, s.loss_cause, CAST(s.total_incurred AS double) total_incurred,
+               CAST(s.fraud_score AS int) fraud_score, s.claim_status, s.triage_decision,
+               CAST(coalesce(s.prior_claims_12m,0) AS int) prior_claims_12m, CAST(s.is_high_value AS int) is_high_value,
+               datediff(current_date(), s.report_date) days_open, s.postcode_district,
+               d.disposition, d.fired_rules, CAST(d.model_confidence AS double) model_confidence
+        FROM {s} s LEFT JOIN {d} d ON s.claim_public_id = d.claim_public_id
+        WHERE s.handler_id = '{_esc(handler)}' AND s.claim_status IN ('open','under_investigation')
+        ORDER BY (CASE WHEN s.triage_decision='refer_siu' THEN 0 WHEN s.triage_decision='escalate' THEN 1 ELSE 2 END),
+                 s.fraud_score DESC, s.total_incurred DESC LIMIT 60""")
+    today, week, later = [], [], []
+    exposure = 0.0
+    for r in rows:
+        item, breached = _q_item(r)
+        exposure += item["total_incurred"]
+        sla = _sla_for(item["peril"])
+        urgent = item["triage"] in ("refer_siu", "escalate") or item["fraud_score"] > 70
+        soon = breached or int(r.get("is_high_value") or 0) == 1 or item["days_open"] > (sla - 7)
+        if urgent and len(today) < 10:
+            today.append(item)
+        elif (urgent or soon) and len(week) < 16:   # urgent overflow + aged/high-value spill here
+            week.append(item)
+        elif len(later) < 16:
+            later.append(item)
+    worklist = len(today) + len(week) + len(later)
+    summary = (f"{name}'s desk: {len(rows)} open claims. {len(today)} need attention today "
+               f"(escalations, SIU, high fraud or past SLA), {len(week)} this week. "
+               f"Total exposure £{exposure:,.0f}.")
+    buckets = [
+        {"key": "today", "title": "Needs you today", "tone": "red",
+         "blurb": "Escalations, SIU referrals, SLA breaches and high fraud.", "count": len(today), "items": today},
+        {"key": "week", "title": "This week", "tone": "amber",
+         "blurb": "Fired a rule, high-value, or approaching the service deadline.", "count": len(week), "items": week},
+        {"key": "later", "title": "When you can", "tone": "slate",
+         "blurb": "Routine open claims, progressing within SLA.", "count": len(later), "items": later},
+    ]
+    return {"persona": persona, "summary": summary, "worklist": worklist,
+            "total_open": len(rows), "exposure": exposure, "buckets": buckets,
+            "handlers": options, "selected": handler}
 
 
 # ==========================================================================

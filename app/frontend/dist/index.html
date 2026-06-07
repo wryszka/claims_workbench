@@ -296,14 +296,14 @@ function setInsTab(t){ state.insTab=t; renderInsightApp(); }
 const INS_LEAD='A live Databricks Lakeview dashboard — the same BI your team builds and edits in the workspace, with Genie for natural-language questions. This is the "easy to build, change and ask" story, not a hand-coded screen.';
 // Insight = the embedded Lakeview dashboard by default; an in-app summary is one click away.
 async function renderInsight(){ const v=document.getElementById('view');
-  if(!state.insEmbed){ return renderInsightApp(); }   // default = the always-renders in-app view
+  if(state.insApp){ return renderInsightApp(); }   // default = the embedded live dashboard; in-app is the backup
   v.innerHTML=page('Head of Claims','Insight — the live Databricks dashboard',INS_LEAD,'Loading dashboard…');
   if(!state.gov){ try{state.gov=await J('/governance');}catch(e){state.gov={};} }
   const g=state.gov||{};
   const bar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-     <button class="ghost" onclick="state.insEmbed=false;renderInsight()">← Back to summary</button>
      ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open full dashboard ↗</a>`:''}
-     ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask the book in Genie ↗</a>`:''}</div>`;
+     ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask the book in Genie ↗</a>`:''}
+     <button class="ghost" onclick="state.insApp=true;renderInsight()">📋 In-app summary (backup)</button></div>`;
   const frame=g.dashboard_embed_url
     ? `<div class="card" style="padding:6px"><iframe src="${g.dashboard_embed_url}" style="width:100%;height:760px;border:0;border-radius:10px" title="Claims Portfolio dashboard" loading="lazy"></iframe></div>`
     : `<div class="card"><p class="muted">Dashboard not resolved on this workspace.${g.dashboard_url?` <a class="link" href="${g.dashboard_url}" target="_blank">Open it in Databricks ↗</a>`:''}</p></div>`;
@@ -322,7 +322,7 @@ async function renderInsightApp(){ const v=document.getElementById('view'); cons
   const dash=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
      ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open the live Databricks dashboard ↗</a>`:''}
      ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask in Genie ↗</a>`:''}
-     ${g.dashboard_embed_url?`<button class="ghost" onclick="state.insEmbed=true;renderInsight()">🖥️ View embedded</button>`:''}</div>`;
+     <button class="ghost" onclick="state.insApp=false;renderInsight()">← Back to the dashboard</button></div>`;
   const TABS=[['ops','🗺️ Where claims are'],['performance','👥 Handler performance'],['trends','📈 Trends']];
   const tabbar=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">${TABS.map(t=>`<button class="${tab===t[0]?'btnv':'ghost'}" style="padding:6px 14px;font-size:13px" onclick="setInsTab('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
   const body = tab==='trends'?trendsBody(T) : tab==='performance'?perfBody(H) : opsBody(O);
@@ -660,10 +660,12 @@ function qRow(i){ const fcol=i.fraud_score>70?'#ef4444':i.fraud_score>=40?'#f59e
     <div style="flex:0 0 64px;text-align:center"><span style="font-weight:800;color:${fcol}">${i.fraud_score}</span><div class="muted" style="font-size:10px">fraud</div></div>
     <div style="flex:1 1 auto">${why}</div>
     <div style="flex:0 0 auto"><span class="link">Open →</span></div></div>`; }
-async function renderMyQueue(){ const v=document.getElementById('view');
+function setQueueHandler(h){ state.queueHandler=h; renderMyQueue(); }
+async function renderMyQueue(){ const v=document.getElementById('view'); const h=state.queueHandler||'';
   v.innerHTML=page('Handler view','My Queue','Your prioritised worklist — what needs you today, this week, and when you can. The triage layer and your agents have already done the sifting.','Loading your worklist…');
-  let q; try{q=await J('/handler/queue');}catch(e){v.innerHTML=page('Handler view','My Queue','')+'<p class="muted">Unavailable.</p>';return;} state.queue=q;
+  let q; try{q=await J('/handler/queue'+(h?'?handler='+encodeURIComponent(h):''));}catch(e){v.innerHTML=page('Handler view','My Queue','')+'<p class="muted">Unavailable.</p>';return;} state.queue=q;
   const p=q.persona||{};
+  const picker=`<div class="card" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:13px">👤 Handler</b><select onchange="setQueueHandler(this.value)" style="min-width:340px;padding:7px 9px;border:1px solid var(--line);border-radius:8px">${(q.handlers||[]).map(o=>`<option value="${esc(o.id)}" ${o.id===q.selected?'selected':''}>${esc(o.name)}${o.grade?' — '+esc(o.grade):''}${o.team?' · '+esc(o.team):''}${o.open!=null?' · '+o.open+' open':''}</option>`).join('')}</select><span class="muted" style="font-size:12px">switch desks to see any handler's live worklist</span></div>`;
   const personaCard=`<div class="card" style="display:flex;gap:16px;align-items:center;margin-bottom:14px">
     <div style="flex:0 0 56px;height:56px;border-radius:50%;background:var(--v);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800">${esc(p.initials||'SC')}</div>
     <div style="flex:1 1 auto"><b style="font-size:17px">${esc(p.name||'Sarah Chen')}</b><div class="muted">${esc(p.subtitle||'Senior Claims Handler · Motor Complex desk')}</div></div>
@@ -671,9 +673,12 @@ async function renderMyQueue(){ const v=document.getElementById('view');
     <div style="text-align:right"><div style="font-size:22px;font-weight:800">${gbp(q.exposure)}</div><div class="muted" style="font-size:11px">exposure</div></div></div>`;
   const monitor=`<div class="card" style="border-left:4px solid var(--v);margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:13px">🛰️ Monitoring agent — your morning brief</b><span class="pill live">live</span></div><p style="font-size:14px;color:#334155;line-height:1.5;margin:0">${esc(q.summary||'')}</p></div>`;
   const bucketCard=b=>`<div class="card" style="border-top:3px solid ${QTONE[b.tone]||'#94a3b8'}"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(b.title)}</h2><span class="badge b-slate">${b.count}</span></div><p class="muted" style="margin:4px 0 12px">${esc(b.blurb)}</p>${b.items.length?b.items.map(qRow).join(''):'<p class="muted">Nothing here right now.</p>'}</div>`;
+  const note=(q.selected==='sarah'||!q.selected)
+    ? 'Sarah Chen is an illustrative persona; her queue is a curated view of the live book — the sacred demo claims are never reassigned. Click any claim to work it.'
+    : `${esc(p.name||'')}'s real open caseload from the book — click any claim to work it.`;
   v.innerHTML=page('Handler view','My Queue','Your prioritised worklist — what needs you today, this week, and when you can. The triage layer and your agents have already done the sifting.')
-    +personaCard+monitor+(q.buckets||[]).map(bucketCard).join('')
-    +`<p class="muted" style="text-align:center;margin-top:6px">Sarah Chen is an illustrative persona; her queue is a curated view of the live book — the sacred demo claims are never reassigned. Click any claim to work it.</p>`;
+    +picker+personaCard+monitor+(q.buckets||[]).map(bucketCard).join('')
+    +`<p class="muted" style="text-align:center;margin-top:6px">${note}</p>`;
 }
 
 // ============ NEW CLAIM (create-a-claim — synchronous real scoring) ============
