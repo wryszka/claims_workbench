@@ -95,20 +95,93 @@ async def _fn(fn: str, cid: str) -> dict:
 # --------------------------------------------------------------------------
 # Structured panels — direct UC-function calls (run concurrently)
 # --------------------------------------------------------------------------
+_RESERVE_RANGE_BY_BRACKET = {"LOW": "under £2,000", "MEDIUM": "£2,000–£10,000",
+                             "HIGH": "£10,000–£50,000", "LARGE": "over £50,000"}
+
+
 async def get_panels(cid: str) -> dict:
-    summary, triage, reserve, fraud, policy, recovery, telematics, image = await asyncio.gather(
-        _fn("fn_claim_summary", cid), _fn("fn_triage_claim", cid), _fn("fn_reserve_claim", cid),
-        _fn("fn_fraud_signals", cid), _fn("fn_policy_history", cid), _fn("fn_recovery_signals", cid),
-        _fn("fn_telematics_signals", cid), _fn("fn_image_severity", cid))
-    extra_rows = await execute_query(f"""
-        SELECT policy_number, weather_risk_composite, flood_risk_score, wind_risk_score,
-               freeze_risk_score, prior_claims_12m, at_fault, reporting_lag_days
-        FROM {_fq('silver_claims_enriched')} WHERE claim_public_id = '{_esc(cid)}'
+    """All structured panels for a claim in ONE query, read from precomputed tables
+    (silver + gold_claim_disposition + claim_image_severity). The triage decision and
+    reserve bracket are already batch-scored, so the interactive view never calls the
+    scale-to-zero model endpoints (that path stays for Try-a-claim). The fn_* UC
+    functions remain for the agents' on-demand, cache-first calls."""
+    rows = await execute_query(f"""
+        SELECT s.peril_type, CAST(s.total_incurred AS double) total_incurred, s.report_channel,
+               s.postcode_district, s.description_text, s.claim_status,
+               CAST(s.fraud_score AS int) fraud_score, s.is_potential_fraud,
+               CAST(coalesce(s.prior_claims_12m,0) AS int) prior_claims_12m,
+               CAST(s.days_since_incident AS int) days_since_incident,
+               CAST(s.reporting_lag_days AS int) reporting_lag_days,
+               s.product, CAST(s.sum_insured AS double) sum_insured,
+               CAST(s.policy_tenure_years AS double) policy_tenure_years,
+               CAST(s.annual_premium AS double) annual_premium,
+               s.recovery_flag, CAST(s.recoverable_amount AS double) recoverable_amount,
+               CAST(s.speed_at_incident AS int) speed_at_incident,
+               CAST(s.posted_speed_limit AS int) posted_speed_limit, s.harsh_braking,
+               CAST(s.weather_risk_composite AS double) weather_risk_composite,
+               s.flood_risk_score, s.wind_risk_score, s.freeze_risk_score, s.at_fault,
+               s.policy_number, CAST(s.is_high_value AS int) is_high_value,
+               upper(s.reserve_bracket) reserve_bracket, s.triage_decision,
+               d.model_decision, CAST(d.model_confidence AS double) model_confidence,
+               img.severity img_severity, img.rationale img_rationale, img.image_url img_url
+        FROM {_fq('silver_claims_enriched')} s
+        LEFT JOIN {_fq('gold_claim_disposition')} d ON s.claim_public_id = d.claim_public_id
+        LEFT JOIN {_fq('claim_image_severity')} img ON s.claim_public_id = img.claim_public_id
+        WHERE s.claim_public_id = '{_esc(cid)}'
     """)
-    extra = extra_rows[0] if extra_rows else {}
-    return {"claim_public_id": cid, "summary": summary, "triage": triage,
-            "reserve": reserve, "fraud": fraud, "policy": policy, "recovery": recovery,
-            "telematics": telematics, "image": image, "extra": extra}
+    if not rows:
+        return {"claim_public_id": cid, "__err": True}
+    r = rows[0]
+    fraud = int(r["fraud_score"]) if r.get("fraud_score") is not None else None
+    prior = int(r.get("prior_claims_12m") or 0)
+    lag = r.get("reporting_lag_days")
+    # Triage reasons — same plain-English logic the UC function used, derived in Python.
+    reasons = []
+    if fraud is not None and fraud > 70:
+        reasons.append(f"High fraud score ({fraud}/100)")
+    if prior >= 2:
+        reasons.append(f"{prior} prior claims in 12 months")
+    if lag is not None and int(lag) > 14:
+        reasons.append(f"Reported {int(lag)} days after the incident")
+    if int(r.get("is_high_value") or 0) == 1:
+        reasons.append("High-value claim (over GBP 10,000)")
+    decision = r.get("model_decision") or r.get("triage_decision")
+    conf = r.get("model_confidence")
+    bracket = (r.get("reserve_bracket") or "").upper()
+    rng = next((v for k, v in _RESERVE_RANGE_BY_BRACKET.items() if k in bracket), "")
+    speed = int(r["speed_at_incident"]) if r.get("speed_at_incident") not in (None, "") else None
+    limit = int(r["posted_speed_limit"]) if r.get("posted_speed_limit") not in (None, "") else None
+    has_tel = speed is not None
+    return {
+        "claim_public_id": cid,
+        "summary": {"peril_type": r["peril_type"], "total_incurred": r["total_incurred"],
+                    "report_channel": r["report_channel"], "postcode_district": r["postcode_district"],
+                    "incident_description": r["description_text"], "claim_status": r["claim_status"]},
+        "triage": {"decision": decision, "confidence": conf, "top_reasons": reasons[:3]},
+        "reserve": {"bracket": bracket or None,
+                    "estimated_range": rng,
+                    "rationale": "Predicted from reported amount, peril, prior history and handler grade."},
+        "fraud": {"fraud_score": fraud, "fraud_flag": r.get("is_potential_fraud"),
+                  "prior_claims_12m": prior, "days_since_incident": r.get("days_since_incident"),
+                  "reporting_lag_days": lag},
+        "policy": {"product": r.get("product"), "sum_insured": r.get("sum_insured"),
+                   "policy_tenure_years": r.get("policy_tenure_years"),
+                   "annual_premium": r.get("annual_premium"), "prior_claims_12m": prior},
+        "recovery": {"recovery_flag": bool(r.get("recovery_flag")),
+                     "recoverable_amount": r.get("recoverable_amount")},
+        "telematics": {"has_telematics": has_tel, "speed_at_incident": speed,
+                       "posted_speed_limit": limit,
+                       "over_limit": bool(has_tel and limit is not None and speed > limit),
+                       "excess_mph": max(0, (speed or 0) - (limit or 0)) if has_tel else 0,
+                       "harsh_braking": bool(r.get("harsh_braking"))},
+        "image": {"has_image": r.get("img_severity") is not None, "severity": r.get("img_severity"),
+                  "rationale": r.get("img_rationale"), "image_url": r.get("img_url")},
+        "extra": {"policy_number": r.get("policy_number"),
+                  "weather_risk_composite": r.get("weather_risk_composite"),
+                  "flood_risk_score": r.get("flood_risk_score"), "wind_risk_score": r.get("wind_risk_score"),
+                  "freeze_risk_score": r.get("freeze_risk_score"), "prior_claims_12m": prior,
+                  "at_fault": r.get("at_fault"), "reporting_lag_days": lag},
+    }
 
 
 # --------------------------------------------------------------------------
@@ -181,9 +254,16 @@ async def recent_decisions(limit: int = 20) -> list[dict]:
 PIPELINE_NAME = "claims_workbench_01_bronze_dlt"
 
 
+_pipe_link_cache: dict | None = None
+
+
 def _pipeline_link() -> dict:
     """Best-effort pipeline name/url for a deep-link. Cosmetic — the scorecard no
-    longer depends on REST event-log access (the app SP can't read it)."""
+    longer depends on REST event-log access (the app SP can't read it). Cached for the
+    process: the REST list_pipelines call is slow and the answer never changes."""
+    global _pipe_link_cache
+    if _pipe_link_cache is not None:
+        return _pipe_link_cache
     from server.sql import _client
     try:
         w = _client()
@@ -192,11 +272,13 @@ def _pipeline_link() -> dict:
         if pipes:
             d = w.pipelines.get(pipes[0].pipeline_id)
             state = str(d.state).replace("PipelineState.", "") if d.state else None
-            return {"pipeline_name": pipes[0].name, "state": state,
-                    "pipeline_url": f"{host}/pipelines/{pipes[0].pipeline_id}"}
+            _pipe_link_cache = {"pipeline_name": pipes[0].name, "state": state,
+                                "pipeline_url": f"{host}/pipelines/{pipes[0].pipeline_id}"}
+            return _pipe_link_cache
     except Exception:
         pass
-    return {"pipeline_name": PIPELINE_NAME, "state": None, "pipeline_url": None}
+    _pipe_link_cache = {"pipeline_name": PIPELINE_NAME, "state": None, "pipeline_url": None}
+    return _pipe_link_cache
 
 
 # Rule → (bronze table, DLT action) — known from 01_bronze_dlt_pipeline. expect_or_drop
@@ -270,27 +352,20 @@ async def ingestion_status() -> dict:
                          for i, L in enumerate(_LAYERS)]
     except Exception:
         out["layers"] = []
-    # Quarantine totals + document count.
+    # Quarantine + documents + freshness — one round-trip via scalar subqueries.
     try:
-        qc = await execute_query(
-            f"SELECT (SELECT count(*) FROM {_fq('bronze_quarantine_claims')}) AS claims, "
-            f"(SELECT count(*) FROM {_fq('bronze_quarantine_fraud_signals')}) AS fraud")
-        out["quarantined_claims"] = int(qc[0]["claims"])
-        out["quarantined_fraud"] = int(qc[0]["fraud"])
-    except Exception:
-        pass
-    try:
-        out["documents_count"] = int((await execute_query(
-            f"SELECT count(*) c FROM {_fq('gold_document_extractions')}"))[0]["c"])
-    except Exception:
-        out["documents_count"] = 0
-    # "When was it ingested" — latest CDA batch + report date.
-    try:
-        fr = (await execute_query(
-            f"SELECT cast(max(cda_batch_ts) AS string) last_batch, cast(max(report_date) AS string) last_report, "
-            f"count(*) c FROM {_fq('bronze_gw_cc_claim')}"))[0]
-        out["freshness"] = {"last_batch": fr.get("last_batch"), "last_report": fr.get("last_report"),
-                            "claims": int(fr.get("c") or 0)}
+        m = (await execute_query(f"""
+            SELECT (SELECT count(*) FROM {_fq('bronze_quarantine_claims')}) qc,
+                   (SELECT count(*) FROM {_fq('bronze_quarantine_fraud_signals')}) qf,
+                   (SELECT count(*) FROM {_fq('gold_document_extractions')}) docs,
+                   (SELECT cast(max(cda_batch_ts) AS string) FROM {_fq('bronze_gw_cc_claim')}) last_batch,
+                   (SELECT cast(max(report_date) AS string) FROM {_fq('bronze_gw_cc_claim')}) last_report,
+                   (SELECT count(*) FROM {_fq('bronze_gw_cc_claim')}) claims"""))[0]
+        out["quarantined_claims"] = int(m.get("qc") or 0)
+        out["quarantined_fraud"] = int(m.get("qf") or 0)
+        out["documents_count"] = int(m.get("docs") or 0)
+        out["freshness"] = {"last_batch": m.get("last_batch"), "last_report": m.get("last_report"),
+                            "claims": int(m.get("claims") or 0)}
     except Exception:
         out["freshness"] = {}
     out["inspectable"] = [{"table": t, "label": lab} for t, lab in _INSPECTABLE.items()]

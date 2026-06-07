@@ -588,11 +588,6 @@ function dispBanner(){ const d=state.disp; if(!d||!d.disposition)return ''; cons
   const passed=(d.rules_passed||[]).map(x=>`<span class="badge b-green" style="margin:2px">✓ ${esc(x)}</span>`).join('');
   const failed=(d.rules_failed||[]).map(x=>`<span class="badge b-red" style="margin:2px">✗ ${esc(x)}</span>`).join('');
   return `<div class="card" style="border-color:${col};border-left:4px solid ${col};margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:${col}">${head}</b><span class="muted">model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} · ${pct(d.model_confidence)}</span></div><div style="margin:8px 0">${passed} ${failed}</div><p style="font-size:13px;color:#334155;margin:4px 0 0">${esc(d.reasoning||'')}</p><p class="muted" style="margin-top:6px">The model + workflow decided. No agent has pay authority.</p></div>`; }
-function reasoningTrail(){ const rs=state.reason; if(rs===null)return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">Loading…</p></div>';
-  if(!rs.length)return '<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail</h2><p class="muted">No persisted reasoning for this claim yet.</p></div>';
-  const order=['Claim 360 / Dossier','Fraud','Challenge','Recovery / Subrogation','Audit / Reasoning']; const sorted=[...rs].sort((a,b)=>order.indexOf(a.agent_name)-order.indexOf(b.agent_name));
-  const ICON={'Claim 360 / Dossier':'📋','Fraud':'🛡️','Challenge':'⚖️','Recovery / Subrogation':'💷','Audit / Reasoning':'🧾'};
-  return `<div class="card" style="margin-top:16px"><h2>🧾 Agent reasoning trail — regulator-viewable</h2>${sorted.map(r=>`<div style="border-bottom:1px solid #f4f5f8;padding:9px 0"><b style="font-size:13px">${ICON[r.agent_name]||'•'} ${esc(r.agent_name)}</b><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join('')}<p class="muted" style="margin-top:8px">Persisted to agent_reasoning_log — the Audit agent and the Governance page read this.</p></div>`; }
 function synthPill(){ const s=state.synth; if(!s||s.__err)return ''; return `<span class="pill ${s.cache==='hit'?'hit':'live'}">${s.cache==='hit'?'cached':'live'}</span>`; }
 function synthBody(){ const s=state.synth; if(!s)return '<p class="muted">Synthesising…</p>'; if(s.__err)return '<p class="muted">Synthesis unavailable.</p>'; return `<div class="md">${mdfmt(s.text)}</div>`; }
 // One audit-ready record for the claim — opens a print/save-as-PDF document with everything.
@@ -938,38 +933,6 @@ async function doTrack(){ const inp=document.getElementById('trackinput'); if(in
 
 // ============ LEARN ============
 const GLOSSARY=[['FNOL','First Notice of Loss — the moment a claim is first reported. The trigger for everything downstream.'],['Triage','Deciding how to handle a claim at FNOL: pay directly, escalate to a handler, or refer to the fraud unit (SIU).'],['Reserve','Money set aside for a claim before it is fully paid. Under-reserving means surprises later.'],['Indemnity','Putting the policyholder back where they were before the loss — the core promise of insurance.'],['Subrogation / Recovery','Recovering money from a third party (or their insurer) when they were at fault.'],['Leakage','Money paid out that need not have been — overpayment, missed recovery, or poor handling.'],['SIU','Special Investigations Unit — the fraud team a claim is referred to when signals are elevated.'],['Peril','The cause of loss — e.g. motor third-party, escape of water, storm, fire.'],['Loss ratio','Claims incurred ÷ premium earned. The headline measure of underwriting profitability.'],['Straight-through processing','A clean, low-risk claim auto-closed and paid with no manual handling — the auto-close path here.'],['Ultimate / outstanding','Ultimate = total the claim will ever cost; outstanding = what is still reserved but unpaid.'],['Consumer Duty / FCA','UK regulatory expectations — fair, explainable, auditable treatment of customers.']];
-// EY 7-stage claims value chain: [stage, what, systems, status]. status: live|partial|roadmap.
-const VALUE_CHAIN=[
-  ['FNOL','First notice of loss — digital / phone / broker','Guidewire ClaimCenter (CDA) → Databricks','live'],
-  ['Segmentation & assignment','Triage, auto-close routing, rule engine','ML triage model + workflow + R1–R5 rules','live'],
-  ['Coverage & investigation / SIU','Coverage check + fraud screen','Coverage Counsel + Fraud agent → SIU','live'],
-  ['Medical records','Injury / medical-record handling','Document extraction','roadmap'],
-  ['Litigation','Dispute & litigation routing','Litigation routing','roadmap'],
-  ['Subrogation & recovery','Recover from the third party','Recovery / Subrogation agent','live'],
-  ['Settlement','Pay, close, audit & board reporting','Finance / payments · CMS · Unity Catalog audit','partial'],
-];
-const PROV_FROM=[
-  ['Medallion ingestion → silver → gold','Databricks Smart Claims accelerator'],
-  ['Data model (telematics, accident/image, policy, claim, claim_insight)','Databricks Smart Claims accelerator'],
-  ['Damage-severity scoring from images','Databricks Smart Claims accelerator'],
-  ['Dynamic rule engine (routine vs investigate, consistency checks)','Databricks Smart Claims accelerator'],
-  ['Witness-vs-image discrepancy detection','Databricks Smart Claims accelerator'],
-  ['7-stage claims AI value chain (FNOL → … → settlement)','EY Future of Claims framework'],
-  ['CxO KPI framework (Efficiency / Effectiveness; Loss & Combined ratio, Reserve adequacy, Recovery, Leakage)','EY Future of Claims framework'],
-  ['FNOL efficiency / ROI business-case shape','EY Future of Claims framework'],
-  ['Stack: Unity Catalog, Mosaic AI, Feature Store, Model Serving, Genie, AI Functions','Databricks Smart Claims accelerator'],
-];
-const PROV_EXT=[
-  ['Guidewire ClaimCenter CDA-style ingestion','Legible to real Guidewire shops; Databricks as system of intelligence downstream of the system of record'],
-  ['Agent Bricks supervisor ("Claims AI") + specialist agents','From a single scoring model to a governed multi-agent reasoning system with a second opinion'],
-  ['Auto-close straight-through workflow + configurable risk-appetite threshold','Turns "routine vs investigate" into auto-close-and-pay with an explainable, configurable band'],
-  ['Reserving bracket model + reserve-adequacy story','Adds an actuarial dimension the accelerator doesn’t have'],
-  ['Agent-reasoning audit log + "what’s collected" governance','Makes governance the headline — lineage, sensitivity tiers (Secret/CMK), full reasoning trail'],
-  ['Persona surfaces — control tower, worklists, work-a-claim','Serves leadership, handler and intake personas, not just a notebook'],
-  ['Personal-lines scenario (motor + home), Bricksurance SE','Aligns with the EMEA personal-lines audience; consistent with the pricing & Solvency 2 demos'],
-];
-const VC_COL={live:'#10b981',partial:'#f59e0b',roadmap:'#cbd5e1'};
-const VC_TAG={live:'b-green',partial:'b-amber',roadmap:'b-slate'};
 // ============ LEARN — claims, end to end (panel walkthrough, Solvency-2 style) ============
 // Panels render top-to-bottom; the sticky TOC jumps between them. Add blocks by
 // appending to LEARN_PANELS — the TOC + agenda update automatically.
