@@ -877,18 +877,61 @@ const PROV_EXT=[
 ];
 const VC_COL={live:'#10b981',partial:'#f59e0b',roadmap:'#cbd5e1'};
 const VC_TAG={live:'b-green',partial:'b-amber',roadmap:'b-slate'};
-function renderLearn(){ document.getElementById('view').innerHTML=page('Reference','Learn — claims for Databricks colleagues','A plain-English primer to help you pitch. Skim it once and you can carry the conversation.')
-  +`<div class="card" style="margin-bottom:16px"><h2>What is a claim, really?</h2><p style="font-size:14px;color:#334155;line-height:1.65">A policyholder suffers a loss — a car bump, a burst pipe — and tells the insurer (<b>FNOL</b>). The insurer decides how to handle it (<b>triage</b>), sets money aside (<b>reserve</b>), pays what's owed (<b>settle</b>), claws back anything recoverable (<b>recover</b>), and closes the file with a full audit trail. Do this faster and fairer and you win on cost, customer experience and regulatory standing at once. That's the whole game — and it's what this workbench shows end to end.</p></div>
-  <div class="card" style="margin-bottom:16px"><h2>🔄 The claims value chain (EY 7-stage) — and where this workbench lights up</h2>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">${VALUE_CHAIN.map((f,i)=>`<div class="agcard" style="width:160px;padding:12px;border-color:${VC_COL[f[3]]}"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:12px">${i+1}. ${esc(f[0])}</b><span class="badge ${VC_TAG[f[3]]}" style="font-size:9px">${f[3]==='roadmap'?'soon':f[3]}</span></div><span class="muted" style="display:block;margin-top:3px">${esc(f[1])}</span><span style="color:var(--v7);font-size:11px;display:block;margin-top:5px">${esc(f[2])}</span></div>${i<VALUE_CHAIN.length-1?'<div style="align-self:center;color:#cbd5e1;font-size:18px">→</div>':''}`).join('')}</div>
-    <p class="muted" style="margin-top:8px">Green = live in this workbench · amber = partial · grey = roadmap. Guidewire is the system of record; Databricks is the system of intelligence; finance/payments and a CMS execute and close the loop.</p></div>
-  <div class="card" style="margin-bottom:16px"><div class="eyebrow">🏗️ Provenance & what we extended</div><h2 style="margin:4px 0 10px">Built on canonical assets, then advanced</h2>
-    <div class="grid2">
-      <div><div class="eyebrow" style="margin-bottom:6px">From the canonical assets</div><table><tr><th>Capability</th><th>Source</th></tr>${PROV_FROM.map(r=>`<tr><td style="color:#334155">${esc(r[0])}</td><td class="muted">${esc(r[1])}</td></tr>`).join('')}</table></div>
-      <div><div class="eyebrow" style="margin-bottom:6px">What we extended / added</div><table><tr><th>Extension</th><th>Why it advances the asset</th></tr>${PROV_EXT.map(r=>`<tr><td style="color:#334155">${esc(r[0])}</td><td class="muted">${esc(r[1])}</td></tr>`).join('')}</table></div>
-    </div>
-    <div class="synth" style="margin-top:12px"><p style="font-style:italic">“This isn't bespoke. It's built on Databricks' own Smart Claims accelerator and the EY claims framework — the same data model, value chain and KPIs you'd start from — extended with agentic AI, auto-close, and governance. The foundation is canonical; we advanced it.”</p></div></div>
-  <div class="card"><h2>📖 Glossary — insurance 101</h2><div class="grid2">${GLOSSARY.map(([t,d])=>`<div class="row" style="align-items:flex-start"><span class="k" style="width:160px;flex-shrink:0;font-weight:700;color:#334155">${esc(t)}</span><span style="text-align:left;color:#475569;font-size:13px">${esc(d)}</span></div>`).join('')}</div></div>`; }
+// ============ LEARN — claims, end to end (panel walkthrough, Solvency-2 style) ============
+// Panels render top-to-bottom; the sticky TOC jumps between them. Add blocks by
+// appending to LEARN_PANELS — the TOC + agenda update automatically.
+const LIFECYCLE=[
+  ['FNOL','The front door','Capture decision-grade data; set the customer\'s expectation. How much you can decide here sets the cost of everything downstream.','#7c3aed'],
+  ['Triage','Sort by what it needs','Severity × complexity → auto-pay, standard, or investigate. Sets the initial reserve bracket and the routing.','#7c3aed'],
+  ['Coverage & validation','Is it covered? Is it real?','Two different questions — the contract (peril, exclusions, limits) and the facts (did it happen as stated, is the amount right).','#2563eb'],
+  ['Reserving','Put a number on it','Money set aside for the expected ultimate cost — best estimate, not paid-so-far, not padded. Case reserves reconcile to actuarial.','#2563eb'],
+  ['Handling','Drive to resolution','Investigation, vendors, negotiation. Aging is the enemy — open claims accrue cost and litigation risk. Right work to right grade.','#64748b'],
+  ['Settlement','Agree and pay','The payout moment — basis of settlement, excess, limits, betterment. CX and leakage are decided here at once. Usually full & final.','#059669'],
+  ['Recovery','Get money back','Subrogation, salvage, reinsurance. The most under-used lever — spot it early (flag third-party at FNOL); evidence decays, deadlines are hard.','#b45309'],
+  ['Closure','Shut the file','Reserve down to paid; or Closed Without Pay. Reopen rate is the quality alarm — closing too early to hit cycle-time is metric-gaming.','#64748b'],
+];
+const FORCES=[['Indemnity','pay the right amount','b-blue'],['Expense','cost to handle it','b-slate'],['Customer','the experience','b-green'],['Fraud','keep it out','b-red']];
+function lifecycleDiagram(){
+  const flow=LIFECYCLE.map((s,i)=>`<div style="flex:0 0 auto;display:flex;align-items:stretch;gap:6px">
+     <div style="width:150px;border:1px solid ${s[3]}33;border-top:3px solid ${s[3]};border-radius:10px;padding:9px 10px;background:#fff">
+       <div style="font-size:10px;font-weight:800;color:${s[3]}">${i+1}. ${esc(s[0])}</div>
+       <div style="font-size:11px;font-weight:700;color:#0f172a;margin:2px 0">${esc(s[1])}</div>
+       <div class="muted" style="font-size:11px;line-height:1.4">${esc(s[2])}</div></div>
+     ${i<LIFECYCLE.length-1?'<div style="align-self:center;color:#cbd5e1;font-size:16px">→</div>':''}</div>`).join('');
+  return `<div style="overflow-x:auto;padding-bottom:6px"><div style="display:flex;gap:6px;min-width:max-content">${flow}</div></div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em">Every decision balances four forces that fight each other</span>${FORCES.map(f=>`<span class="badge ${f[2]}">${esc(f[0])} — ${esc(f[1])}</span>`).join('')}</div>`;
+}
+const LEARN_PANELS=[
+  {id:'lifecycle', n:1, icon:'🔄', title:'The claim lifecycle — end to end',
+   subtitle:'FNOL to closure. The front of the claim decides the cost of the claim.',
+   body:`<p><b>Claims is where the insurance promise actually gets paid</b> — and it's the single biggest cost line an insurer has. A policyholder suffers a loss, reports it, and the insurer decides how to handle it, sets money aside, pays what's owed, claws back anything recoverable, and closes the file with an audit trail. Do that faster and fairer and you win on cost, customer experience and regulatory standing at once.</p>
+   <p>Every decision trades off <b>four forces that fight each other</b>: paying the right amount (<i>indemnity</i>), the cost to handle it (<i>expense</i>), the customer's <i>experience</i>, and keeping <i>fraud</i> out. And one rule dominates everything: <b>the front of the claim decides the cost of the claim.</b> Triage, reserve and routing in the first hours set the trajectory — get the front door wrong and you pay for it the whole life of the claim.</p>
+   <p>Two numbers you'll see everywhere. <b>Leakage</b> — money that left the door that needn't have (missed exclusions, over-payment, missed recoveries, vendor cost): mostly self-inflicted, up to ~10% of claims spend, and the most controllable cost lever there is. And <b>Incurred = Paid + Outstanding reserve + IBNR</b> — the total expected cost of a claim, and the foundation everything financial is built on.</p>`,
+   diagram:lifecycleDiagram(),
+   links:[['See a claim worked end to end','claim'],['See where the data comes from','ingestion'],['See the book at a glance','control']]},
+];
+const LEARN_AGENDA=['FNOL — the front door (deep dive)','Triage & routing','Coverage & validation','Reserving','Handling & settlement','Recovery & closure','Fraud (a lens, not a stage)','The financial roll-up','MI & the KPI framework','Customer & regulation','The pitch — why FNOL is the whole game','Glossary'];
+function renderLearn(){ const v=document.getElementById('view');
+  const toc=`<aside style="position:sticky;top:8px;align-self:start">
+    <div class="card" style="padding:14px">
+      <div class="eyebrow">Learn</div><div style="font-weight:800;font-size:15px;margin:2px 0 10px">Claims — end to end</div>
+      <ol style="list-style:none;margin:0;padding:0;font-size:13px">${LEARN_PANELS.map(p=>`<li style="margin:2px 0"><a class="link" style="display:flex;gap:7px;align-items:flex-start;padding:5px 7px;border-radius:8px;background:var(--v100);color:var(--v7);font-weight:700" onclick="document.getElementById('lp-${p.id}').scrollIntoView({behavior:'smooth',block:'start'})"><span>${p.icon}</span><span>${p.n}. ${esc(p.title)}</span></a></li>`).join('')}</ol>
+      <div class="eyebrow" style="margin:12px 0 4px">Coming next — block by block</div>
+      <ol style="margin:0;padding-left:18px;font-size:12px;color:#94a3b8">${LEARN_AGENDA.map(a=>`<li style="margin:3px 0">${esc(a)}</li>`).join('')}</ol>
+      <p class="muted" style="font-size:10px;margin-top:10px">Each panel ends with links into the live workbench — concepts attach to real artefacts, not abstractions.</p>
+    </div></aside>`;
+  const panel=p=>`<section id="lp-${p.id}" style="margin-bottom:30px;scroll-margin-top:12px">
+    <div style="display:flex;gap:12px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
+      <div style="width:38px;height:38px;border-radius:10px;background:var(--v100);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${p.icon}</div>
+      <div><div class="eyebrow">Panel ${p.n}</div><h1 style="font-size:23px;font-weight:800;margin:2px 0 0;letter-spacing:-.01em">${esc(p.title)}</h1><p class="muted" style="font-style:italic;margin:3px 0 0">${esc(p.subtitle)}</p></div></div>
+    <div style="font-size:14px;color:#334155;line-height:1.65">${p.body}</div>
+    <div class="card" style="margin-top:14px;background:linear-gradient(135deg,#faf5ff,#fff)">${p.diagram}</div>
+    ${p.links.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${p.links.map(l=>`<button class="ghost" style="font-size:12px" onclick="go('${l[1]}')">↗ ${esc(l[0])}</button>`).join('')}</div>`:''}</section>`;
+  const closing=`<div class="card" style="background:#0f172a;color:#fff;border:0"><h2 style="color:#fff;margin:0">You've seen the lifecycle. Now look at it running.</h2>
+    <p style="color:#cbd5e1;font-size:14px;line-height:1.6;margin:8px 0 0">Open the <a class="link" style="color:#c4b5fd" onclick="go('control')">Control Tower</a> for the book at a glance, <a class="link" style="color:#c4b5fd" onclick="go('claim')">Work a claim</a> to see the front-door decision the model + agents make, or <a class="link" style="color:#c4b5fd" onclick="go('claimsai')">Claims AI</a> for the supervisor and its bench.</p></div>`;
+  v.innerHTML=page('Learn','Claims — end to end','For a Databricks colleague pitching a claims audience: a calm walk through how a claim actually works, then block by block through the forces that shape it. Each panel links into the running workbench.')
+    +`<div style="display:grid;grid-template-columns:248px 1fr;gap:24px;align-items:start">${toc}<div>${LEARN_PANELS.map(panel).join('')}${closing}</div></div>`;
+}
 
 // ============ ROADMAP ============
 function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform’s reach honestly.')+roadmapStrip(); }
