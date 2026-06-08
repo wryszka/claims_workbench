@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Claims Intelligence Workbench — Bricksurance SE</title>
 <style>
-  :root{ --v:#7c3aed; --v7:#6d28d9; --v50:#f5f3ff; --v100:#ede9fe; --ink:#0f172a; --muted:#64748b;
+  :root{ --v:#2563eb; --v7:#1d4ed8; --v50:#eff6ff; --v100:#dbeafe; --ink:#0f172a; --muted:#64748b;
          --line:#e6e8ec; --bg:#f6f7f9; --card:#fff; }
   *{ box-sizing:border-box; }
   body{ margin:0; font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; }
@@ -13,16 +13,20 @@
   /* sidebar */
   .side{ width:248px; background:#0b1220; color:#fff; display:flex; flex-direction:column; flex-shrink:0; position:sticky; top:0; height:100vh; }
   .brand{ padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; gap:11px; align-items:center; }
-  .brand .logo{ width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#a855f7);display:flex;align-items:center;justify-content:center;font-size:18px; }
+  .brand .logo{ width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#2563eb,#3b82f6);display:flex;align-items:center;justify-content:center;font-size:18px; }
   .brand b{ font-size:14px; letter-spacing:-.01em; } .brand small{ color:#8b95a7; font-size:10px; display:block; margin-top:1px; }
   .nav{ flex:1; padding:12px 10px; overflow:auto; } .navhd{ color:#566177; font-size:10px; text-transform:uppercase; letter-spacing:.1em; padding:14px 12px 5px; font-weight:700; }
   .nav a{ display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:9px; color:#aeb6c6; text-decoration:none; font-size:13.5px; cursor:pointer; font-weight:500; }
-  .nav a.on{ background:rgba(124,58,237,.22); color:#fff; font-weight:600; box-shadow:inset 0 0 0 1px rgba(124,58,237,.4); } .nav a:hover{ color:#fff; background:rgba(255,255,255,.05); }
-  .foot{ padding:12px; border-top:1px solid rgba(255,255,255,.08); display:flex; flex-direction:column; gap:8px; }
-  .fbtn{ width:100%; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.04); color:#cbd2de; border-radius:9px; padding:9px 10px; font-size:12px; font-weight:600; cursor:pointer; display:flex; gap:8px; align-items:center; justify-content:center; }
-  .fbtn:disabled{ opacity:.45; cursor:not-allowed; }
-  .fbtn.cached{ background:rgba(124,58,237,.22); color:#c4b5fd; border-color:rgba(124,58,237,.5);} .fbtn.live{ background:rgba(16,185,129,.18); color:#6ee7b7; border-color:rgba(16,185,129,.5);}
-  .fmsg{ color:#8b95a7; font-size:10px; min-height:12px; } .ftag{ color:#566177; font-size:10px; line-height:1.4; }
+  .nav a.on{ background:rgba(37,99,235,.22); color:#fff; font-weight:600; box-shadow:inset 0 0 0 1px rgba(37,99,235,.4); } .nav a:hover{ color:#fff; background:rgba(255,255,255,.05); }
+  .foot{ padding:12px; background:#fff; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:4px; }
+  .learncard{ display:flex; gap:10px; align-items:center; padding:10px 11px; margin-bottom:8px; border-radius:11px; background:#ecfdf5; border:1px solid #a7f3d0; cursor:pointer; }
+  .learncard:hover{ background:#d1fae5; } .learncard .lic{ width:30px;height:30px;border-radius:8px;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0; }
+  .learncard b{ font-size:13px; color:var(--ink); display:block; line-height:1.15; } .learncard small{ font-size:11px; color:#047857; }
+  .ctl{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 2px; }
+  .ctl-l{ font-size:12.5px; font-weight:700; color:var(--ink); } .ctl-s{ font-size:10.5px; color:var(--muted); margin-top:1px; }
+  .pill{ border:1px solid #f59e0b; background:#fffbeb; color:#b45309; border-radius:8px; padding:6px 11px; font-size:11px; font-weight:700; cursor:pointer; display:flex; gap:6px; align-items:center; white-space:nowrap; }
+  .pill:disabled{ opacity:.5; cursor:not-allowed; } .pill.gray{ border-color:var(--line); background:#fff; color:#475569; } .pill.live{ border-color:#10b981; background:#ecfdf5; color:#047857; }
+  .fmsg{ color:var(--muted); font-size:10px; min-height:12px; } .ftag{ color:#94a3b8; font-size:10px; line-height:1.4; margin-top:4px; }
   /* main */
   .main{ flex:1; display:flex; flex-direction:column; min-width:0; }
   .content{ padding:32px 40px 60px; overflow:auto; } .wrap{ max-width:1180px; margin:0 auto; }
@@ -40,7 +44,7 @@
   .b-blue{background:#dbeafe;color:#1d4ed8;} .b-green{background:#d1fae5;color:#047857;} .b-slate{background:#f1f5f9;color:#475569;} .b-amber{background:#fef3c7;color:#b45309;} .b-red{background:#fee2e2;color:#b91c1c;} .b-violet{background:var(--v100);color:var(--v7);}
   .tile{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
   .tile .l{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:700; } .tile .n{ font-size:25px; font-weight:800; margin-top:3px; letter-spacing:-.02em; } .tile .s{ font-size:11px; color:#94a3b8; margin-top:1px; }
-  .tile.hero{ background:linear-gradient(135deg,#5b21b6,#7c3aed); color:#fff; border:0; } .tile.hero .l{color:#ddd6fe;} .tile.hero .s{color:#ddd6fe;}
+  .tile.hero{ background:linear-gradient(135deg,#5b21b6,#2563eb); color:#fff; border:0; } .tile.hero .l{color:#bfdbfe;} .tile.hero .s{color:#bfdbfe;}
   .btnv{ background:var(--v); color:#fff; border:0; border-radius:9px; padding:10px 18px; font-weight:700; font-size:14px; cursor:pointer; } .btnv:disabled{opacity:.5;cursor:not-allowed;}
   .ghost{ border:1px solid #f59e0b; color:#b45309; background:#fff; border-radius:9px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; }
   input,select,textarea{ border:1px solid #cbd5e1; border-radius:9px; padding:10px 12px; font-size:14px; font-family:inherit; }
@@ -56,12 +60,12 @@
   .ask .hd b{ color:var(--v7); font-size:14px; display:flex; gap:8px; align-items:center; } .ask .hd .ro{ color:var(--v7); font-size:11px; font-weight:800; letter-spacing:.08em; }
   .ask .bd{ padding:18px; }
   .qgrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0 16px; } @media(max-width:820px){ .qgrid{grid-template-columns:1fr;} }
-  .qcell{ border:1px solid var(--line); border-radius:11px; padding:12px 14px; cursor:pointer; background:#fff; } .qcell:hover{ border-color:#c4b5fd; background:var(--v50); }
+  .qcell{ border:1px solid var(--line); border-radius:11px; padding:12px 14px; cursor:pointer; background:#fff; } .qcell:hover{ border-color:#93c5fd; background:var(--v50); }
   .qcell .q{ font-size:13.5px; color:var(--ink); font-weight:500; } .qcell .r{ font-size:12px; color:var(--v7); font-weight:600; margin-top:3px; }
   .askbox{ display:flex; gap:10px; } .askbox input{ flex:1; }
   /* agent cards */
   .agwrap{ max-width:920px; margin:0 auto; }
-  .supcard{ max-width:430px; margin:0 auto 18px; border:1.5px solid var(--v); border-radius:16px; padding:20px; text-align:center; background:linear-gradient(160deg,#faf5ff,#f5f3ff); }
+  .supcard{ max-width:430px; margin:0 auto 18px; border:1.5px solid var(--v); border-radius:16px; padding:20px; text-align:center; background:linear-gradient(160deg,#eff6ff,#eff6ff); }
   .supcard .e{ color:var(--v7); font-size:10px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; } .supcard h3{ color:var(--v7); font-size:20px; margin:4px 0 10px; }
   .supcard p{ color:#5b21b6; font-size:13px; line-height:1.55; margin:0 0 12px; } .supcard .ep{ border-top:1px solid var(--v100); padding-top:10px; font-size:12px; color:var(--v7); }
   .agcard{ border:1.5px solid var(--line); border-radius:14px; padding:16px; background:#fff; display:flex; flex-direction:column; }
@@ -70,15 +74,15 @@
   .agcard p{ font-size:12.5px; color:#475569; line-height:1.5; margin:0 0 12px; flex:1; }
   .agcard .ep{ border-top:1px solid #f1f3f6; padding-top:9px; font-size:11.5px; color:var(--muted); }
   .ac-amber{ border-color:#fcd34d; background:#fffdf5;} .ac-amber .nm{color:#b45309;} .ac-red{border-color:#fca5a5;background:#fffafa;} .ac-red .nm{color:#b91c1c;}
-  .ac-violet{border-color:#c4b5fd;background:#fbfaff;} .ac-violet .nm{color:var(--v7);} .ac-green{border-color:#6ee7b7;background:#f6fffb;} .ac-green .nm{color:#047857;}
+  .ac-violet{border-color:#93c5fd;background:#f5faff;} .ac-violet .nm{color:var(--v7);} .ac-green{border-color:#6ee7b7;background:#f6fffb;} .ac-green .nm{color:#047857;}
   .ac-slate{border-color:#cbd5e1;background:#fcfcfd;} .ac-slate .nm{color:#334155;} .ac-blue{border-color:#93c5fd;background:#f8fbff;} .ac-blue .nm{color:#1d4ed8;}
   .ac-teal{border-color:#5eead4;background:#f5fffd;} .ac-teal .nm{color:#0f766e;}
   /* decision + synth */
   .decision{ color:#fff; border-radius:11px; padding:13px; text-align:center; margin-bottom:12px; } .decision .d{ font-size:20px; font-weight:800; } .decision .c{ font-size:13px; opacity:.92; }
   .reasons{ padding-left:18px; margin:6px 0; } .reasons li{ font-size:13.5px; color:#334155; margin:3px 0; }
   .bar{ height:8px; border-radius:999px; background:#eef1f5; overflow:hidden; } .bar>div{ height:100%; }
-  .synth{ border:1px solid #ddd6fe; background:#faf8ff; border-radius:13px; padding:16px; margin-top:16px; } .synth p{ white-space:pre-wrap; line-height:1.6; font-size:14px; color:#334155; }
-  .pill{ font-size:11px; padding:2px 9px; border-radius:999px; font-weight:600; } .pill.hit{background:#ede9fe;color:#6d28d9;} .pill.live{background:#d1fae5;color:#047857;}
+  .synth{ border:1px solid #bfdbfe; background:#faf8ff; border-radius:13px; padding:16px; margin-top:16px; } .synth p{ white-space:pre-wrap; line-height:1.6; font-size:14px; color:#334155; }
+  .pill{ font-size:11px; padding:2px 9px; border-radius:999px; font-weight:600; } .pill.hit{background:#dbeafe;color:#1d4ed8;} .pill.live{background:#d1fae5;color:#047857;}
   .actions{ border:1px solid var(--line); background:#fff; border-radius:13px; padding:16px; margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   .ok{ color:#047857; font-weight:600; font-size:13px; }
   /* slider */
@@ -91,7 +95,7 @@
   .dot{ width:9px;height:9px;border-radius:50%; flex-shrink:0; }
   .ph{ background:repeating-linear-gradient(45deg,#fafbfc,#fafbfc 10px,#f1f3f6 10px,#f1f3f6 20px); border:1px dashed #cbd5e1; border-radius:11px; padding:14px; color:#94a3b8; } .ph b{ color:#64748b; display:block; font-size:13px; margin-bottom:3px; } .uc{ font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#b45309; background:#fef3c7; border-radius:999px; padding:1px 7px; }
   .disclaimer{ background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:13px 16px; font-size:12px; color:#92400e; line-height:1.5; margin-bottom:22px; }
-  .fab{ position:fixed; bottom:22px; right:22px; background:var(--v); color:#fff; border:0; border-radius:999px; padding:12px 18px; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 8px 24px rgba(124,58,237,.4); display:flex; gap:8px; align-items:center; }
+  .fab{ position:fixed; bottom:22px; right:22px; background:var(--v); color:#fff; border:0; border-radius:999px; padding:12px 18px; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 8px 24px rgba(37,99,235,.4); display:flex; gap:8px; align-items:center; }
 </style>
 </head>
 <body>
@@ -100,9 +104,10 @@
     <div class="brand" onclick="go('home')" style="cursor:pointer" title="Home"><div class="logo">🛡️</div><div><b>Claims Workbench</b><small>Bricksurance SE</small></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="foot">
-      <button class="fbtn" id="cacheBtn" onclick="toggleCache()">AI: …</button>
-      <button class="fbtn" id="resetBtn" onclick="resetDemo()">↺ Reset demo</button>
-      <div class="fmsg" id="resetMsg"></div>
+      <div class="learncard" onclick="go('learn')"><div class="lic">🎓</div><div><b>Learn</b><small>How claims handling works</small></div></div>
+      <div class="ctl"><div><div class="ctl-l">AI mode</div></div><button class="pill" id="cacheBtn" onclick="toggleCache()">…</button></div>
+      <div class="ctl"><div><div class="ctl-l">Force refresh</div><div class="ctl-s">Clear webpage cache.</div></div><button class="pill gray" onclick="location.reload()">↻ REFRESH</button></div>
+      <div class="ctl"><div><div class="ctl-l">Reset demo</div><div class="ctl-s" id="resetMsg"></div></div><button class="pill" id="resetBtn" onclick="resetDemo()">↺ RESET</button></div>
       <div class="ftag">Synthetic demo accelerator — not a Databricks product.</div>
     </div>
   </aside>
@@ -124,7 +129,6 @@ const SECTIONS=[
   {id:'ingestion',label:'📥 Ingestion',grp:'Data & Governance'},
   {id:'governance',label:'🛡️ Governance',grp:'Data & Governance'},
   {id:'claimsai',label:'🤖 Claims AI',grp:'The platform'},
-  {id:'learn',label:'🎓 Learn',grp:'The platform'},
 ];
 const state={ section:'home', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
   ct:null, lens:null, cfg:null, ask:null, asking:false, roster:null, govtab:'collected', gcid:'cc:900001', track:null, trackCid:'cc:900001',
@@ -163,9 +167,9 @@ function go(s){ state.section=s;
 // re-query #view after an await use this so a stale callback can't overwrite a new page.
 function liveView(section){ return state.section===section ? document.getElementById('view') : null; }
 async function initFoot(){ try{const d=await J('/cache-mode');state.cache=d.use_cache;}catch(e){state.cache=true;}
-  const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live');
+  const b=document.getElementById('cacheBtn'); b.className='pill'+(state.cache?'':' live'); b.textContent=state.cache?'⬡ CACHED':'● LIVE';
   try{const r=await J('/reset-status');const rb=document.getElementById('resetBtn');if(!r.available){rb.disabled=true;rb.title='Reset job not found on this workspace';}}catch(e){} }
-async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live'); }
+async function toggleCache(){ const d=await J('/cache-mode',{method:'POST',body:JSON.stringify({use_cache:!state.cache})}); state.cache=d.use_cache; const b=document.getElementById('cacheBtn'); b.className='pill'+(state.cache?'':' live'); b.textContent=state.cache?'⬡ CACHED':'● LIVE'; }
 let _rt=null;
 async function resetDemo(){ const m=document.getElementById('resetMsg'); m.textContent='Triggering…'; try{const d=await J('/reset-demo',{method:'POST',body:'{}'}); if(!d.triggered){m.textContent=d.message||'unavailable';return;} document.getElementById('resetBtn').disabled=true; pollReset(d.run_id,Date.now());}catch(e){m.textContent='unavailable';} }
 function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearInterval(_rt); const tick=async()=>{try{const r=await J('/reset-run?run_id='+rid);const mins=Math.round((Date.now()-t0)/60000);
@@ -194,7 +198,7 @@ const VS_CAPTION={
   governance:"Controls &amp; audit — what's collected, what the agents did, fair outcomes. To <b>use</b> the agents, see <b>Claims AI</b>.",
 };
 function page(eyebrow,title,lead,desc){ const vs=VS_CAPTION[state.section];
-  return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${vs?`<div style="display:inline-block;margin:0 0 10px;padding:5px 11px;border-radius:999px;background:#f3efff;color:#6d28d9;font-size:12px;font-weight:600;border:1px solid #e9defc">↔ ${vs}</div>`:''}${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
+  return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${vs?`<div style="display:inline-block;margin:0 0 10px;padding:5px 11px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600;border:1px solid #dbeafe">↔ ${vs}</div>`:''}${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
 
 // ============ HOME — landing page ============
 // Stage -> where it leads in the app (aligned to LIFECYCLE order: FNOL, Triage, Coverage,
@@ -224,11 +228,11 @@ function renderHome(){ const v=document.getElementById('view');
   const beat=(icon,title,desc,sec,col)=>`<div class="card" onclick="go('${sec}')" style="cursor:pointer;border-top:3px solid ${col}"><div style="font-size:22px">${icon}</div><h2 style="margin:6px 0 2px">${title}</h2><p class="muted" style="font-size:13px;line-height:1.5;margin:0">${desc}</p><div style="color:${col};font-size:12px;font-weight:700;margin-top:8px">open →</div></div>`;
   const beats=`<div class="eyebrow" style="margin:4px 0 8px">The three things this platform makes possible</div>
    <div class="grid3" style="margin-bottom:16px">
-     ${beat('🛰️','One platform — all data at FNOL','Every source assembled in real time, so you can decide to close or escalate at the front door.','fnol360','#7c3aed')}
+     ${beat('🛰️','One platform — all data at FNOL','Every source assembled in real time, so you can decide to close or escalate at the front door.','fnol360','#2563eb')}
      ${beat('🛡️','Governance & control','See and govern the whole process — live MI, AI/BI, and every decision and reason audited. The enabler of automation.','governance','#2563eb')}
      ${beat('🤖','AI agents that assist','A supervisor and a bench of specialists assemble the dossier, give a second opinion, catch fraud — helping handlers, never replacing them.','claimsai','#059669')}</div>`;
   const start=`<div class="card" style="background:#0f172a;color:#fff;border:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-     <div><div class="eyebrow" style="color:#c4b5fd">Start here</div><h2 style="color:#fff;margin:2px 0 0">The Control Tower — your claims book at a glance</h2><p style="color:#cbd5e1;font-size:13px;margin:6px 0 0">The four things that need attention, the daily brief, and the live auto-close dial.</p></div>
+     <div><div class="eyebrow" style="color:#93c5fd">Start here</div><h2 style="color:#fff;margin:2px 0 0">The Control Tower — your claims book at a glance</h2><p style="color:#cbd5e1;font-size:13px;margin:6px 0 0">The four things that need attention, the daily brief, and the live auto-close dial.</p></div>
      <button class="btnv" style="font-size:14px;padding:11px 20px" onclick="go('control')">🎛️ Open the Control Tower →</button></div>`;
   v.innerHTML=hero+disc+flow+beats+start;
 }
@@ -245,7 +249,7 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
   // The FOUR vital signs that matter — one efficiency win, one service risk, one money lever, one reserving risk.
   const slaT=(t.efficiency||[]).find(x=>x.key==='sla')||{};
   // Soft tinted cards keyed to a tone — bg / accent (number, icon, border). Like the solvency2 KPI strip.
-  const TINT={violet:['#f5f3ff','#7c3aed'],green:['#ecfdf5','#059669'],amber:['#fffbeb','#b45309'],red:['#fef2f2','#dc2626'],blue:['#eff6ff','#2563eb']};
+  const TINT={violet:['#eff6ff','#2563eb'],green:['#ecfdf5','#059669'],amber:['#fffbeb','#b45309'],red:['#fef2f2','#dc2626'],blue:['#eff6ff','#2563eb']};
   const PILL={green:['on target','b-green'],amber:['watch','b-amber'],red:['needs action','b-red'],info:['',null]};
   const vital=(icon,label,big,sub,tone,rag,worklist)=>{const [bg,ac]=TINT[tone]||TINT.blue; const [pl,pc]=PILL[rag]||PILL.info;
     return `<div class="card" style="background:${bg};border:1px solid ${ac}33;border-top:3px solid ${ac};padding:16px;${worklist?'cursor:pointer':''}" ${worklist?`onclick="goWork('${worklist}')"`:''}>
@@ -411,7 +415,7 @@ function trendsBody(d){ const s=d.series||[]; if(!s.length) return '<div class="
   const last=s[s.length-1], first=s[0];
   const card=(title,key,color,fmt,lower)=>{const lv=last[key],fv=first[key];const delta=(parseFloat(lv)-parseFloat(fv));const good=lower?delta<0:delta>0;return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${title}</h2><div style="font-size:20px;font-weight:800">${fmtv(lv,fmt)} <span style="font-size:12px;color:${good?'#059669':'#dc2626'}">${delta>0?'▲':'▼'}${Math.abs(Math.round(delta*10)/10)} / 12w</span></div></div><div style="margin-top:8px">${spark(s,key,color,lower)}</div></div>`;};
   return `<div class="grid2">
-      ${card('% Auto-closed','pct_auto_closed','#7c3aed','pct',false)}
+      ${card('% Auto-closed','pct_auto_closed','#2563eb','pct',false)}
       ${card('Leakage rate','leakage_rate','#f59e0b','pct',true)}
       ${card('Avg settlement (days)','avg_settle_days','#2563eb','days',true)}
       ${card('Past-SLA % of open','sla_breach_pct','#ef4444','pct',true)}
@@ -595,7 +599,7 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
     body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()
       +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place.</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
   }
-  const chips=HEROCHIPS.map(h=>`<button class="ghost" onclick="selectClaim('${h.id}')" style="text-align:left;padding:9px 13px;border-radius:11px;${h.id===state.cid?'border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,58,237,.16)':''}"><div style="font-weight:700;font-size:13px">★ ${h.id}</div><div class="muted" style="font-size:11px">${h.t}</div></button>`).join('');
+  const chips=HEROCHIPS.map(h=>`<button class="ghost" onclick="selectClaim('${h.id}')" style="text-align:left;padding:9px 13px;border-radius:11px;${h.id===state.cid?'border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.16)':''}"><div style="font-weight:700;font-size:13px">★ ${h.id}</div><div class="muted" style="font-size:11px">${h.t}</div></button>`).join('');
   const search=`<div class="card" style="margin-bottom:16px">
      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
        <div><b style="font-size:14px">🔎 Find a claim</b><div class="muted" style="font-size:12px;margin-top:2px">Type a claim id (e.g. <b>cc:900001</b>) and press Enter — or pick one of the demo claims below.</div></div>
@@ -664,18 +668,18 @@ async function claimRecord(){ const cid=state.cid, p=state.panels||{}, d=state.d
   const now=new Date().toLocaleString('en-GB');
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Claim record ${esc(cid)}</title><style>
    *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;margin:0;padding:32px;max-width:880px;margin:0 auto}
-   .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #7c3aed;padding-bottom:10px;margin-bottom:6px}
-   .hd .t{font-size:13px;color:#7c3aed;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+   .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #2563eb;padding-bottom:10px;margin-bottom:6px}
+   .hd .t{font-size:13px;color:#2563eb;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
    h1{font-size:24px;margin:4px 0} .meta{color:#64748b;font-size:12px}
    section{margin:18px 0;page-break-inside:avoid} h2{font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:#475569;border-bottom:1px solid #e6e8ec;padding-bottom:4px}
    .r{display:flex;justify-content:space-between;gap:16px;padding:4px 0;border-bottom:1px solid #f4f5f8;font-size:13px} .k{color:#64748b} .v{font-weight:600;text-align:right}
    .banner{padding:9px 12px;border-radius:8px;font-weight:700;font-size:13px;margin:6px 0} .banner.ok{background:#ecfdf5;color:#047857;border:1px solid #6ee7b7} .banner.warn{background:#fffbeb;color:#b45309;border:1px solid #fcd34d}
    .chip{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin:2px} .chip.ok{background:#d1fae5;color:#047857} .chip.warn{background:#fee2e2;color:#b91c1c}
-   .agent{border-left:3px solid #7c3aed;padding:4px 0 4px 12px;margin:10px 0} .agent h3{font-size:13px;margin:0 0 2px}
+   .agent{border-left:3px solid #2563eb;padding:4px 0 4px 12px;margin:10px 0} .agent h3{font-size:13px;margin:0 0 2px}
    .md p{margin:6px 0;font-size:13px;line-height:1.5} .md li{font-size:13px}
    .photo{display:flex;gap:16px;align-items:flex-start} .photo img{max-width:300px;border-radius:8px;border:1px solid #e6e8ec}
    .quote{font-style:italic;color:#475569} .foot{margin-top:24px;border-top:1px solid #e6e8ec;padding-top:8px;color:#64748b;font-size:11px}
-   .noprint{margin:0 0 16px} button{background:#7c3aed;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer}
+   .noprint{margin:0 0 16px} button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer}
    @media print{.noprint{display:none}}
   </style></head><body>
    <div class="noprint"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
@@ -725,7 +729,7 @@ async function renderMyQueue(){ const v=document.getElementById('view'); const h
   const monitor=`<div class="card" style="border-left:4px solid var(--v);margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:13px">🛰️ Monitoring agent — your morning brief</b><span class="pill live">live</span></div><p style="font-size:14px;color:#334155;line-height:1.5;margin:0">${esc(q.summary||'')}</p></div>`;
   const RANK={today:'Ranked by fraud score, then £ exposure',week:'Ranked by £ exposure',later:'Ranked by time open'};
   const bucketCard=b=>`<div class="card" style="border-top:3px solid ${QTONE[b.tone]||'#94a3b8'}"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(b.title)}</h2><span class="badge b-slate">${b.count}</span></div><p class="muted" style="margin:4px 0 2px">${esc(b.blurb)}</p>${RANK[b.key]?`<p class="muted" style="margin:0 0 12px;font-size:11px">↕ ${RANK[b.key]}</p>`:'<div style="height:10px"></div>'}${b.items.length?b.items.map(qRow).join(''):'<p class="muted">Nothing here right now.</p>'}</div>`;
-  const howCard=`<div class="card" style="margin-bottom:16px;background:#fbfaff;border-color:#e9defc">
+  const howCard=`<div class="card" style="margin-bottom:16px;background:#f5faff;border-color:#dbeafe">
     <b style="font-size:13px">ⓘ How your queue is built</b>
     <p class="muted" style="margin:6px 0 8px;font-size:13px">The triage model and your agents sift the whole open book down to the claims that need a senior, then <b>group</b> them into three bands and <b>rank</b> within each. The coloured tags on every claim tell you exactly why it landed where it did.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -734,7 +738,7 @@ async function renderMyQueue(){ const v=document.getElementById('view'); const h
       <div style="flex:1 1 210px;border-left:3px solid #94a3b8;padding:6px 10px;background:#fff;border-radius:8px"><b style="font-size:12px">When you can</b><div class="muted" style="font-size:11.5px">Routine claims progressing within SLA. Ranked by time open.</div></div>
     </div>
     <p class="muted" style="margin:8px 0 0;font-size:11.5px">So a claim is <b>top of the list</b> when it's an SIU referral or high fraud in <b>today</b> — that's why ★ cc:900001 leads. Demo heroes (★) are always pinned to the top of <b>today</b>.</p></div>`;
-  const assignCard=`<div class="card" style="margin-bottom:12px;background:#fbfaff;border-color:#e9defc">
+  const assignCard=`<div class="card" style="margin-bottom:12px;background:#f5faff;border-color:#dbeafe">
     <b style="font-size:13px">ⓘ How claims reach a handler</b>
     <p class="muted" style="margin:6px 0 8px;font-size:13px">A claim is matched to the right handler the moment it's triaged — not picked off a shared pile. The factors a routing engine should weigh:</p>
     <div style="display:flex;gap:7px;flex-wrap:wrap;font-size:11.5px">
@@ -893,7 +897,7 @@ async function renderIngestion(){ const v=document.getElementById('view');
     +tiles+sourceCard+`<div id="dsslot">${dsDetailCard()}</div>`+scorecard+dimCard+quarCard+analyticsCard+inspectCard+docCard+layers;
 }
 function dsDetailCard(){
-  if(state.dsLoading){ return `<div class="card" style="margin-bottom:16px;border-color:#ddd6fe;background:#faf8ff"><p class="muted">Loading <span class="mono">${esc(state.dsLoading)}</span>…</p></div>`; }
+  if(state.dsLoading){ return `<div class="card" style="margin-bottom:16px;border-color:#bfdbfe;background:#faf8ff"><p class="muted">Loading <span class="mono">${esc(state.dsLoading)}</span>…</p></div>`; }
   const d=state.dsDetail; if(!d) return '';
   if(d.error){ return `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><b>Dataset detail</b><a class="link" onclick="closeDataset()">✕ close</a></div><p class="muted">${esc(d.error)}</p></div>`; }
   const s=d.source||{}, o=d.ownership||{}, fr=d.freshness||{}, ul=ucLink(s.table_name);
@@ -907,7 +911,7 @@ function dsDetailCard(){
   const quar=q
     ? `<div style="margin-top:10px"><b style="font-size:13px;color:#b45309">${num(q.total)} row(s) quarantined</b> <span class="muted" style="font-size:11px">held back, never deleted · <span class="mono">${esc(q.table)}</span></span><div style="margin-top:6px">${(q.reasons||[]).map(r=>`<span class="badge b-amber" style="cursor:pointer;margin:2px 4px 2px 0" onclick="drillQuar('${esc(r.reason)}');var el=document.getElementById('quarCard');if(el)el.scrollIntoView({behavior:'smooth'})">${esc(r.reason)} · ${num(r.count)}</span>`).join('')}</div><div class="muted" style="font-size:11px;margin-top:4px">Click a reason to see the actual rows in the quarantine drill below.</div></div>`
     : `<p class="muted" style="font-size:12px;margin:10px 0 0">No DROP rules on this feed — nothing quarantined.</p>`;
-  return `<div class="card" style="margin-bottom:16px;border-color:#c4b5fd;background:#fcfbff">
+  return `<div class="card" style="margin-bottom:16px;border-color:#93c5fd;background:#f5faff">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div class="eyebrow">Dataset · ${esc(o.domain||'')}</div><h2 style="margin:2px 0">${esc(s.source_name)}</h2><div class="muted" style="font-size:12px">${esc(s.system)} · ${esc(s.format)} · via <b>${esc(s.databricks_tool)}</b>${ul?` · <a class="link" href="${ul}" target="_blank">${esc(s.table_name)} ↗</a>`:` · <span class="mono">${esc(s.table_name)}</span>`}</div></div><a class="link" onclick="closeDataset()">✕ close</a></div>
     <div class="grid3" style="margin-top:12px">
       <div class="card" style="margin:0"><h2>🕒 Freshness</h2><div style="font-size:16px;font-weight:800">${esc((fr.last||'—').slice(0,16))}</div><div class="muted" style="font-size:11px">last ${fr.column?`<span class="mono">${esc(fr.column)}</span>`:'load'} · ${num(fr.rows)} rows</div></div>
@@ -1051,8 +1055,8 @@ const GLOSSARY=[['FNOL','First Notice of Loss — the moment a claim is first re
 // Panels render top-to-bottom; the sticky TOC jumps between them. Add blocks by
 // appending to LEARN_PANELS — the TOC + agenda update automatically.
 const LIFECYCLE=[
-  ['FNOL','The front door','Capture decision-grade data; set the customer\'s expectation. How much you can decide here sets the cost of everything downstream.','#7c3aed'],
-  ['Triage','Sort by what it needs','Severity × complexity → auto-pay, standard, or investigate. Sets the initial reserve bracket and the routing.','#7c3aed'],
+  ['FNOL','The front door','Capture decision-grade data; set the customer\'s expectation. How much you can decide here sets the cost of everything downstream.','#2563eb'],
+  ['Triage','Sort by what it needs','Severity × complexity → auto-pay, standard, or investigate. Sets the initial reserve bracket and the routing.','#2563eb'],
   ['Coverage & validation','Is it covered? Is it real?','Two different questions — the contract (peril, exclusions, limits) and the facts (did it happen as stated, is the amount right).','#2563eb'],
   ['Reserving','Put a number on it','Money set aside for the expected ultimate cost — best estimate, not paid-so-far, not padded. Case reserves reconcile to actuarial.','#2563eb'],
   ['Handling','Drive to resolution','Investigation, vendors, negotiation. Aging is the enemy — open claims accrue cost and litigation risk. Right work to right grade.','#64748b'],
@@ -1061,7 +1065,7 @@ const LIFECYCLE=[
   ['Closure','Shut the file','Reserve down to paid; or Closed Without Pay. Reopen rate is the quality alarm — closing too early to hit cycle-time is metric-gaming.','#64748b'],
 ];
 const FORCES=[['Indemnity','pay the right amount','b-blue'],['Expense','cost to handle it','b-slate'],['Customer','the experience','b-green'],['Fraud','keep it out','b-red']];
-const _lcard=(t,s,col)=>`<div style="flex:1;min-width:155px;border:1px solid var(--line);border-top:3px solid ${col||'#7c3aed'};border-radius:10px;padding:11px;background:#fff"><b style="font-size:12px">${t}</b><div class="muted" style="font-size:11px;margin-top:3px;line-height:1.45">${s}</div></div>`;
+const _lcard=(t,s,col)=>`<div style="flex:1;min-width:155px;border:1px solid var(--line);border-top:3px solid ${col||'#2563eb'};border-radius:10px;padding:11px;background:#fff"><b style="font-size:12px">${t}</b><div class="muted" style="font-size:11px;margin-top:3px;line-height:1.45">${s}</div></div>`;
 const _lrow=(...c)=>`<div style="display:flex;gap:8px;flex-wrap:wrap">${c.join('')}</div>`;
 const _lflow=(arr,cls)=>`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${arr.map((s,i)=>`<span class="badge ${cls||'b-violet'}" style="font-size:11px">${s}</span>${i<arr.length-1?'<span style="color:#cbd5e1">→</span>':''}`).join('')}</div>`;
 const _lnote=(t)=>`<div style="margin-top:10px;background:var(--v100);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--v7);font-weight:600">💡 ${t}</div>`;
@@ -1085,7 +1089,7 @@ const LEARN_PANELS=[
    links:[['See a claim worked end to end','claim'],['See where the data comes from','ingestion'],['See the book at a glance','control']]},
   {id:'fnol',n:2,icon:'📞',title:'FNOL — the front door',subtitle:'Two jobs: capture decision-grade data, and set the expectation.',
    body:`<p><b>First Notice of Loss</b> is where the claim is first reported — phone, digital, or broker. The quality of what's captured here sets the trajectory of everything downstream.</p><p>FNOL has only two jobs: capture decision-grade data, and set the customer's expectation. The prize is <i>how much you can decide at FNOL</i>. Thin capture is the original sin — it means re-interviewing the customer, the wrong reserve, the wrong routing, leakage, and a poor experience.</p>`,
-   diagram:_lrow(_lcard('Capture decision-grade data','Policy, history, third-party, weather, fraud, telematics, similar claims — assembled at the moment of the call.','#7c3aed'),_lcard('Set the expectation','Tell the customer what happens next. This is the truth moment for renewal.','#2563eb'))+_lnote('The prize: the more you capture at FNOL, the more you can decide at FNOL — that is the whole lever.'),
+   diagram:_lrow(_lcard('Capture decision-grade data','Policy, history, third-party, weather, fraud, telematics, similar claims — assembled at the moment of the call.','#2563eb'),_lcard('Set the expectation','Tell the customer what happens next. This is the truth moment for renewal.','#2563eb'))+_lnote('The prize: the more you capture at FNOL, the more you can decide at FNOL — that is the whole lever.'),
    links:[['See the 360° enrichment','ingestion'],['See a claim assembled','claim']]},
   {id:'triage',n:3,icon:'🔀',title:'Triage — sort every claim by what it needs',subtitle:'Severity × complexity. Automate low/low; your best people on high/high.',
    body:`<p>Route each claim to fast-track / auto-pay, standard handling, or complex / investigate. Think in two axes — <b>severity</b> (how costly) and <b>complexity</b> (how hard). Skill-routing — right peril, right jurisdiction — matters as much as the bucket, and triage sets the initial reserve bracket.</p><p>Where it goes wrong: outdated segmentation, mis-routing, a low fraud-catch rate, over- or under-triage.</p>`,
@@ -1133,7 +1137,7 @@ const LEARN_PANELS=[
    links:[['See Governance','governance']]},
   {id:'pitch',n:14,icon:'🎯',title:'The pitch — FNOL is the whole game',subtitle:'Two layers. The agent escalates but never auto-approves.',
    body:`<p>Everything downstream is decided at the front door, so the highest-leverage thing in claims is getting more right at FNOL. And that's a <b>Databricks</b> problem specifically: rich FNOL is data-integration + real-time enrichment + AI — assemble policy, history, third-party, weather, fraud, telematics and similar claims, instantly, at the moment of the call. Guidewire is the system of record; the lakehouse is the system of intelligence.</p><p>The auto-close rate = data completeness × claim simplicity at a chosen risk appetite — and you raise it by <b>adding data, not loosening the threshold</b>. Personal lines (high-volume, homogeneous) has a higher ceiling than specialty. Governance is what makes a high auto-close rate deployable in a regulated market.</p>`,
-   diagram:_lrow(_lcard('Layer 1 — the engine (deterministic)','Assemble data · ML (fraud, severity, triage, reserve) · rules · risk-appetite thresholds. Decides what auto-closes.','#7c3aed'),_lcard('Layer 2 — the second opinion (agent)','Pulls the threads together, reasons in human terms, and challenges the layer-1 call.','#2563eb'))+_lnote('Safety asymmetry: the agent can escalate but never auto-approve — it can only add caution. That is what makes a high auto-close rate defensible.'),
+   diagram:_lrow(_lcard('Layer 1 — the engine (deterministic)','Assemble data · ML (fraud, severity, triage, reserve) · rules · risk-appetite thresholds. Decides what auto-closes.','#2563eb'),_lcard('Layer 2 — the second opinion (agent)','Pulls the threads together, reasons in human terms, and challenges the layer-1 call.','#2563eb'))+_lnote('Safety asymmetry: the agent can escalate but never auto-approve — it can only add caution. That is what makes a high auto-close rate defensible.'),
    links:[['See the FNOL decision','claim'],['See the AI layer','claimsai']]},
   {id:'glossary',n:15,icon:'📖',title:'Glossary',subtitle:'The vocabulary you will hear in any claims room.',
    body:`<p class="muted">Plain-English definitions for the terms used across this course and the workbench.</p>`,
@@ -1157,7 +1161,7 @@ function renderLearn(){ const v=document.getElementById('view'); const n=LEARN_P
       <div style="width:42px;height:42px;border-radius:11px;background:var(--v100);display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">${p.icon}</div>
       <div><div class="eyebrow">Slide ${p.n} of ${n}</div><h1 style="font-size:25px;font-weight:800;margin:2px 0 0;letter-spacing:-.01em">${esc(p.title)}</h1><p class="muted" style="font-style:italic;margin:4px 0 0">${esc(p.subtitle)}</p></div></div>
     <div style="font-size:14px;color:#334155;line-height:1.65">${p.body}</div>
-    ${p.diagram?`<div class="card" style="margin-top:16px;background:linear-gradient(135deg,#faf5ff,#fff)">${p.diagram}</div>`:''}
+    ${p.diagram?`<div class="card" style="margin-top:16px;background:linear-gradient(135deg,#eff6ff,#fff)">${p.diagram}</div>`:''}
     ${links}
     <div style="flex:1"></div>${nav}</div>`;
   v.innerHTML=page('The platform','Learn claims','How a claim actually works, end to end — as a slide deck. Jump with the list, or step through with Next. Each slide links into the running workbench.')
