@@ -153,7 +153,15 @@ function mdfmt(s){ if(!s)return ''; let t=esc(s);
 async function J(p,o){const r=await fetch('/api'+p,{headers:{'Content-Type':'application/json'},...o});if(!r.ok)throw new Error(r.status);return r.json();}
 
 function renderNav(){ let h='',g=''; for(const s of SECTIONS){ if(s.grp!==g){g=s.grp;h+=`<div class="navhd">${g}</div>`;} h+=`<a class="${state.section===s.id?'on':''}" onclick="go('${s.id}')">${s.label}</a>`; } document.getElementById('nav').innerHTML=h; }
-function go(s){ state.section=s; renderNav(); render(); window.scrollTo(0,0); }
+function go(s){ state.section=s;
+  // Cancel any in-flight render that's still writing to the screen you just left: swap
+  // #view for a fresh node, so a slow async render that resolves *after* you navigate
+  // writes into a now-detached element instead of clobbering the page you're on.
+  const ov=document.getElementById('view'); if(ov){ ov.replaceWith(ov.cloneNode(false)); }
+  renderNav(); render(); window.scrollTo(0,0); }
+// Returns #view only while `section` is still the active screen — sync sub-views that
+// re-query #view after an await use this so a stale callback can't overwrite a new page.
+function liveView(section){ return state.section===section ? document.getElementById('view') : null; }
 async function initFoot(){ try{const d=await J('/cache-mode');state.cache=d.use_cache;}catch(e){state.cache=true;}
   const b=document.getElementById('cacheBtn'); b.className='fbtn '+(state.cache?'cached':'live'); b.textContent='AI: '+(state.cache?'cached':'live');
   try{const r=await J('/reset-status');const rb=document.getElementById('resetBtn');if(!r.available){rb.disabled=true;rb.title='Reset job not found on this workspace';}}catch(e){} }
@@ -456,7 +464,7 @@ async function renderClaimsAI(){ const v=document.getElementById('view');
   if(!state.roster){ try{state.roster=await J('/agents');}catch(e){state.roster={agents:[],genie:[],supervisor:{}};} }
   renderClaimsAIView();
 }
-function renderClaimsAIView(){ const v=document.getElementById('view'); const a=state.ask, r=state.roster||{};
+function renderClaimsAIView(){ const v=liveView('claimsai'); if(!v)return; const a=state.ask, r=state.roster||{};
   let ans=''; if(a){ ans = a.loading?'<p class="muted" style="margin-top:12px">Routing through the supervisor…</p>'
       : a.__err?'<p class="muted" style="margin-top:12px">Ask unavailable.</p>'
       : `<div class="synth" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">Answer</b><span class="pill ${a.cache==='hit'?'hit':'live'}">${a.cache==='hit'?'cached':'live'}</span></div><div class="md">${mdfmt(a.text)}</div>${a.supervisor?'':'<p class="muted" style="font-size:11px;margin-top:8px">via Context agent — managed Supervisor pending (RUNBOOK Stage C).</p>'}</div>`; }
@@ -562,7 +570,7 @@ async function selectClaim(cid,first){ state.cid=cid; state.panels=null; state.s
   try{state.synth=await J('/claim/synthesis?cid='+encodeURIComponent(cid));}catch(e){state.synth={__err:true};}
   renderClaimView();
 }
-function renderClaimView(){ const v=document.getElementById('view'); const p=state.panels;
+function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=state.panels;
   const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}">${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
   let body=''; if(!p){body='<p class="muted">Loading claim…</p>';}
   else if(p.__err){body='<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c">Could not load this claim.</div>';}
@@ -736,7 +744,7 @@ async function renderNewClaim(){ const v=document.getElementById('view');
   renderNewClaimView();
 }
 function selectPreset(k){ const m=state.nc.meta; const p=(m.presets||[]).find(x=>x.key===k)||{}; state.nc.presetKey=k; state.nc.inputs={...p}; state.nc.result=null; renderNewClaimView(); }
-function renderNewClaimView(){ const v=document.getElementById('view'); const nc=state.nc, m=nc.meta, i=nc.inputs||{};
+function renderNewClaimView(){ const v=liveView('newclaim'); if(!v)return; const nc=state.nc, m=nc.meta, i=nc.inputs||{};
   const presetPills=(m.presets||[]).map(p=>`<button class="${p.key===nc.presetKey?'btnv':'ghost'}" style="padding:6px 12px;font-size:12px;margin:0 6px 6px 0" onclick="selectPreset('${p.key}')">${esc(p.label)}</button>`).join('');
   const hint=(m.presets||[]).find(p=>p.key===nc.presetKey)?.hint||'';
   const perilOpts=NC_PERILS.map(o=>`<option value="${o[0]}" ${o[0]===i.peril_type?'selected':''}>${o[1]}</option>`).join('');
@@ -867,6 +875,7 @@ async function renderIngestion(){ const v=document.getElementById('view');
     <div>${tabChips}</div>${sm?(sm.label?`<div class="eyebrow" style="margin-top:10px">${esc(sm.label)} · <span class="mono">${esc(sm.table)}</span></div>`:''):'<p class="muted" style="margin-top:8px">Select a feed above.</p>'}${sampleTbl}</div>`;
   // --- freshness strip ---
   const layers=`<div class="card"><h2>🧱 Medallion freshness</h2><div class="grid3">${(d.layers||[]).map(L=>`<div style="padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin:4px 0"><b style="font-size:13px">${esc(L.layer)}</b> <span class="muted" style="font-size:11px">${esc(L.desc)}</span><div style="font-size:18px;font-weight:800;margin-top:2px">${num(L.rows)}</div><div class="muted mono" style="font-size:10px">${esc(L.table)}</div></div>`).join('')}</div><p class="muted" style="margin-top:6px">Auto Loader handles schema evolution; Unity Catalog tracks lineage end to end. Landing 120,003 → Bronze 118,824 is the quality gate at work.</p></div>`;
+  if(state.section!=='ingestion')return;
   v.innerHTML=page('Data & Governance','Ingestion — every channel into one governed lakehouse',ING_LEAD)
     +`<div class="card" style="margin-bottom:16px"><h2>🔗 The medallion path</h2><div style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${chain.map((c,i)=>`<span class="badge ${i<2?'b-slate':i<3?'b-amber':i<4?'b-blue':'b-green'}">${esc(c)}</span>${i<chain.length-1?'<span class="muted">→</span>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Batch (Guidewire CDA), streaming (telematics), file-arrival (photos) and connectors (weather, fraud) all converge on the same governed medallion.</p></div>`
     +tiles+sourceCard+dsDetailCard()+scorecard+dimCard+quarCard+analyticsCard+inspectCard+docCard+layers;
