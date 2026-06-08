@@ -835,16 +835,10 @@ async function renderIngestion(){ const v=document.getElementById('view');
     <p class="muted" style="margin:0 0 8px">Beyond the pipeline contract — completeness, uniqueness, referential integrity, timeliness and plausibility, profiled live on the silver layer.</p>
     <div class="grid3">${prof.map(p=>`<div style="padding:9px 11px;border:1px solid var(--line);border-left:3px solid ${p.status==='pass'?'#10b981':'#f59e0b'};border-radius:9px;margin:4px 0"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">${esc(p.dimension)}</b><span class="badge ${p.status==='pass'?'b-green':'b-amber'}" style="font-size:9px">${p.status.toUpperCase()}</span></div><div style="font-size:16px;font-weight:800;margin:2px 0">${esc(p.value)}</div><div class="muted" style="font-size:11px">${esc(p.check)}</div></div>`).join('')}</div>
     <p class="muted" style="margin-top:6px">Timeliness reads amber by design — this synthetic book carries long reporting lags, exactly the kind of signal a DQ board should surface.</p></div>`:'';
-  // --- quarantine drill ---
-  const qr=state.quar||{reasons:[],rows:[]};
-  const reasonChips=(qr.reasons||[]).map(r=>`<span class="badge ${qr.reason===r.reason?'b-amber':'b-slate'}" style="cursor:pointer;margin:2px 4px 2px 0" onclick="drillQuar('${esc(r.reason)}')">${esc(r.reason)} · ${num(r.count)}</span>`).join('');
-  let qrows='';
-  if(qr.reason && (qr.rows||[]).length){ const keys=Object.keys(qr.rows[0]).filter(k=>k!=='at');
-    qrows=`<table style="margin-top:8px"><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr>${qr.rows.map(r=>`<tr>${keys.map(k=>`<td class="${k.includes('reason')?'':'mono'}" style="font-size:12px">${esc(k.includes('incurred')?gbp(r[k]):r[k])}</td>`).join('')}</tr>`).join('')}</table><p class="muted" style="margin-top:6px">These exact rows were held back — visible, queryable, never deleted.</p>`;}
-  else if(qr.reason){ qrows='<p class="muted" style="margin-top:8px">No rows.</p>'; }
+  // --- quarantine drill (chips + rows live in #quarslot; drillQuar updates only that slot) ---
   const quarCard=`<div class="card" id="quarCard" style="border-color:#6ee7b7;background:#f6fffb;margin-bottom:16px"><h2>🚦 No silent data loss — inspect what failed</h2>
     <p style="margin:0 0 8px"><b>Bad records are quarantined, not dropped.</b> Pick a failure reason to see the actual rows your data team can audit:</p>
-    <div>${reasonChips||'<span class="muted">No quarantine reasons found.</span>'}</div>${qrows}</div>`;
+    <div id="quarslot">${quarInner()}</div></div>`;
   // --- unstructured spotlight ---
   const docRow=x=>`<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8">
     <div style="flex:0 0 30px;font-size:18px">${x.doc_type==='photo'?'🖼️':'📄'}</div>
@@ -864,21 +858,16 @@ async function renderIngestion(){ const v=document.getElementById('view');
       <div><div class="eyebrow" style="margin-bottom:4px">Claims by channel</div>${hbars(an.by_channel,'channel','n')}</div></div>
     <div class="grid2" style="margin-top:10px"><div><div class="eyebrow" style="margin-bottom:4px">By reported amount</div>${hbars(an.amount_bands,'band','n')}</div>
       <div><div class="eyebrow" style="margin-bottom:4px">Volume ingested / month (12m)</div>${monthBars}</div></div></div>`:'';
-  // --- inspect the input (sample raw rows from a source table) ---
-  const sm=state.ingSample;
-  const tabChips=(d.inspectable||[]).map(t=>`<span class="badge ${sm&&sm.table===t.table?'b-violet':'b-slate'}" style="cursor:pointer;margin:2px 4px 2px 0" onclick="loadSample('${esc(t.table)}')">${esc(t.label)}</span>`).join('');
-  let sampleTbl='';
-  if(sm&&!sm.error&&(sm.rows||[]).length){ sampleTbl=`<div style="overflow-x:auto;margin-top:8px"><table style="font-size:11px"><tr>${sm.columns.map(c=>`<th class="mono">${esc(c)}</th>`).join('')}</tr>${sm.rows.map(r=>`<tr>${sm.columns.map(c=>`<td class="mono" style="white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c])}</td>`).join('')}</tr>`).join('')}</table></div>`;}
-  else if(sm&&sm.error){ sampleTbl=`<p class="muted" style="margin-top:8px">${esc(sm.error)}</p>`; }
+  // --- inspect the input (chips + sample live in #sampleslot; loadSample updates only that slot) ---
   const inspectCard=`<div class="card" style="margin-bottom:16px"><h2>🔎 Inspect the input — raw rows, exactly as ingested</h2>
     <p class="muted" style="margin:0 0 6px">Pick a source feed to see a live sample straight from bronze, including the CDA batch timestamp and bronze ingest time. No exports, no copies — query the governed table in place.</p>
-    <div>${tabChips}</div>${sm?(sm.label?`<div class="eyebrow" style="margin-top:10px">${esc(sm.label)} · <span class="mono">${esc(sm.table)}</span></div>`:''):'<p class="muted" style="margin-top:8px">Select a feed above.</p>'}${sampleTbl}</div>`;
+    <div id="sampleslot">${sampleInner()}</div></div>`;
   // --- freshness strip ---
   const layers=`<div class="card"><h2>🧱 Medallion freshness</h2><div class="grid3">${(d.layers||[]).map(L=>`<div style="padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin:4px 0"><b style="font-size:13px">${esc(L.layer)}</b> <span class="muted" style="font-size:11px">${esc(L.desc)}</span><div style="font-size:18px;font-weight:800;margin-top:2px">${num(L.rows)}</div><div class="muted mono" style="font-size:10px">${esc(L.table)}</div></div>`).join('')}</div><p class="muted" style="margin-top:6px">Auto Loader handles schema evolution; Unity Catalog tracks lineage end to end. Landing 120,003 → Bronze 118,824 is the quality gate at work.</p></div>`;
   if(state.section!=='ingestion')return;
   v.innerHTML=page('Data & Governance','Ingestion — every channel into one governed lakehouse',ING_LEAD)
     +`<div class="card" style="margin-bottom:16px"><h2>🔗 The medallion path</h2><div style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${chain.map((c,i)=>`<span class="badge ${i<2?'b-slate':i<3?'b-amber':i<4?'b-blue':'b-green'}">${esc(c)}</span>${i<chain.length-1?'<span class="muted">→</span>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Batch (Guidewire CDA), streaming (telematics), file-arrival (photos) and connectors (weather, fraud) all converge on the same governed medallion.</p></div>`
-    +tiles+sourceCard+dsDetailCard()+scorecard+dimCard+quarCard+analyticsCard+inspectCard+docCard+layers;
+    +tiles+sourceCard+`<div id="dsslot">${dsDetailCard()}</div>`+scorecard+dimCard+quarCard+analyticsCard+inspectCard+docCard+layers;
 }
 function dsDetailCard(){
   if(state.dsLoading){ return `<div class="card" style="margin-bottom:16px;border-color:#ddd6fe;background:#faf8ff"><p class="muted">Loading <span class="mono">${esc(state.dsLoading)}</span>…</p></div>`; }
@@ -905,10 +894,32 @@ function dsDetailCard(){
     <div class="card" style="margin:12px 0 0"><h2>✅ Quality contract &amp; errors held back</h2>${exp}${quar}</div>
   </div>`;
 }
-function openDataset(key){ state.dsLoading=key; state.dsDetail=null; renderIngestion(); J('/ingestion/dataset?key='+encodeURIComponent(key)).then(d=>{state.dsDetail=d;state.dsLoading=null;renderIngestion();var el=document.getElementById('view');if(el)el.scrollIntoView({behavior:'smooth'});}).catch(e=>{state.dsDetail={error:'unavailable'};state.dsLoading=null;renderIngestion();}); }
-function closeDataset(){ state.dsDetail=null; state.dsLoading=null; renderIngestion(); }
-async function drillQuar(reason){ try{state.quar=await J('/ingestion/quarantine?reason='+encodeURIComponent(reason));}catch(e){} renderIngestion(); }
-async function loadSample(t){ state.ingSample={table:t,loading:true}; try{state.ingSample=await J('/ingestion/sample?table='+encodeURIComponent(t));}catch(e){state.ingSample={table:t,error:'unavailable'};} renderIngestion(); }
+// Ingestion drill-downs update ONLY their own slot — no full-page re-render, so scroll
+// position is preserved and clicks respond in place (the old full re-render reset scroll
+// to the top, which felt like the click did nothing).
+function _slot(id,html){ const el=document.getElementById(id); if(el)el.innerHTML=html; }
+function quarInner(){ const qr=state.quar||{reasons:[],rows:[]};
+  const chips=(qr.reasons||[]).map(r=>`<span class="badge ${qr.reason===r.reason?'b-amber':'b-slate'}" style="cursor:pointer;margin:2px 4px 2px 0" onclick="drillQuar('${esc(r.reason)}')">${esc(r.reason)} · ${num(r.count)}</span>`).join('');
+  let rows='';
+  if(qr.reason&&(qr.rows||[]).length){ const keys=Object.keys(qr.rows[0]).filter(k=>k!=='at');
+    rows=`<table style="margin-top:8px"><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr>${qr.rows.map(r=>`<tr>${keys.map(k=>`<td class="${k.includes('reason')?'':'mono'}" style="font-size:12px">${esc(k.includes('incurred')?gbp(r[k]):r[k])}</td>`).join('')}</tr>`).join('')}</table><p class="muted" style="margin-top:6px">These exact rows were held back — visible, queryable, never deleted.</p>`;}
+  else if(qr.reason){ rows='<p class="muted" style="margin-top:8px">No rows.</p>'; }
+  return `<div>${chips||'<span class="muted">No quarantine reasons found.</span>'}</div>${rows}`;
+}
+function sampleInner(){ const d=state.ing||{}, sm=state.ingSample;
+  const chips=(d.inspectable||[]).map(t=>`<span class="badge ${sm&&sm.table===t.table?'b-violet':'b-slate'}" style="cursor:pointer;margin:2px 4px 2px 0" onclick="loadSample('${esc(t.table)}')">${esc(t.label)}</span>`).join('');
+  let tbl='';
+  if(sm&&sm.loading){ tbl='<p class="muted" style="margin-top:8px">Loading…</p>'; }
+  else if(sm&&!sm.error&&(sm.rows||[]).length){ tbl=`<div style="overflow-x:auto;margin-top:8px"><table style="font-size:11px"><tr>${sm.columns.map(c=>`<th class="mono">${esc(c)}</th>`).join('')}</tr>${sm.rows.map(r=>`<tr>${sm.columns.map(c=>`<td class="mono" style="white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c])}</td>`).join('')}</tr>`).join('')}</table></div>`;}
+  else if(sm&&sm.error){ tbl=`<p class="muted" style="margin-top:8px">${esc(sm.error)}</p>`; }
+  return `<div>${chips}</div>${sm&&sm.label?`<div class="eyebrow" style="margin-top:10px">${esc(sm.label)} · <span class="mono">${esc(sm.table)}</span></div>`:(sm?'':'<p class="muted" style="margin-top:8px">Select a feed above.</p>')}${tbl}`;
+}
+function openDataset(key){ state.dsLoading=key; state.dsDetail=null; _slot('dsslot',dsDetailCard());
+  J('/ingestion/dataset?key='+encodeURIComponent(key)).then(d=>{state.dsDetail=d;}).catch(e=>{state.dsDetail={error:'unavailable'};}).finally(()=>{state.dsLoading=null;_slot('dsslot',dsDetailCard());}); }
+function closeDataset(){ state.dsDetail=null; state.dsLoading=null; _slot('dsslot',''); }
+function drillQuar(reason){ J('/ingestion/quarantine?reason='+encodeURIComponent(reason)).then(d=>{state.quar=d;}).catch(()=>{}).finally(()=>_slot('quarslot',quarInner())); }
+function loadSample(t){ state.ingSample={table:t,loading:true}; _slot('sampleslot',sampleInner());
+  J('/ingestion/sample?table='+encodeURIComponent(t)).then(d=>{state.ingSample=d;}).catch(()=>{state.ingSample={table:t,error:'unavailable'};}).finally(()=>_slot('sampleslot',sampleInner())); }
 
 // ============ ENRICHMENT (was Transformation) ============
 // ============ GOVERNANCE (sub-tabs) ============
