@@ -723,12 +723,22 @@ async function renderMyQueue(){ const v=document.getElementById('view'); const h
     <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--v)">${q.worklist}</div><div class="muted" style="font-size:11px">on your worklist · ${num(q.total_open)} open on the book</div></div>
     <div style="text-align:right"><div style="font-size:22px;font-weight:800">${gbp(q.exposure)}</div><div class="muted" style="font-size:11px">exposure</div></div></div>`;
   const monitor=`<div class="card" style="border-left:4px solid var(--v);margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:13px">🛰️ Monitoring agent — your morning brief</b><span class="pill live">live</span></div><p style="font-size:14px;color:#334155;line-height:1.5;margin:0">${esc(q.summary||'')}</p></div>`;
-  const bucketCard=b=>`<div class="card" style="border-top:3px solid ${QTONE[b.tone]||'#94a3b8'}"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(b.title)}</h2><span class="badge b-slate">${b.count}</span></div><p class="muted" style="margin:4px 0 12px">${esc(b.blurb)}</p>${b.items.length?b.items.map(qRow).join(''):'<p class="muted">Nothing here right now.</p>'}</div>`;
+  const RANK={today:'Ranked by fraud score, then £ exposure',week:'Ranked by £ exposure',later:'Ranked by time open'};
+  const bucketCard=b=>`<div class="card" style="border-top:3px solid ${QTONE[b.tone]||'#94a3b8'}"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">${esc(b.title)}</h2><span class="badge b-slate">${b.count}</span></div><p class="muted" style="margin:4px 0 2px">${esc(b.blurb)}</p>${RANK[b.key]?`<p class="muted" style="margin:0 0 12px;font-size:11px">↕ ${RANK[b.key]}</p>`:'<div style="height:10px"></div>'}${b.items.length?b.items.map(qRow).join(''):'<p class="muted">Nothing here right now.</p>'}</div>`;
+  const howCard=`<div class="card" style="margin-bottom:16px;background:#fbfaff;border-color:#e9defc">
+    <b style="font-size:13px">ⓘ How your queue is built</b>
+    <p class="muted" style="margin:6px 0 8px;font-size:13px">The triage model and your agents sift the whole open book down to the claims that need a senior, then <b>group</b> them into three bands and <b>rank</b> within each. The coloured tags on every claim tell you exactly why it landed where it did.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="flex:1 1 210px;border-left:3px solid #ef4444;padding:6px 10px;background:#fff;border-radius:8px"><b style="font-size:12px">Needs you today</b><div class="muted" style="font-size:11.5px">Escalated / referred to SIU, fraud score &gt; 70, or past its SLA. Ranked by fraud score, then £.</div></div>
+      <div style="flex:1 1 210px;border-left:3px solid #f59e0b;padding:6px 10px;background:#fff;border-radius:8px"><b style="font-size:12px">This week</b><div class="muted" style="font-size:11.5px">High-value, or approaching the service deadline. Ranked by £ exposure.</div></div>
+      <div style="flex:1 1 210px;border-left:3px solid #94a3b8;padding:6px 10px;background:#fff;border-radius:8px"><b style="font-size:12px">When you can</b><div class="muted" style="font-size:11.5px">Routine claims progressing within SLA. Ranked by time open.</div></div>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:11.5px">So a claim is <b>top of the list</b> when it's an SIU referral or high fraud in <b>today</b> — that's why ★ cc:900001 leads. Demo heroes (★) are always pinned to the top of <b>today</b>.</p></div>`;
   const note=(q.selected==='sarah'||!q.selected)
     ? 'Sarah Chen is an illustrative persona; her queue is a curated view of the live book — the sacred demo claims are never reassigned. Click any claim to work it.'
     : `${esc(p.name||'')}'s real open caseload from the book — click any claim to work it.`;
   v.innerHTML=page('Handler view','My Queue','Your prioritised worklist — what needs you today, this week, and when you can. The triage layer and your agents have already done the sifting.')
-    +picker+personaCard+monitor+(q.buckets||[]).map(bucketCard).join('')
+    +picker+personaCard+monitor+howCard+(q.buckets||[]).map(bucketCard).join('')
     +`<p class="muted" style="text-align:center;margin-top:6px">${note}</p>`;
 }
 
