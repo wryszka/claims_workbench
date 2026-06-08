@@ -45,6 +45,8 @@ async def app_config():
     did = config.DASHBOARD_ID
     return {
         "workspace_host": host,
+        "catalog": config.CATALOG,
+        "schema": config.SCHEMA,
         "supervisor_present": bool(config.ENDPOINT_SUPERVISOR),
         "genie_space_id": gid,
         "genie_url": f"{host}/genie/rooms/{gid}" if (host and gid) else None,

@@ -493,21 +493,22 @@ async function renderFnol360(){ const v=document.getElementById('view'); const c
       <div class="muted">model: <b>${DLABEL[t.decision]||esc(t.decision)||'—'}</b> @ ${pct(t.confidence)}</div></div>
     <p class="muted" style="margin:8px 0 0">${auto?'Every signal lined up inside the risk appetite — the engine decided, no human touched it.':'One or more signals breached the band or a rule — the engine held it back for a person. The agent can add caution, never approve.'}</p></div>`;
   // sources converging — real values where we have them, illustrative for the exotic feeds
-  const srcRow=(icon,name,system,fmt,lat,val,live)=>`<div style="display:flex;gap:11px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8">
+  const srcRow=(icon,name,system,fmt,lat,val,live,table)=>{const u=table?ucLink(table):'';
+    return `<div style="display:flex;gap:11px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8">
     <div style="flex:0 0 26px;font-size:17px">${icon}</div>
-    <div style="flex:0 0 200px"><b style="font-size:12px">${name}</b><div class="muted" style="font-size:11px">${system}</div></div>
-    <div style="flex:0 0 150px"><span class="badge b-slate" style="font-size:9px">${fmt} · ${lat}</span></div>
+    <div style="flex:0 0 190px"><b style="font-size:12px">${name}</b><div class="muted" style="font-size:11px">${system}</div></div>
+    <div style="flex:0 0 130px"><span class="badge b-slate" style="font-size:9px">${fmt} · ${lat}</span></div>
     <div style="flex:1 1 auto;font-size:13px;color:#334155">${val}</div>
-    <div style="flex:0 0 auto"><span class="badge ${live?'b-green':'b-violet'}" style="font-size:9px">${live?'live':'illustrative'}</span></div></div>`;
+    <div style="flex:0 0 175px;text-align:right">${u?`<a class="link" style="font-size:10px;font-family:ui-monospace,monospace" href="${u}" target="_blank" title="Open the table in Unity Catalog">${esc(table)} ↗</a> · `:''}<span class="badge ${live?'b-green':'b-violet'}" style="font-size:9px">${live?'live':'illustrative'}</span></div></div>`;};
   const rows=[
-    srcRow('🏛️','Guidewire ClaimCenter','claim + incident · CDA','structured','batch',`${esc(PERIL[s.peril_type]||s.peril_type)} · ${gbp(s.total_incurred)} · ${esc(s.report_channel)} · ${esc(s.claim_status)}`,true),
-    srcRow('🏛️','Guidewire PolicyCenter','policy in force','structured','batch',`${esc(pol.product||x.product||'—')} · sum insured ${gbp(pol.sum_insured)} · ${pol.policy_tenure_years??'—'}yr tenure`,true),
-    srcRow('📚','Claims history (CUE)','cross-insurer register','structured','batch',`${f.prior_claims_12m??0} prior claim(s) in 12 months`,false),
-    srcRow('🛡️','Fraud intelligence','internal + Cifas / IFB','structured','batch',`fraud score <b style="color:${(f.fraud_score>70?'#dc2626':f.fraud_score>=40?'#b45309':'#047857')}">${f.fraud_score??'—'}/100</b>`,true),
-    srcRow('🌦️','Weather & peril','Met Office / flood model','structured','API',`weather composite ${x.weather_risk_composite??'—'} · flood risk ${x.flood_risk_score??'—'}`,true),
+    srcRow('🏛️','Guidewire ClaimCenter','claim + incident · CDA','structured','batch',`${esc(PERIL[s.peril_type]||s.peril_type)} · ${gbp(s.total_incurred)} · ${esc(s.report_channel)} · ${esc(s.claim_status)}`,true,'bronze_gw_cc_claim'),
+    srcRow('🏛️','Guidewire PolicyCenter','policy in force','structured','batch',`${esc(pol.product||x.product||'—')} · sum insured ${gbp(pol.sum_insured)} · ${pol.policy_tenure_years??'—'}yr tenure`,true,'bronze_gw_pc_policy'),
+    srcRow('📚','Claims history (CUE)','cross-insurer register','structured','batch',`${f.prior_claims_12m??0} prior claim(s) in 12 months`,false,'silver_claims_enriched'),
+    srcRow('🛡️','Fraud intelligence','internal + Cifas / IFB','structured','batch',`fraud score <b style="color:${(f.fraud_score>70?'#dc2626':f.fraud_score>=40?'#b45309':'#047857')}">${f.fraud_score??'—'}/100</b>`,true,'bronze_fraud_signals_raw'),
+    srcRow('🌦️','Weather & peril','Met Office / flood model','structured','API',`weather composite ${x.weather_risk_composite??'—'} · flood risk ${x.flood_risk_score??'—'}`,true,'bronze_weather_raw'),
   ];
-  if(tel&&tel.has_telematics) rows.push(srcRow('📡','Motor telematics','black-box provider','events','stream',`${tel.speed_at_incident} mph in a ${tel.posted_speed_limit} zone${tel.over_limit?' — <b style="color:#dc2626">OVER LIMIT</b>':''}${tel.harsh_braking?' · harsh braking':''}`,true));
-  if(img&&img.has_image) rows.push(srcRow('📸','FNOL photo','upload portal · vision FM','unstructured','file',`AI severity <b>${esc((img.severity||'').toUpperCase())}</b> — ${esc((img.rationale||'').slice(0,80))}`,true));
+  if(tel&&tel.has_telematics) rows.push(srcRow('📡','Motor telematics','black-box provider','events','stream',`${tel.speed_at_incident} mph in a ${tel.posted_speed_limit} zone${tel.over_limit?' — <b style="color:#dc2626">OVER LIMIT</b>':''}${tel.harsh_braking?' · harsh braking':''}`,true,'bronze_telematics'));
+  if(img&&img.has_image) rows.push(srcRow('📸','FNOL photo','upload portal · vision FM','unstructured','file',`AI severity <b>${esc((img.severity||'').toUpperCase())}</b> — ${esc((img.rationale||'').slice(0,80))}`,true,'gold_document_extractions'));
   if(home) rows.push(srcRow('🚰','Smart-home leak sensor','Hive / Nest · IoT','events','stream','flow detected 02:14 — corroborates the escape-of-water FNOL',false));
   rows.push(srcRow('📞','FNOL call transcript','contact centre · speech-to-text','unstructured','stream','entities, sentiment & fraud cues extracted from the call',false));
   const sources=`<div class="card" style="margin-bottom:16px"><h2>🔌 Every source converging on this claim — in real time</h2>
@@ -1059,7 +1060,8 @@ function renderLearn(){ const v=document.getElementById('view'); const n=LEARN_P
 function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform’s reach honestly.')+roadmapStrip(); }
 
 // ============ boot ============
-(async function(){ renderNav(); try{const cfg=await J('/config');state.host=cfg.workspace_host||'';}catch(e){} await initFoot(); await loadClaims(); render(); })();
+(async function(){ renderNav(); try{const cfg=await J('/config');state.host=cfg.workspace_host||'';state.cat=cfg.catalog||'';state.sch=cfg.schema||'';}catch(e){} await initFoot(); await loadClaims(); render(); })();
+function ucLink(table){ return (state.host&&state.cat&&state.sch&&table)?`${state.host}/explore/data/${state.cat}/${state.sch}/${table}`:''; }
 </script>
 </body>
 </html>
