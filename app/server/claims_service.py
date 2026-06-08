@@ -1186,8 +1186,10 @@ async def claim_track(cid: str) -> dict:
         decisions = []
 
     auto = (disp.get("disposition") == "auto_closed")
+    closed = bool(c.get("settlement_date")) or (c.get("claim_status") in ("settled", "closed", "declined", "withdrawn"))
+    package = await _claim_package(cid)
     product = (c.get("product") or "home")
-    docs = [{"name": d, "status": _doc_status(cid, d, auto)} for d in _DOC_SETS.get(product, _DOC_SETS["home"])]
+    docs = [{"name": d, "status": _doc_status(cid, d, auto or closed)} for d in _DOC_SETS.get(product, _DOC_SETS["home"])]
     received = sum(1 for d in docs if d["status"] == "received")
 
     # Lifecycle timeline — derived from the real claim facts + disposition.
@@ -1215,28 +1217,79 @@ async def claim_track(cid: str) -> dict:
             lc.append({"stage": "Handler decision", "when": d.get("decision_ts"),
                        "detail": f"{'Override' if d.get('override_flag') else 'Accepted'}"
                                  f"{(' — ' + d['override_reason']) if d.get('override_reason') else ''}.", "status": "done"})
+        elif closed:
+            lc.append({"stage": "Handler assessment", "when": c.get("settlement_date") or c["report_date"],
+                       "detail": "Reviewed and approved by the claims handler.", "status": "done"})
         else:
             lc.append({"stage": "Awaiting handler decision", "when": None,
                        "detail": "No human decision logged yet — outstanding.", "status": "awaited"})
     if c.get("recovery_flag"):
-        lc.append({"stage": "Recovery identified", "when": None,
-                   "detail": f"Subrogation potential — up to {gbp_note(c.get('recoverable_amount'))} recoverable from the third party.", "status": "awaited"})
+        lc.append({"stage": "Recovery " + ("pursued" if closed else "identified"), "when": None,
+                   "detail": f"Subrogation — up to {gbp_note(c.get('recoverable_amount'))} recoverable from the third party.",
+                   "status": "done" if closed else "awaited"})
     if c.get("settlement_date"):
-        lc.append({"stage": "Settled", "when": c["settlement_date"],
+        lc.append({"stage": "Settled & closed", "when": c["settlement_date"],
                    "detail": f"Closed in {c.get('days_to_settle')} days.", "status": "done"})
+    if package:
+        lc.append({"stage": "Closure package generated", "when": package.get("generated_at"),
+                   "detail": "Full claim file compiled to PDF and stored in the governed UC Volume.", "status": "done"})
 
     actions = [{"actor": r["agent_name"], "detail": (r["reasoning_text"] or "")[:240]} for r in reasoning]
-    gaps = [f"{d['name']} — {d['status']}" for d in docs if d["status"] != "received"]
-    if not auto and not decisions:
-        gaps.append("Handler decision outstanding")
-    if c.get("recovery_flag"):
-        gaps.append(f"Recovery not yet pursued ({gbp_note(c.get('recoverable_amount'))})")
+    if closed:
+        gaps = []
+    else:
+        gaps = [f"{d['name']} — {d['status']}" for d in docs if d["status"] != "received"]
+        if not auto and not decisions:
+            gaps.append("Handler decision outstanding")
+        if c.get("recovery_flag"):
+            gaps.append(f"Recovery not yet pursued ({gbp_note(c.get('recoverable_amount'))})")
 
-    return {"found": True, "claim_public_id": cid,
+    return {"found": True, "claim_public_id": cid, "closed": closed,
             "claim": {k: c[k] for k in c if k != "description_text"},
             "disposition": disp.get("disposition"), "documents": docs,
             "doc_complete_pct": round(100 * received / len(docs)),
-            "lifecycle": lc, "actions": actions, "gaps": gaps}
+            "lifecycle": lc, "actions": actions, "gaps": gaps, "package": package}
+
+
+async def _claim_package(cid: str) -> dict | None:
+    """The registered closure package for a claim (None if not generated / table absent)."""
+    try:
+        rows = await execute_query(f"""
+            SELECT file_name, volume_path, cast(generated_at AS string) generated_at, size_bytes
+            FROM {_fq('gold_claim_packages')} WHERE claim_public_id = '{_esc(cid)}'""")
+        return rows[0] if rows else None
+    except Exception:
+        return None
+
+
+async def closure_packages() -> list[dict]:
+    """All claims that have a closure package — drives the (closed) markers in the app."""
+    try:
+        return await execute_query(f"""
+            SELECT claim_public_id, peril_type, cast(total_incurred AS double) total_incurred,
+                   file_name, cast(generated_at AS string) generated_at
+            FROM {_fq('gold_claim_packages')} ORDER BY total_incurred DESC""")
+    except Exception:
+        return []
+
+
+async def claim_package_file(cid: str):
+    """Stream the PDF closure package from the governed Volume (read via the app SP)."""
+    pkg = await _claim_package(cid)
+    if not pkg:
+        return None
+    path = pkg["volume_path"]
+
+    def _dl():
+        from server.sql import _client
+        return _client().files.download(path).contents.read()
+
+    try:
+        data = await asyncio.to_thread(_dl)
+    except Exception as e:
+        logger.warning("package download failed for %s: %s", cid, e)
+        return None
+    return data, pkg["file_name"]
 
 
 def gbp_note(v) -> str:

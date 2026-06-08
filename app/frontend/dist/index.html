@@ -954,10 +954,14 @@ async function renderGovFair(el){ if(!state.claims.length) await loadClaims();
     </div>
     <div style="display:flex;gap:10px;margin-top:12px"><div class="tile" style="flex:1;border-left:3px solid #f59e0b"><div class="l">Vulnerability watch — distress perils open</div><div class="n">${num(w.distress_open)}</div><div class="s">home fire (open) — handle with care</div></div>
       <div class="tile" style="flex:1"><div class="l">Repeat customers (3+ claims/12m)</div><div class="n">${num(w.repeat_customers)}</div><div class="s">check for vulnerability / fair value</div></div></div></div>
-    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🤝 Consumer-Duty Reviewer — on a claim</h2>
-      <select onchange="state.gcid=this.value;renderGovFairOpinion()" style="min-width:200px">${state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.gcid?'selected':''}>${esc(c.claim_public_id)}</option>`).join('')}</select></div>
-      <div id="govfairop" style="margin-top:8px"><button class="btnv" onclick="renderGovFairOpinion()">Run fair-outcomes review</button></div></div>`;
+    <div class="card"><h2 style="margin:0 0 4px">🤝 Consumer-Duty Reviewer — on a claim</h2>
+      <p class="muted" style="margin:0 0 8px">Search any claim to run the reviewer. The demo cases below are pre-loaded (cached), so a review shows straight away — no need to trigger it.</p>
+      <div style="display:flex;gap:8px"><input id="fairinput" placeholder="Claim number, e.g. cc:900001" value="${esc(state.gcid)}" style="flex:1" onkeydown="if(event.key==='Enter')doFair()"><button class="btnv" onclick="doFair()">Review</button></div>
+      <div style="margin-top:9px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Demo cases</div>${['cc:900001','cc:900002','cc:900003'].map(c=>`<span class="badge b-violet" style="cursor:pointer;margin:2px" onclick="state.gcid='${c}';var fi=document.getElementById('fairinput');if(fi)fi.value='${c}';renderGovFairOpinion()">${c}</span>`).join('')}</div>
+      <div id="govfairop" style="margin-top:10px"></div></div>`;
+  renderGovFairOpinion();
 }
+function doFair(){ const i=document.getElementById('fairinput'); if(i){let v=(i.value||'').trim(); if(v){ if(!/^cc:/i.test(v)&&/^\d+$/.test(v))v='cc:'+v; state.gcid=v.toLowerCase(); }} renderGovFairOpinion(); }
 async function renderGovFairOpinion(){ const el=document.getElementById('govfairop'); if(!el)return; el.innerHTML='<p class="muted">Reviewing…</p>';
   try{const r=await J('/claim/expert?cid='+encodeURIComponent(state.gcid)+'&role=conduct'); el.innerHTML=r.text?`<div class="synth"><div style="display:flex;justify-content:space-between"><b style="font-size:13px">🤝 Consumer-Duty Reviewer · ${esc(state.gcid)}</b><span class="pill ${r.cache==='hit'?'hit':'live'}">${r.cache==='hit'?'cached':'live'}</span></div><p>${esc(r.text)}</p></div>`:'<p class="muted">Unavailable.</p>';}catch(e){el.innerHTML='<p class="muted">Unavailable.</p>';}
 }
@@ -985,10 +989,13 @@ async function renderGovReasoning(){ const el=document.getElementById('govreason
   el.innerHTML=rs.length?rs.map(r=>`<div style="border-bottom:1px solid #f4f5f8;padding:9px 0"><b style="font-size:13px">${esc(r.agent_name)}</b> <span class="muted">${esc(r.created_ts||'')}</span><p style="font-size:13px;color:#334155;white-space:pre-wrap;margin:4px 0 0">${esc(r.reasoning_text)}</p></div>`).join(''):'<p class="muted">No persisted reasoning for this claim.</p>';
 }
 async function renderGovTrack(el){ if(!state.claims.length) await loadClaims();
+  if(!state.pkgs){ try{state.pkgs=await J('/claim/packages');}catch(e){state.pkgs=[];} }
+  const closedChips=(state.pkgs||[]).map(p=>`<span class="badge b-green" style="cursor:pointer;margin:2px" onclick="state.trackCid='${esc(p.claim_public_id)}';doTrack()">📦 ${esc(p.claim_public_id)} (closed)</span>`).join('');
   el.innerHTML=`<div class="card" style="margin-bottom:16px"><h2>📋 Track a claim end-to-end</h2>
-    <p class="muted" style="margin-bottom:10px">The whole story in one place — what came in, what was decided, what documents arrived, and what's still outstanding. Today a head of claims stitches this together by hand across systems.</p>
+    <p class="muted" style="margin-bottom:10px">The whole story in one place — what came in, what was decided, what documents arrived, and what's still outstanding. When a claim is <b>closed (resolved)</b>, the full file is compiled into a single <b>PDF closure package</b> and kept in a governed Unity Catalog Volume.</p>
     <div style="display:flex;gap:8px"><input id="trackinput" placeholder="Claim number, e.g. cc:900001" value="${esc(state.trackCid)}" style="flex:1" onkeydown="if(event.key==='Enter')doTrack()"><button class="btnv" onclick="doTrack()">Track</button></div>
-    <div style="margin-top:8px">${state.claims.slice(0,6).map(c=>`<span class="badge b-violet" style="cursor:pointer;margin:2px" onclick="state.trackCid='${esc(c.claim_public_id)}';doTrack()">${esc(c.claim_public_id)}</span>`).join('')}</div></div>
+    ${closedChips?`<div style="margin-top:11px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Closed claims — closure package ready</div>${closedChips}</div>`:''}
+    <div style="margin-top:9px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Other claims (in flight)</div>${state.claims.slice(0,6).map(c=>`<span class="badge b-violet" style="cursor:pointer;margin:2px" onclick="state.trackCid='${esc(c.claim_public_id)}';doTrack()">${esc(c.claim_public_id)}</span>`).join('')}</div></div>
     <div id="trackbody"></div>`;
   doTrack();
 }
@@ -1000,9 +1007,12 @@ async function doTrack(){ const inp=document.getElementById('trackinput'); if(in
   const docs=d.documents.map(x=>`<div class="doc"><span class="dot" style="background:${SC[x.status]}"></span><span style="flex:1">${esc(x.name)}</span><span class="badge ${x.status==='received'?'b-green':x.status==='awaited'?'b-amber':'b-red'}">${esc(x.status)}</span></div>`).join('');
   const acts=d.actions.length?d.actions.map(a=>`<div style="border-bottom:1px solid #f4f5f8;padding:7px 0"><b style="font-size:12.5px">${esc(a.actor)}</b><p style="font-size:12.5px;color:#475569;margin:2px 0 0">${esc(a.detail)}</p></div>`).join(''):'<p class="muted">No agent actions recorded.</p>';
   const gaps=d.gaps.length?`<ul style="margin:6px 0 0;padding-left:18px">${d.gaps.map(g=>`<li style="font-size:13px;color:#b45309;margin:3px 0">${esc(g)}</li>`).join('')}</ul>`:'<p class="ok">✓ Nothing outstanding — a complete, clean file.</p>';
-  b.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div><div class="eyebrow">${esc(state.trackCid)}</div><div style="font-size:18px;font-weight:800">${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</div></div>
+  b.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div><div class="eyebrow">${esc(state.trackCid)}</div><div style="font-size:18px;font-weight:800">${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</div></div>
+      ${d.closed?'<span class="badge b-green">closed</span>':''}
       <span class="badge ${d.disposition==='auto_closed'?'b-green':'b-amber'}">${esc((d.disposition||'').replace('_',' ')||'—')}</span>
-      <span class="spacer"></span><div style="text-align:right"><div class="muted">Document completeness</div><div style="font-size:20px;font-weight:800;color:${d.doc_complete_pct===100?'#059669':'#b45309'}">${d.doc_complete_pct}%</div></div></div>
+      <span class="spacer"></span>
+      ${d.package?`<a class="btnv" style="text-decoration:none" href="/api/claim/package?cid=${encodeURIComponent(state.trackCid)}" target="_blank" title="${esc(d.package.file_name||'')}">📦 Closure package (PDF)</a>`:''}
+      <div style="text-align:right"><div class="muted">Document completeness</div><div style="font-size:20px;font-weight:800;color:${d.doc_complete_pct===100?'#059669':'#b45309'}">${d.doc_complete_pct}%</div></div></div>
     <div class="grid2">
       <div class="card"><h2>🕒 Lifecycle</h2><div class="tl">${tl}</div></div>
       <div style="display:flex;flex-direction:column;gap:16px">

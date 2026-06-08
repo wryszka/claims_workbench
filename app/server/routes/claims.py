@@ -1,7 +1,7 @@
 """Claims AI API routes — thin wrappers over claims_service."""
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from utils import config
@@ -195,6 +195,21 @@ async def governance_inventory():
 @router.get("/claim/track")
 async def claim_track(cid: str):
     return await svc.claim_track(cid)
+
+
+@router.get("/claim/packages")
+async def claim_packages():
+    return await svc.closure_packages()
+
+
+@router.get("/claim/package")
+async def claim_package(cid: str):
+    res = await svc.claim_package_file(cid)
+    if not res:
+        return Response(status_code=404, content="No closure package for this claim.")
+    data, file_name = res
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{file_name}"'})
 
 
 @router.get("/agents")
