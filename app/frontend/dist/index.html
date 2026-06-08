@@ -774,21 +774,24 @@ function ncSandbox(){ const sb=state.nc.sandbox||[]; if(!sb.length)return '';
 // ============ INGESTION ============
 const ING_LEAD='Guidewire is the system of record — but a claim is also photos, telematics, weather, fraud signals and broker feeds. Every channel and format lands in one governed lakehouse, with a quality contract and no silent data loss.';
 const SRC_ICON={'System of record':'🏛️','Risk & fraud':'🛡️','Third-party enrichment':'🌦️','Telematics & IoT':'📡','Documents & photos':'📸','FNOL channels':'📞'};
-async function renderIngestion(){ const v=document.getElementById('view'); v.innerHTML=page('Data & Governance','Ingestion — every channel into one governed lakehouse',ING_LEAD,'Loading ingestion…');
-  let d; try{d=await J('/ingestion');}catch(e){v.innerHTML=page('Data & Governance','Ingestion','')+'<p class="muted">Unavailable.</p>';return;}
-  state.ing=d; let docs=[],prof=[],an={};
-  try{docs=await J('/ingestion/documents');}catch(e){}
-  try{prof=await J('/ingestion/profile');}catch(e){}
-  try{an=await J('/ingestion/analytics');}catch(e){an={};}
-  if(!state.quar){ try{state.quar=await J('/ingestion/quarantine');}catch(e){state.quar={reasons:[],rows:[]};} }
+async function renderIngestion(){ const v=document.getElementById('view');
+  if(!state.ingLoaded){ v.innerHTML=page('Data & Governance','Ingestion — every channel into one governed lakehouse',ING_LEAD,'Loading ingestion…');
+    try{state.ing=await J('/ingestion');}catch(e){v.innerHTML=page('Data & Governance','Ingestion','')+'<p class="muted">Unavailable.</p>';return;}
+    try{state.ingDocs=await J('/ingestion/documents');}catch(e){state.ingDocs=[];}
+    try{state.ingProf=await J('/ingestion/profile');}catch(e){state.ingProf=[];}
+    try{state.ingAn=await J('/ingestion/analytics');}catch(e){state.ingAn={};}
+    if(!state.quar){ try{state.quar=await J('/ingestion/quarantine');}catch(e){state.quar={reasons:[],rows:[]};} }
+    state.ingLoaded=true;
+  }
+  const d=state.ing||{}, docs=state.ingDocs||[], prof=state.ingProf||[], an=state.ingAn||{};
   const fr=d.freshness||{};
   const q=(Number(d.quarantined_claims)||0)+(Number(d.quarantined_fraud)||0);
   const chain=['Source systems','landing','bronze (DLT + quality)','silver (enriched)','gold (analytics + ML)'];
   // --- multi-source map grouped ---
   const groups={}; (d.sources||[]).forEach(s=>{(groups[s.source_group]=groups[s.source_group]||[]).push(s);});
-  const srcRow=s=>{const live=s.status==='live';
-    return `<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8;${live?'':'opacity:.55'}">
-      <div style="flex:1 1 auto"><b style="font-size:13px">${esc(s.source_name)}</b> <span class="badge ${live?'b-green':'b-slate'}" style="font-size:9px">${live?'live':'roadmap'}</span><div class="muted" style="font-size:11px">${esc(s.system)} · ${esc(s.note)}</div></div>
+  const srcRow=s=>{const live=s.status==='live'; const clk=live&&s.table_name; const on=clk&&state.dsDetail&&(state.dsDetail.source||{}).table_name===s.table_name;
+    return `<div ${clk?`onclick="openDataset('${esc(s.table_name)}')"`:''} style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f4f5f8;${live?'':'opacity:.55'}${clk?';cursor:pointer':''}${on?';background:#faf7ff':''}">
+      <div style="flex:1 1 auto"><b style="font-size:13px">${esc(s.source_name)}</b> <span class="badge ${live?'b-green':'b-slate'}" style="font-size:9px">${live?'live':'roadmap'}</span>${clk?` <span class="link" style="font-size:10px">inspect →</span>`:''}<div class="muted" style="font-size:11px">${esc(s.system)} · ${esc(s.note)}</div></div>
       <div style="flex:0 0 auto;text-align:right"><span class="badge b-violet" style="font-size:10px">${esc(s.databricks_tool)}</span><div class="muted" style="font-size:10px;margin-top:3px">${esc(s.format)} · ${esc(s.latency)}</div></div>
       <div style="flex:0 0 78px;text-align:right"><b style="font-size:13px">${s.row_count!=null?num(s.row_count):'—'}</b><div class="muted" style="font-size:10px">rows</div></div></div>`;};
   const sourceCard=`<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2>🔌 Sources feeding the lakehouse</h2><span class="muted" style="font-size:12px">${(d.sources||[]).filter(s=>s.status==='live').length} live · ${(d.sources||[]).filter(s=>s.status!=='live').length} on the roadmap</span></div>
@@ -852,8 +855,35 @@ async function renderIngestion(){ const v=document.getElementById('view'); v.inn
   const layers=`<div class="card"><h2>🧱 Medallion freshness</h2><div class="grid3">${(d.layers||[]).map(L=>`<div style="padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin:4px 0"><b style="font-size:13px">${esc(L.layer)}</b> <span class="muted" style="font-size:11px">${esc(L.desc)}</span><div style="font-size:18px;font-weight:800;margin-top:2px">${num(L.rows)}</div><div class="muted mono" style="font-size:10px">${esc(L.table)}</div></div>`).join('')}</div><p class="muted" style="margin-top:6px">Auto Loader handles schema evolution; Unity Catalog tracks lineage end to end. Landing 120,003 → Bronze 118,824 is the quality gate at work.</p></div>`;
   v.innerHTML=page('Data & Governance','Ingestion — every channel into one governed lakehouse',ING_LEAD)
     +`<div class="card" style="margin-bottom:16px"><h2>🔗 The medallion path</h2><div style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${chain.map((c,i)=>`<span class="badge ${i<2?'b-slate':i<3?'b-amber':i<4?'b-blue':'b-green'}">${esc(c)}</span>${i<chain.length-1?'<span class="muted">→</span>':''}`).join('')}</div><p class="muted" style="margin-top:8px">Batch (Guidewire CDA), streaming (telematics), file-arrival (photos) and connectors (weather, fraud) all converge on the same governed medallion.</p></div>`
-    +tiles+sourceCard+scorecard+dimCard+quarCard+analyticsCard+inspectCard+docCard+layers;
+    +tiles+sourceCard+dsDetailCard()+scorecard+dimCard+quarCard+analyticsCard+inspectCard+docCard+layers;
 }
+function dsDetailCard(){
+  if(state.dsLoading){ return `<div class="card" style="margin-bottom:16px;border-color:#ddd6fe;background:#faf8ff"><p class="muted">Loading <span class="mono">${esc(state.dsLoading)}</span>…</p></div>`; }
+  const d=state.dsDetail; if(!d) return '';
+  if(d.error){ return `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><b>Dataset detail</b><a class="link" onclick="closeDataset()">✕ close</a></div><p class="muted">${esc(d.error)}</p></div>`; }
+  const s=d.source||{}, o=d.ownership||{}, fr=d.freshness||{}, ul=ucLink(s.table_name);
+  const own=[['Data domain',o.domain],['Business owner',o.owner],['Data steward',o.steward],['Refresh / SLA',o.sla],['Sensitivity',o.pii]].filter(x=>x[1]).map(x=>`<div class="row"><span class="k">${x[0]}</span><span class="v" style="text-align:right">${esc(x[1])}</span></div>`).join('');
+  const comp=(d.completeness||[]).map(c=>{const col=c.populated>=99?'#10b981':c.populated>=95?'#f59e0b':'#ef4444';
+    return `<div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:12px"><span class="mono">${esc(c.field)}</span><span style="font-weight:700;color:${col}">${c.populated}%${c.nulls?` · ${num(c.nulls)} null`:''}</span></div><div class="bar"><div style="width:${c.populated}%;background:${col}"></div></div></div>`;}).join('');
+  const exp=(d.expectations||[]).length
+    ? `<table style="margin-top:6px"><tr><th>Expectation</th><th>Action</th><th style="text-align:right">Passed</th><th style="text-align:right">Failed</th><th style="text-align:right">Pass%</th></tr>${d.expectations.map(e=>{const drop=(e.action||'').indexOf('DROP')>=0;return `<tr style="${e.failed?'background:#fff7ed':''}"><td class="mono" style="font-size:12px">${esc(e.name)}</td><td><span class="badge ${drop?'b-red':'b-slate'}" style="font-size:9px">${esc(e.action)}</span></td><td style="text-align:right;color:#047857">${num(e.passed)}</td><td style="text-align:right;color:${e.failed?'#b45309':'#94a3b8'}">${num(e.failed)}</td><td style="text-align:right">${e.pass_rate}%</td></tr>`;}).join('')}</table>`
+    : `<p class="muted" style="font-size:12px;margin:4px 0">No DROP expectations are mapped to this feed — it flows through track-and-retain.</p>`;
+  const q=d.quarantine;
+  const quar=q
+    ? `<div style="margin-top:10px"><b style="font-size:13px;color:#b45309">${num(q.total)} row(s) quarantined</b> <span class="muted" style="font-size:11px">held back, never deleted · <span class="mono">${esc(q.table)}</span></span><div style="margin-top:6px">${(q.reasons||[]).map(r=>`<span class="badge b-amber" style="cursor:pointer;margin:2px 4px 2px 0" onclick="drillQuar('${esc(r.reason)}');var el=document.getElementById('quarCard');if(el)el.scrollIntoView({behavior:'smooth'})">${esc(r.reason)} · ${num(r.count)}</span>`).join('')}</div><div class="muted" style="font-size:11px;margin-top:4px">Click a reason to see the actual rows in the quarantine drill below.</div></div>`
+    : `<p class="muted" style="font-size:12px;margin:10px 0 0">No DROP rules on this feed — nothing quarantined.</p>`;
+  return `<div class="card" style="margin-bottom:16px;border-color:#c4b5fd;background:#fcfbff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div class="eyebrow">Dataset · ${esc(o.domain||'')}</div><h2 style="margin:2px 0">${esc(s.source_name)}</h2><div class="muted" style="font-size:12px">${esc(s.system)} · ${esc(s.format)} · via <b>${esc(s.databricks_tool)}</b>${ul?` · <a class="link" href="${ul}" target="_blank">${esc(s.table_name)} ↗</a>`:` · <span class="mono">${esc(s.table_name)}</span>`}</div></div><a class="link" onclick="closeDataset()">✕ close</a></div>
+    <div class="grid3" style="margin-top:12px">
+      <div class="card" style="margin:0"><h2>🕒 Freshness</h2><div style="font-size:16px;font-weight:800">${esc((fr.last||'—').slice(0,16))}</div><div class="muted" style="font-size:11px">last ${fr.column?`<span class="mono">${esc(fr.column)}</span>`:'load'} · ${num(fr.rows)} rows</div></div>
+      <div class="card" style="margin:0"><h2>📋 Completeness</h2>${comp||'<p class="muted" style="font-size:12px">—</p>'}</div>
+      <div class="card" style="margin:0"><h2>👤 Ownership</h2>${own||'<p class="muted" style="font-size:12px">—</p>'}</div>
+    </div>
+    <div class="card" style="margin:12px 0 0"><h2>✅ Quality contract &amp; errors held back</h2>${exp}${quar}</div>
+  </div>`;
+}
+function openDataset(key){ state.dsLoading=key; state.dsDetail=null; renderIngestion(); J('/ingestion/dataset?key='+encodeURIComponent(key)).then(d=>{state.dsDetail=d;state.dsLoading=null;renderIngestion();var el=document.getElementById('view');if(el)el.scrollIntoView({behavior:'smooth'});}).catch(e=>{state.dsDetail={error:'unavailable'};state.dsLoading=null;renderIngestion();}); }
+function closeDataset(){ state.dsDetail=null; state.dsLoading=null; renderIngestion(); }
 async function drillQuar(reason){ try{state.quar=await J('/ingestion/quarantine?reason='+encodeURIComponent(reason));}catch(e){} renderIngestion(); }
 async function loadSample(t){ state.ingSample={table:t,loading:true}; try{state.ingSample=await J('/ingestion/sample?table='+encodeURIComponent(t));}catch(e){state.ingSample={table:t,error:'unavailable'};} renderIngestion(); }
 

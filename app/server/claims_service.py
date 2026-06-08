@@ -311,6 +311,100 @@ _LAYERS = [
     ("Feature", "ML-ready", "feature_triage"),
 ]
 
+# --- Per-dataset drill-down (Ingestion screen: click a feed → freshness,
+# completeness, quality contract, errors held back, and who owns it). Ownership is
+# recorded by data domain (source_group); the per-table config picks the freshness
+# column, the quarantine sink and the key fields to profile for completeness. ---
+_DATASET_OWNER = {
+    "System of record": {"owner": "Head of Claims Operations", "steward": "Claims Data Engineering",
+                         "sla": "Guidewire CDA · hourly batch (freshness target < 2h)", "pii": "Confidential — policyholder PII"},
+    "Risk & fraud": {"owner": "Head of Counter-Fraud (SIU)", "steward": "Fraud Analytics",
+                     "sla": "Daily provider feed", "pii": "Confidential — fraud indicators"},
+    "Telematics & IoT": {"owner": "Motor Product Owner", "steward": "Telematics Platform Eng",
+                         "sla": "Streaming · seconds", "pii": "Personal — vehicle location & speed"},
+    "Third-party enrichment": {"owner": "Exposure Management", "steward": "Data Partnerships",
+                               "sla": "Daily vendor refresh", "pii": "Public / reference"},
+    "Documents & photos": {"owner": "Claims Operations", "steward": "ML Platform (vision)",
+                           "sla": "On file arrival (Auto Loader)", "pii": "Confidential — images may carry PII"},
+}
+# table -> (preferred freshness column, quarantine sink or None, [key fields to profile])
+_DATASET_CFG = {
+    "bronze_gw_cc_claim": ("cda_batch_ts", "claims", ["claim_public_id", "policy_number", "total_incurred", "loss_cause", "report_channel", "loss_date", "report_date"]),
+    "bronze_gw_pc_policy": (None, None, ["policy_number", "sum_insured", "policy_start_date", "policy_end_date"]),
+    "bronze_fraud_signals_raw": (None, "fraud", ["claim_public_id", "fraud_score", "prior_claims_12m", "signal_source"]),
+    "bronze_telematics": (None, None, ["claim_public_id", "speed_at_incident", "latitude", "longitude"]),
+    "bronze_weather_raw": (None, None, ["postcode_district", "flood_risk_score", "wind_risk_score"]),
+    "bronze_claim_documents": (None, None, ["claim_public_id", "file_name", "doc_type"]),
+}
+_TS_CANDIDATES = ["cda_batch_ts", "_bronze_ingested_at", "_ingested_at", "extracted_at", "ingest_ts", "data_vintage", "report_date"]
+
+
+async def ingestion_dataset(key: str) -> dict:
+    """Drill into one ingested feed: freshness, completeness, the quality contract it
+    is held to, the rows quarantined, and who is accountable for it."""
+    srcs = await execute_query(
+        f"""SELECT source_name, system, format, latency, databricks_tool, table_name,
+                   row_count, status, note, source_group
+            FROM {_fq('gold_ingestion_sources')} WHERE table_name = '{_esc(key)}'""")
+    if not srcs:
+        return {"error": "dataset not found"}
+    s = srcs[0]
+    grp = s.get("source_group")
+    ts_col, quar_src, key_fields = _DATASET_CFG.get(key, (None, None, []))
+    out = {"source": s, "ownership": {**_DATASET_OWNER.get(grp, {}), "domain": grp},
+           "freshness": None, "completeness": [], "expectations": [], "quarantine": None}
+    # Columns present (for safe freshness/completeness selection).
+    try:
+        cols = await execute_query(f"DESCRIBE {_fq(key)}")
+        colset = {c["col_name"] for c in cols if c.get("col_name") and not c["col_name"].startswith("#")}
+        colnames = [c for c in colset if not c.startswith("_")]
+    except Exception:
+        colset, colnames = set(), []
+    # Freshness — pick the best available timestamp column.
+    fcol = ts_col if (ts_col and ts_col in colset) else next((c for c in _TS_CANDIDATES if c in colset), None)
+    try:
+        if fcol:
+            fr = (await execute_query(f"SELECT cast(max(`{fcol}`) AS string) ts, count(*) n FROM {_fq(key)}"))[0]
+            out["freshness"] = {"column": fcol, "last": fr.get("ts"), "rows": int(fr.get("n") or 0)}
+        else:
+            n = (await execute_query(f"SELECT count(*) n FROM {_fq(key)}"))[0]
+            out["freshness"] = {"column": None, "last": None, "rows": int(n.get("n") or 0)}
+    except Exception:
+        pass
+    # Completeness on the key fields (fallback to the first few columns).
+    fields = [f for f in (key_fields or []) if f in colset] or colnames[:5]
+    if fields:
+        try:
+            sel = ", ".join(f"sum(CASE WHEN `{f}` IS NULL THEN 1 ELSE 0 END) AS n{i}" for i, f in enumerate(fields))
+            tot = (await execute_query(f"SELECT count(*) c, {sel} FROM {_fq(key)}"))[0]
+            c = int(tot.get("c") or 1)
+            for i, f in enumerate(fields):
+                nulls = int(tot.get(f"n{i}") or 0)
+                out["completeness"].append({"field": f, "populated": round(100 * (c - nulls) / max(c, 1), 2), "nulls": nulls})
+        except Exception:
+            pass
+    # The quality contract that applies to this feed (DLT expectations, mapped by table).
+    try:
+        for r in await execute_query(f"SELECT rule, passed, failed FROM {_fq('gold_ingestion_quality')}"):
+            meta = _DQ_RULE_META.get(r["rule"], (None, "track + retain"))
+            if meta[0] == key:
+                p, f = int(r["passed"]), int(r["failed"])
+                out["expectations"].append({"name": r["rule"], "action": meta[1], "passed": p, "failed": f,
+                                            "pass_rate": round(100 * p / max(p + f, 1), 2)})
+    except Exception:
+        pass
+    # Rows quarantined off this feed (held back, not dropped).
+    if quar_src:
+        tbl = "bronze_quarantine_fraud_signals" if quar_src == "fraud" else "bronze_quarantine_claims"
+        try:
+            rs = await execute_query(f"SELECT quarantine_reason reason, count(*) n FROM {_fq(tbl)} GROUP BY quarantine_reason ORDER BY n DESC")
+            out["quarantine"] = {"source": quar_src, "table": tbl,
+                                 "total": sum(int(r["n"]) for r in rs),
+                                 "reasons": [{"reason": r["reason"], "count": int(r["n"])} for r in rs]}
+        except Exception:
+            pass
+    return out
+
 
 async def ingestion_status() -> dict:
     out = {"pipeline_name": PIPELINE_NAME, "state": None, "pipeline_url": None,

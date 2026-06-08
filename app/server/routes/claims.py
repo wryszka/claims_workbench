@@ -96,6 +96,11 @@ async def ingestion_sample(table: str, limit: int = 8):
     return await svc.ingestion_sample(table, limit)
 
 
+@router.get("/ingestion/dataset")
+async def ingestion_dataset(key: str):
+    return await svc.ingestion_dataset(key)
+
+
 @router.get("/claim/enrichment")
 async def enrichment(cid: str):
     return await svc.enrichment(cid)
