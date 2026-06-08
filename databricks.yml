@@ -48,9 +48,11 @@ variables:
   triage_model_version:
     description: >-
       Registered version of model_triage_classifier the Phase 5 triage endpoint
-      serves. Set to the version your training run registered (the @champion
-      version), e.g. --var="triage_model_version=2". Default 1 = fresh deploy.
-    default: "1"
+      serves. MUST be the predict_proba relog version (06_triage_proba_relog) so the
+      endpoint returns the per-class probability ARRAY<DOUBLE> — the app derives the
+      decision + confidence% from it. A class-only version makes confidence read 0%.
+      On dev the proba @champion version is 3.
+    default: "3"
   reserve_model_version:
     description: Registered version of model_reserve_bracket the reserve endpoint serves.
     default: "1"

@@ -1189,6 +1189,7 @@
   {
    "name": "geography",
    "displayName": "Geography",
+   "pageType": "PAGE_TYPE_CANVAS",
    "layout": [
     {
      "widget": {
@@ -1225,7 +1226,7 @@
        }
       ],
       "spec": {
-       "version": 3,
+       "version": 2,
        "widgetType": "symbol-map",
        "encodings": {
         "coordinates": {
@@ -1238,20 +1239,23 @@
           "displayName": "lon"
          }
         },
-        "size": {
-         "fieldName": "claims",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "claims"
-        },
         "color": {
          "fieldName": "fraud_rate",
          "scale": {
           "type": "quantitative"
          },
          "displayName": "fraud_rate"
+        },
+        "size": {
+         "fieldName": "claims",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "claims"
         }
+       },
+       "mark": {
+        "opacity": 0.6
        },
        "frame": {
         "showTitle": true,
@@ -1301,7 +1305,7 @@
        }
       ],
       "spec": {
-       "version": 3,
+       "version": 2,
        "widgetType": "symbol-map",
        "encodings": {
         "coordinates": {
@@ -1314,20 +1318,23 @@
           "displayName": "lon"
          }
         },
-        "size": {
-         "fieldName": "claims",
-         "scale": {
-          "type": "quantitative"
-         },
-         "displayName": "claims"
-        },
         "color": {
          "fieldName": "weather_risk",
          "scale": {
           "type": "quantitative"
          },
          "displayName": "weather_risk"
+        },
+        "size": {
+         "fieldName": "claims",
+         "scale": {
+          "type": "quantitative"
+         },
+         "displayName": "claims"
         }
+       },
+       "mark": {
+        "opacity": 0.6
        },
        "frame": {
         "showTitle": true,
@@ -1369,7 +1376,7 @@
        }
       ],
       "spec": {
-       "version": 3,
+       "version": 2,
        "widgetType": "symbol-map",
        "encodings": {
         "coordinates": {
@@ -1389,6 +1396,9 @@
          },
          "displayName": "speed"
         }
+       },
+       "mark": {
+        "opacity": 0.6
        },
        "frame": {
         "showTitle": true,
