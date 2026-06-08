@@ -1105,7 +1105,48 @@ async def fraud_view() -> dict:
         SELECT claim_public_id, peril_type, total_incurred, fraud_score, prior_claims_12m, reporting_lag_days
         FROM {s} WHERE fraud_score>70 AND claim_status IN ('open','under_investigation')
         ORDER BY fraud_score DESC LIMIT 15""")
-    return {"summary": summary, "buckets": buckets, "queue": queue}
+    return {"summary": summary, "buckets": buckets, "queue": queue, "models": await fraud_models()}
+
+
+async def fraud_models() -> dict:
+    """The models behind fraud detection — the trained fraud model (card + MLflow/UC
+    links), the triage model that consumes the score, and the Fraud agent endpoint."""
+    from server.sql import _client
+    try:
+        host = (_client().config.host or "").rstrip("/")
+    except Exception:
+        host = ""
+    cat, sch = config.CATALOG, config.SCHEMA
+
+    def uc(model):
+        return f"{host}/explore/data/models/{cat}/{sch}/{model}" if host else None
+
+    out = {"fraud": None,
+           "triage": {"name": "model_triage_classifier", "uc_url": uc("model_triage_classifier"),
+                      "note": "Consumes the fraud score as a feature — drives the refer-to-SIU decision."},
+           "agent": None}
+    try:
+        rows = await execute_query(
+            f"""SELECT model_name, model_version, auc, precision_at, recall_at, base_rate,
+                       top_features, run_id, experiment_id FROM {_fq('gold_fraud_model_card')} LIMIT 1""")
+        if rows:
+            r = rows[0]; mn = (r["model_name"] or "").split(".")[-1]
+            ml = (f"{host}/ml/experiments/{r['experiment_id']}/runs/{r['run_id']}"
+                  if (host and r.get("run_id") and r.get("experiment_id")) else None)
+            out["fraud"] = {"name": mn, "version": r["model_version"], "auc": r["auc"],
+                            "precision": r["precision_at"], "recall": r["recall_at"], "base_rate": r["base_rate"],
+                            "top_features": json.loads(r["top_features"] or "[]"),
+                            "uc_url": uc(mn), "mlflow_url": ml}
+    except Exception:
+        pass
+    try:
+        eps = [e.name for e in _client().serving_endpoints.list()]
+        fa = next((n for n in eps if "agent_frau" in n), None)
+        if fa:
+            out["agent"] = {"name": fa, "url": f"{host}/ml/endpoints/{fa}" if host else None}
+    except Exception:
+        pass
+    return out
 
 
 # --------------------------------------------------------------------------

@@ -397,11 +397,36 @@ async function renderFraud(){ const v=document.getElementById('view'); v.innerHT
   const s=d.summary||{};
   const bucket=(d.buckets||[]).map(b=>`<div class="srow"><label style="width:130px">${esc(b.band)}</label><div class="bar" style="flex:1"><div style="width:${Math.min(100,(b.n/Math.max(...d.buckets.map(x=>x.n))*100))}%;background:${b.band[0]==='7'?'#ef4444':b.band[0]==='4'?'#f59e0b':'#10b981'}"></div></div><span class="val">${num(b.n)}</span></div>`).join('');
   const q=(d.queue||[]).map(r=>`<tr style="cursor:pointer" onclick="openClaim('${esc(r.claim_public_id)}')"><td class="mono link">${esc(r.claim_public_id)}</td><td>${esc(PERIL[r.peril_type]||r.peril_type)}</td><td>${gbp(r.total_incurred)}</td><td style="text-align:right;font-weight:700;color:#b91c1c">${r.fraud_score}</td><td style="text-align:right">${r.prior_claims_12m}</td><td style="text-align:right">${r.reporting_lag_days}d</td></tr>`).join('');
-  v.innerHTML=page('Fraud & SIU','Fraud & SIU','Where fraud risk concentrates, and the live queue of high-score open claims for the Special Investigations Unit.')
+  const m=d.models||{}; const fm=m.fraud;
+  const howCard=`<div class="card" style="margin-bottom:16px"><h2>🧠 How we detect fraud</h2>
+    <p class="muted" style="margin:0 0 10px">Four layers on one platform — a signal at ingest, a trained model, deterministic rules, and an AI investigator — all converging on the SIU queue.</p>
+    <div class="grid4">
+      <div class="tile" style="border-left:3px solid #2563eb"><div class="l">1 · Signal at ingest</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud-engine score</div><div class="s">Per-claim score landed in <span class="mono">bronze_fraud_signals_raw</span> from the upstream anti-fraud engine.</div></div>
+      <div class="tile" style="border-left:3px solid #2563eb"><div class="l">2 · ML model</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud propensity</div><div class="s"><span class="mono">model_fraud_detection</span> learns fraud risk from claim behaviour — see Models below.</div></div>
+      <div class="tile" style="border-left:3px solid #f59e0b"><div class="l">3 · Rule engine</div><div style="font-size:13px;font-weight:700;margin:2px 0">Risk-appetite rules</div><div class="s">R1 fraud-floor + claim-velocity + reporting-lag rules, applied deterministically.</div></div>
+      <div class="tile" style="border-left:3px solid #10b981"><div class="l">4 · AI investigator</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud agent (Mosaic AI)</div><div class="s">An LLM agent reasons over the claim + tools and writes the SIU-ready narrative.</div></div>
+    </div></div>`;
+  const modelsCard=`<div class="card" style="margin-bottom:16px"><h2>🤖 Models &amp; MLflow</h2>
+    ${fm?`<div style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px">
+       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px"><div><b style="font-size:14px" class="mono">${esc(fm.name)}</b> <span class="badge b-blue" style="font-size:9px">v${esc(fm.version)} @champion</span><div class="muted" style="font-size:12px;margin-top:3px">Gradient-boosted fraud-propensity model — predicts potential fraud from claim behaviour (deliberately excludes the raw upstream score, so it adds signal rather than re-thresholding it).</div></div>
+         <div style="display:flex;gap:8px;flex-shrink:0">${fm.uc_url?`<a class="btnv" style="text-decoration:none" href="${fm.uc_url}" target="_blank">Open in Unity Catalog ↗</a>`:''}${fm.mlflow_url?`<a class="ghost" style="text-decoration:none" href="${fm.mlflow_url}" target="_blank">MLflow run ↗</a>`:''}</div></div>
+       <div class="grid4" style="margin-top:12px">
+         <div><div class="muted" style="font-size:11px">ROC-AUC</div><div style="font-size:20px;font-weight:800;color:#059669">${fm.auc!=null?parseFloat(fm.auc).toFixed(3):'—'}</div></div>
+         <div><div class="muted" style="font-size:11px">Precision</div><div style="font-size:20px;font-weight:800">${fm.precision!=null?pct(parseFloat(fm.precision)*100):'—'}</div></div>
+         <div><div class="muted" style="font-size:11px">Recall</div><div style="font-size:20px;font-weight:800">${fm.recall!=null?pct(parseFloat(fm.recall)*100):'—'}</div></div>
+         <div><div class="muted" style="font-size:11px">Fraud base rate</div><div style="font-size:20px;font-weight:800">${fm.base_rate!=null?pct(parseFloat(fm.base_rate)*100):'—'}</div></div></div>
+       ${(fm.top_features||[]).length?`<div style="margin-top:10px"><span class="muted" style="font-size:11px">Top signals: </span>${fm.top_features.map(f=>`<span class="badge b-slate" style="font-size:10px;margin:2px">${esc(f)}</span>`).join('')}</div>`:''}
+      </div>`:'<p class="muted">Fraud model not trained yet — run notebook <span class="mono">05b_fraud_model</span>.</p>'}
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${m.triage?`<div style="flex:1 1 250px;border:1px solid var(--line);border-radius:11px;padding:11px"><b style="font-size:13px" class="mono">${esc(m.triage.name)}</b><div class="muted" style="font-size:11.5px;margin:3px 0 6px">${esc(m.triage.note)}</div>${m.triage.uc_url?`<a class="link" href="${m.triage.uc_url}" target="_blank">Open in Unity Catalog ↗</a>`:''}</div>`:''}
+      ${m.agent?`<div style="flex:1 1 250px;border:1px solid var(--line);border-radius:11px;padding:11px"><b style="font-size:13px">🕵️ Fraud agent</b><div class="muted" style="font-size:11.5px;margin:3px 0 6px">Mosaic AI agent — investigates a claim and writes the SIU narrative.</div>${m.agent.url?`<a class="link" href="${m.agent.url}" target="_blank">Open serving endpoint ↗</a>`:''}</div>`:''}
+    </div></div>`;
+  v.innerHTML=page('Fraud & SIU','Fraud & SIU','Where fraud risk concentrates, how we detect it, and the live SIU queue of high-score open claims.')
     +`<div class="grid3" style="margin-bottom:18px">
       <div class="tile"><div class="l">Refer rate</div><div class="n">${pct(s.refer_rate)}</div><div class="s">elevated-signal claims</div></div>
       <div class="tile" style="border-left:3px solid #ef4444"><div class="l">High-score open (SIU queue)</div><div class="n">${num(s.high_open)}</div><div class="s">fraud score &gt; 70</div></div>
       <div class="tile"><div class="l">Avg fraud score</div><div class="n">${s.avg_score??'—'}</div><div class="s">whole book</div></div></div>
+    ${howCard}${modelsCard}
     <div class="grid2">
       <div class="card"><h2>📊 Fraud-score distribution</h2><div style="margin-top:8px">${bucket}</div></div>
       <div class="card"><h2>🔍 SIU queue — highest score open claims</h2><table><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">Score</th><th style="text-align:right">Prior</th><th style="text-align:right">Lag</th></tr>${q||'<tr><td class="muted" colspan=6>Queue clear.</td></tr>'}</table></div></div>`;
