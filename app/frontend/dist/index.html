@@ -137,7 +137,7 @@ const state={ section:'home', host:'', cid:'cc:900001', claims:[], panels:null, 
 const gbp=v=>{const n=parseFloat(v);return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0});};
 const num=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toLocaleString('en-GB');};
 const pct=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toFixed(1)+'%';};
-const DLABEL={pay_direct:'PAY DIRECT',escalate:'ESCALATE',refer_siu:'REFER TO SIU'};
+const DLABEL={pay_direct:'FAST-TRACK',escalate:'ESCALATE',refer_siu:'REFER TO SIU'};
 const PERIL={motor_tp:'Motor Third Party',home_escape_water:'Home — Escape of Water',home_storm:'Home — Storm',home_fire:'Home — Fire'};
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Minimal, safe markdown -> HTML for agent responses (escape first, then format).
@@ -278,7 +278,7 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
     <div class="grid4" style="margin-bottom:18px">${vitals}</div>
     <div class="grid2">
       <div class="card"><h2>🗓️ Daily brief — what needs you</h2>${briefHtml()}<p class="muted" style="margin-top:8px">Prioritised from the live book — each line opens a worklist you can act on.</p></div>
-      <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to see how many claims straight-through-process. The workflow decides — no agent has pay authority.</p>
+      <div class="card"><h2>🎚️ Auto-close risk appetite — re-segment live</h2><p class="muted" style="margin-bottom:6px">Move the thresholds to trade throughput against review coverage — a wider appetite straight-through-processes more but reviews fewer. Every auto-close still passes the cover, excess and rule checks; the workflow decides — no agent has pay authority.</p>
         <div class="srow"><label>Min confidence</label><input type="range" id="s_conf" min="50" max="99" value="${Math.round(state.cfg.conf_threshold)}" oninput="segChange()"><span class="val" id="v_conf">${Math.round(state.cfg.conf_threshold)}%</span></div>
         <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
         <div class="srow"><label>Max fraud score</label><input type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
@@ -401,14 +401,14 @@ async function renderFraud(){ const v=document.getElementById('view'); v.innerHT
   const howCard=`<div class="card" style="margin-bottom:16px"><h2>🧠 How we detect fraud</h2>
     <p class="muted" style="margin:0 0 10px">Four layers on one platform — a signal at ingest, a trained model, deterministic rules, and an AI investigator — all converging on the SIU queue.</p>
     <div class="grid4">
-      <div class="tile" style="border-left:3px solid #2563eb"><div class="l">1 · Signal at ingest</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud-engine score</div><div class="s">Per-claim score landed in <span class="mono">bronze_fraud_signals_raw</span> from the upstream anti-fraud engine.</div></div>
+      <div class="tile" style="border-left:3px solid #2563eb"><div class="l">1 · Signal at ingest</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud-engine score</div><div class="s">A composite per-claim score (claim velocity, reporting lag, prior-claims pattern, bureau / CIFAS matches) landed in <span class="mono">bronze_fraud_signals_raw</span> from the upstream anti-fraud engine.</div></div>
       <div class="tile" style="border-left:3px solid #2563eb"><div class="l">2 · ML model</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud propensity</div><div class="s"><span class="mono">model_fraud_detection</span> learns fraud risk from claim behaviour — see Models below.</div></div>
       <div class="tile" style="border-left:3px solid #f59e0b"><div class="l">3 · Rule engine</div><div style="font-size:13px;font-weight:700;margin:2px 0">Risk-appetite rules</div><div class="s">R1 fraud-floor + claim-velocity + reporting-lag rules, applied deterministically.</div></div>
       <div class="tile" style="border-left:3px solid #10b981"><div class="l">4 · AI investigator</div><div style="font-size:13px;font-weight:700;margin:2px 0">Fraud agent (Mosaic AI)</div><div class="s">An LLM agent reasons over the claim + tools and writes the SIU-ready narrative.</div></div>
     </div></div>`;
   const modelsCard=`<div class="card" style="margin-bottom:16px"><h2>🤖 Models &amp; MLflow</h2>
     ${fm?`<div style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px">
-       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px"><div><b style="font-size:14px" class="mono">${esc(fm.name)}</b> <span class="badge b-blue" style="font-size:9px">v${esc(fm.version)} @champion</span><div class="muted" style="font-size:12px;margin-top:3px">Gradient-boosted fraud-propensity model — predicts potential fraud from claim behaviour (deliberately excludes the raw upstream score, so it adds signal rather than re-thresholding it).</div></div>
+       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px"><div><b style="font-size:14px" class="mono">${esc(fm.name)}</b> <span class="badge b-blue" style="font-size:9px">v${esc(fm.version)} @champion</span><div class="muted" style="font-size:12px;margin-top:3px">Gradient-boosted fraud-propensity model — predicts potential fraud from claim behaviour (deliberately excludes the raw upstream score, so it adds signal rather than re-thresholding it). Tuned for recall — it catches most fraud for SIU review; precision reflects the SIU's triage load. The score is one input alongside the rules, bureau/CIFAS matches and the agent — never an auto-decision.</div></div>
          <div style="display:flex;gap:8px;flex-shrink:0">${fm.uc_url?`<a class="btnv" style="text-decoration:none" href="${fm.uc_url}" target="_blank">Open in Unity Catalog ↗</a>`:''}${fm.mlflow_url?`<a class="ghost" style="text-decoration:none" href="${fm.mlflow_url}" target="_blank">MLflow run ↗</a>`:''}</div></div>
        <div class="grid4" style="margin-top:12px">
          <div><div class="muted" style="font-size:11px">ROC-AUC</div><div style="font-size:20px;font-weight:800;color:#059669">${fm.auc!=null?parseFloat(fm.auc).toFixed(3):'—'}</div></div>
@@ -507,7 +507,7 @@ function renderClaimsAIView(){ const v=liveView('claimsai'); if(!v)return; const
   const STEPS=[['🎯','Models decide','Triage & reserve score every claim'],['🧠','Agents reason','Specialists explain — fraud, dossier, recovery'],['🔬','Experts review','A senior second opinion on demand'],['🧾','Every step audited','Reasoning logged, regulator-viewable']];
   const howStrip=`<div class="grid4" style="margin-bottom:18px">${STEPS.map((s,i)=>`<div class="tile" style="border-left:3px solid var(--v)"><div style="font-size:20px">${s[0]}</div><div class="l" style="margin-top:2px">${s[1]}</div><div class="s">${s[2]}</div></div>`).join('')}</div>`;
   v.innerHTML=page('Claims AI','One supervisor. A bench of specialists. Every claim audited.',
-    'Ask in plain English — the supervisor classifies the question, dispatches to the right specialist, and writes a routing trace. Start with the discrepancy catch below: the FNOL photo on cc:900003 says severe, the report says £600.')
+    'Ask in plain English — the supervisor classifies the question, dispatches to the right specialist, and writes a routing trace. Start with the discrepancy catch below: the FNOL photo on cc:900003 says severe, the report says £600. Advisory only — the specialists reason, challenge and give a second opinion; validated models + rules decide and a human acts, never an agent.')
     +howStrip
     +`<div class="ask"><div class="hd"><b>🤖 Ask the supervisor</b><span class="ro">${state.cache?'CACHE: CACHED':'CACHE: LIVE'}</span></div><div class="bd">
       <p class="muted" style="margin:0 0 4px">The supervisor classifies your question and dispatches to the specialist best positioned to answer. Try one — the first is the live fraud-vs-photo catch:</p>
@@ -614,7 +614,7 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         <p style="font-size:13px;color:#475569;font-style:italic;margin-top:10px">“${esc(s.incident_description)}”</p></div>
       <div class="card"><h2>✨ AI recommendation</h2><div class="decision" style="background:${dcol}"><div class="d">${DLABEL[t.decision]||esc(t.decision)||'—'}</div><div class="c">confidence ${pct(t.confidence)}</div></div>
         <div class="muted" style="text-transform:uppercase;font-weight:700;font-size:11px">Why</div><ul class="reasons">${(t.top_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-        <div style="background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:9px"><b style="font-size:14px">Reserve: ${esc(r.bracket)||'—'}</b><div class="muted">${esc(r.estimated_range)}</div></div></div>
+        <div style="background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:9px"><b style="font-size:14px">Suggested initial reserve: ${esc(r.estimated_range)||'—'}</b><div class="muted">band ${esc(r.bracket)||'—'} · revised as the claim develops</div></div></div>
       <div class="card"><h2>🛡️ Risk &amp; recovery</h2><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="muted" style="text-transform:uppercase;font-size:11px;font-weight:700">Fraud score</span><span style="font-size:18px;font-weight:800;color:${fcol}">${isNaN(fs)?'—':fs}<span class="muted" style="font-size:11px">/100</span></span></div>
         <div class="bar" style="margin:5px 0 9px"><div style="width:${isNaN(fs)?0:Math.min(100,fs)}%;background:${fcol}"></div></div>
         <div class="row"><span class="k">Prior claims (12m)</span><span class="v">${f.prior_claims_12m??'—'}</span></div>
@@ -623,7 +623,7 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
     body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
     body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()
-      +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place.</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
+      +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place. Designed to overlay Guidewire ClaimCenter — the decision, reserve and notes write back to the system of record (integration on the roadmap).</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
   }
   const chips=HEROCHIPS.map(h=>`<button class="ghost" onclick="selectClaim('${h.id}')" style="text-align:left;padding:9px 13px;border-radius:11px;${h.id===state.cid?'border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.16)':''}"><div style="font-weight:700;font-size:13px">★ ${h.id}</div><div class="muted" style="font-size:11px">${h.t}</div></button>`).join('');
   const search=`<div class="card" style="margin-bottom:16px">
@@ -643,7 +643,7 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
 }
 const HEROCHIPS=[
   {id:'cc:900001',t:'Escalated → referred to SIU (the complex one)'},
-  {id:'cc:900002',t:'Auto-closed → paid straight through (clean & low-value)'},
+  {id:'cc:900002',t:'Fast-tracked → straight-through settlement (clean & low-value)'},
   {id:'cc:900003',t:'Photo vs. the account → investigate'},
 ];
 function doClaimSearch(){ const el=document.getElementById('claimSearch'); if(!el)return; let v=(el.value||'').trim(); if(!v)return;
@@ -665,7 +665,7 @@ function secondOpinions(){ const ops=state.expertOps||{};
 async function getExpert(role){ if(!state.expertOps)state.expertOps={}; state.expertOps[role]={loading:true}; renderClaimView();
   try{const r=await J('/claim/expert?cid='+encodeURIComponent(state.cid)+'&role='+role); state.expertOps[role]=r.error?{error:true}:r;}catch(e){state.expertOps[role]={error:true};} renderClaimView(); }
 function dispBanner(){ const d=state.disp; if(!d||!d.disposition)return ''; const auto=d.disposition==='auto_closed'; const col=auto?'#059669':'#f59e0b';
-  const head=auto?`✅ AUTO-CLOSED &amp; PAID (simulated ${gbp(d.total_incurred)})`:'⚠️ ESCALATED — routed to a handler';
+  const head=auto?`✅ STRAIGHT-THROUGH — fast-tracked to settlement · cover + excess validated (simulated ${gbp(d.total_incurred)})`:'⚠️ ESCALATED — routed to a handler';
   const passed=(d.rules_passed||[]).map(x=>`<span class="badge b-green" style="margin:2px">✓ ${esc(x)}</span>`).join('');
   const failed=(d.rules_failed||[]).map(x=>`<span class="badge b-red" style="margin:2px">✗ ${esc(x)}</span>`).join('');
   return `<div class="card" style="border-color:${col};border-left:4px solid ${col};margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px;color:${col}">${head}</b><span class="muted">model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} · ${pct(d.model_confidence)}</span></div><div style="margin:8px 0">${passed} ${failed}</div><p style="font-size:13px;color:#334155;margin:4px 0 0">${esc(d.reasoning||'')}</p><p class="muted" style="margin-top:6px">The model + workflow decided. No agent has pay authority.</p></div>`; }
@@ -682,7 +682,7 @@ async function claimRecord(){ const cid=state.cid, p=state.panels||{}, d=state.d
   const sec=(title,inner)=>`<section><h2>${title}</h2>${inner}</section>`;
   const row=(k,v)=>`<div class="r"><span class="k">${esc(k)}</span><span class="v">${v==null||v===''?'—':v}</span></div>`;
   const auto=d.disposition==='auto_closed';
-  const disp=d.disposition?`<div class="banner ${auto?'ok':'warn'}">${auto?'AUTO-CLOSED &amp; PAID (simulated '+gbp(d.total_incurred)+')':'ESCALATED — routed to a handler'} · model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} ${pct(d.model_confidence)}</div>`:'';
+  const disp=d.disposition?`<div class="banner ${auto?'ok':'warn'}">${auto?'STRAIGHT-THROUGH — fast-tracked to settlement (cover + excess validated · '+gbp(d.total_incurred)+')':'ESCALATED — routed to a handler'} · model ${esc(DLABEL[d.model_decision]||d.model_decision||'')} ${pct(d.model_confidence)}</div>`:'';
   const rules=((d.rules_passed||[]).map(z=>`<span class="chip ok">✓ ${esc(z)}</span>`).join('')+(d.rules_failed||[]).map(z=>`<span class="chip warn">✗ ${esc(z)}</span>`).join(''))||'—';
   const order=['Claim 360 / Dossier','Fraud','Challenge','Recovery / Subrogation','Audit / Reasoning'];
   const sorted=[...(rs||[])].sort((a,b)=>order.indexOf(a.agent_name)-order.indexOf(b.agent_name));
@@ -832,12 +832,12 @@ async function scoreClaim(){ const nc=state.nc;
 function ncResult(){ const r=state.nc.result; if(!r)return ''; if(r.__err)return '<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c;margin-top:16px">Scoring failed — check the model endpoints are READY.</div>';
   const auto=r.disposition==='auto_closed'; const col=auto?'#059669':'#f59e0b';
   const dcol=r.triage.decision==='refer_siu'?'#dc2626':r.triage.decision==='escalate'?'#f59e0b':'#059669';
-  const head=auto?`✅ AUTO-CLOSED &amp; PAID (simulated)`:'⚠️ ESCALATED — routed to a handler';
+  const head=auto?`✅ FAST-TRACKED — straight-through to settlement (after cover &amp; excess check)`:'⚠️ ESCALATED — routed to a handler';
   const checks=(r.checks||[]).map(c=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f4f5f8"><span style="font-size:13px">${c.passed?'✓':'✗'} <b>${esc(c.code.toUpperCase())}</b> · ${esc(c.label)}</span><span class="muted" style="font-size:12px">${esc(c.value)}</span></div>`).join('');
   return `<div class="card" style="border-color:${col};border-left:4px solid ${col};margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:16px;color:${col}">${head}</b><span class="muted">new claim ${esc(r.claim_public_id)} · ephemeral</span></div></div>
   <div class="grid3" style="margin-top:14px">
     <div class="card"><h2>✨ Triage</h2><div class="decision" style="background:${dcol}"><div class="d">${DLABEL[r.triage.decision]||esc(r.triage.decision)||'—'}</div><div class="c">confidence ${pct(r.triage.confidence)}</div></div><p class="muted" style="font-size:11px;margin-top:8px">Live from <span class="mono">${esc((r.triage.endpoint||'').slice(-30))}</span></p></div>
-    <div class="card"><h2>💰 Reserve</h2><div style="background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:14px;text-align:center"><b style="font-size:22px">${esc(r.reserve.bracket)||'—'}</b><div class="muted">${esc(r.reserve.range)}</div></div><p class="muted" style="font-size:11px;margin-top:8px">Live from <span class="mono">${esc((r.reserve.endpoint||'').slice(-30))}</span></p></div>
+    <div class="card"><h2>💰 Reserve</h2><div style="background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:14px;text-align:center"><b style="font-size:20px">${esc(r.reserve.range)||'—'}</b><div class="muted">suggested initial reserve · band ${esc(r.reserve.bracket)||'—'}</div></div><p class="muted" style="font-size:11px;margin-top:8px">Live from <span class="mono">${esc((r.reserve.endpoint||'').slice(-30))}</span></p></div>
     <div class="card"><h2>⚙️ Rule engine</h2><p class="muted" style="margin:0 0 6px">${r.fired_rules.length?('Fired: '+r.fired_rules.join(', ')):'No rules fired — clean.'}</p>${checks}</div>
   </div>
   <p class="muted" style="text-align:center;margin-top:12px">Models + the rule engine decide · the agents would reason · the human acts. This claim is sandbox-only and cleared on Reset.</p>`;
@@ -894,7 +894,7 @@ function assetDetailBody(){ const d=state.assetDetail; if(!d||d.__loading)return
 }
 function assetTabBody(d,tab){
   if(tab==='freshness'){ const h=d.freshness_history||[]; if(!h.length)return '<p class="muted">No history.</p>';
-    return `<p class="muted" style="margin:0 0 8px">SLA compliance history across reporting periods</p>
+    return `<p class="muted" style="margin:0 0 8px">SLA compliance history across reporting periods <span style="color:#94a3b8">· illustrative — the CDA feed carries only the latest batch; prior periods shown for shape</span></p>
       <table><tr><th>Period</th><th>SLA Deadline</th><th>Actual Arrival</th><th>Status</th><th style="text-align:right">Rows</th><th style="text-align:right">DQ Pass</th></tr>
       ${h.map(function(r){return `<tr><td><b>${esc(r.period)}</b></td><td>${esc(r.sla_deadline)}</td><td>${esc(r.actual_arrival)} <span style="font-size:11px;color:${r.status==='Late'?'#dc2626':'#10b981'}">${esc(r.lateness)}</span></td><td>${r.status==='Late'?'<span class="badge b-amber">Late</span>':'<span class="badge b-green">On Time</span>'}</td><td style="text-align:right">${num(r.rows)}</td><td style="text-align:right">${r.dq_pass}%</td></tr>`;}).join('')}</table>`;
   }
