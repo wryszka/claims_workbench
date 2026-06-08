@@ -403,7 +403,83 @@ async def ingestion_dataset(key: str) -> dict:
                                  "reasons": [{"reason": r["reason"], "count": int(r["n"])} for r in rs]}
         except Exception:
             pass
+    # Freshness / SLA-compliance history (the Freshness tab) — synthetic but deterministic.
+    out["freshness_history"] = _freshness_history(key, (out.get("freshness") or {}).get("rows") or 0)
+    # Data preview (the Data Preview tab) — a live sample of rows straight from the table.
+    try:
+        cols = await execute_query(f"DESCRIBE {_fq(key)}")
+        cn = [c["col_name"] for c in cols if c.get("col_name") and not c["col_name"].startswith("#")
+              and not c["col_name"].startswith("_")][:8]
+        srows = await execute_query(f"SELECT {', '.join('`' + c + '`' for c in cn)} FROM {_fq(key)} LIMIT 12")
+        out["sample"] = {"columns": cn, "rows": srows}
+    except Exception:
+        out["sample"] = {"columns": [], "rows": []}
     return out
+
+
+_LATE_ASSET = "bronze_weather_raw"   # one feed flagged Late for the demo (vendor batch slip)
+
+
+def _freshness_history(table: str, rows: int) -> list[dict]:
+    """SLA-compliance history across reporting periods (deterministic synthetic — the
+    real CDA feed only carries the latest batch, so prior periods are illustrative)."""
+    import zlib
+    h = zlib.crc32(table.encode())
+    late = (table == _LATE_ASSET)
+    periods = [
+        ("2025-Q1", "03/04/2025", "02/04/2025", "1d early", "On Time"),
+        ("2025-Q2", "03/07/2025", "02/07/2025", "1d early", "On Time"),
+        ("2025-Q3", "03/10/2025", "02/10/2025", "1d early", "On Time"),
+        ("2025-Q4", "03/01/2026", "11/01/2026" if late else "02/01/2026",
+         "8d late" if late else "1d early", "Late" if late else "On Time"),
+    ]
+    hist = []
+    for i, (per, dl, act, lat, st) in enumerate(periods):
+        rws = rows if i == 3 else int(rows * (0.55 + ((h >> (i * 4)) % 45) / 100))
+        dqp = 100.0 if ((h >> i) % 4) else round(98.4 + ((h >> (i + 2)) % 15) / 10, 1)
+        hist.append({"period": per, "sla_deadline": dl, "actual_arrival": act, "lateness": lat,
+                     "status": st, "rows": rws, "dq_pass": dqp})
+    return hist
+
+
+async def ingestion_assets() -> dict:
+    """The source-asset list (Solvency-II-style): one row per tracked Unity Catalog table
+    with source system, row count, DQ pass rate and SLA status. Click → drill (dataset)."""
+    try:
+        srcs = await execute_query(f"""
+            SELECT source_name, system, table_name, row_count, source_group
+            FROM {_fq('gold_ingestion_sources')}
+            WHERE status='live' AND table_name IS NOT NULL
+            ORDER BY source_group, source_name""")
+    except Exception:
+        srcs = []
+    # DQ pass rate per table from the DLT expectations.
+    dq = {}
+    try:
+        for r in await execute_query(f"SELECT rule, passed, failed FROM {_fq('gold_ingestion_quality')}"):
+            t = _DQ_RULE_META.get(r["rule"], (None, None))[0]
+            if not t:
+                continue
+            a = dq.setdefault(t, [0, 0])
+            a[0] += int(r["passed"]); a[1] += int(r["failed"])
+    except Exception:
+        pass
+    assets = []
+    late = issue = clean = 0
+    for s in srcs:
+        t = s["table_name"]; pf = dq.get(t)
+        dqp = round(100 * pf[0] / max(pf[0] + pf[1], 1), 1) if pf else 100.0
+        sla = "Late" if t == _LATE_ASSET else "On Time"
+        if dqp < 100:
+            status = "dq_issue"; issue += 1
+        elif sla == "Late":
+            status = "late"; late += 1
+        else:
+            status = "clean"; clean += 1
+        assets.append({"source_name": s["source_name"], "table": t, "source_system": s.get("system"),
+                       "rows": int(s["row_count"]) if s.get("row_count") is not None else None,
+                       "dq_pass": dqp, "sla_status": sla, "status": status})
+    return {"assets": assets, "counts": {"late": late, "dq_issue": issue, "clean": clean}}
 
 
 async def ingestion_status() -> dict:
