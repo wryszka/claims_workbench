@@ -162,6 +162,40 @@ print(f"gold_geo_clustering rows: {n_geo:,}")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 4b · ref_postcode_centroid + gold_geo_map — map-ready geography
+# MAGIC Approx lat/lon for each postcode district so the AI/BI dashboard can render a
+# MAGIC concentration map (bubble size = claim volume, colour = fraud / weather risk).
+# MAGIC Static reference data; the view re-aggregates `gold_geo_clustering` to one point
+# MAGIC per district, so it self-heals on every reset.
+
+# COMMAND ----------
+
+_CENTROIDS = [
+    ("B1", 52.479, -1.908), ("B15", 52.464, -1.928), ("BL1", 53.585, -2.435), ("BL3", 53.567, -2.443),
+    ("BS1", 51.453, -2.597), ("CB1", 52.198, 0.137), ("CF10", 51.479, -3.176), ("CO1", 51.889, 0.903),
+    ("CV1", 52.408, -1.510), ("E1", 51.516, -0.060), ("EC1", 51.524, -0.099), ("GL1", 51.864, -2.238),
+    ("LE1", 52.635, -1.132), ("LS1", 53.797, -1.546), ("LS6", 53.819, -1.575), ("M1", 53.479, -2.236),
+    ("M14", 53.443, -2.222), ("M20", 53.413, -2.230), ("N1", 51.538, -0.103), ("NE1", 54.972, -1.613),
+    ("NG1", 52.954, -1.149), ("OL1", 53.546, -2.116), ("OL9", 53.537, -2.139), ("OX1", 51.750, -1.260),
+    ("RG1", 51.456, -0.969), ("S1", 53.380, -1.466), ("SE1", 51.501, -0.091), ("SW1", 51.497, -0.137),
+    ("WN3", 53.535, -2.640), ("WN5", 53.530, -2.668),
+]
+centroids = spark.createDataFrame(_CENTROIDS, "postcode_district string, lat double, lon double")
+write_gold(centroids, "ref_postcode_centroid", layer="reference")
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_geo_map')} AS
+ SELECT g.postcode_district, c.lat, c.lon,
+        sum(g.claim_count) AS claims,
+        round(avg(g.fraud_flag_rate), 2) AS fraud_rate,
+        round(avg(g.weather_risk_composite), 2) AS weather_risk,
+        round(sum(g.claim_count * g.avg_paid_amount) / nullif(sum(g.claim_count), 0), 0) AS avg_paid
+ FROM {tbl('gold_geo_clustering')} g
+ JOIN {tbl('ref_postcode_centroid')} c USING (postcode_district)
+ GROUP BY g.postcode_district, c.lat, c.lon""")
+print(f"ref_postcode_centroid rows: {centroids.count()} · gold_geo_map view created")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 5 · gold_handler_scorecard — "How is my team performing?"
 # MAGIC Grain: handler_id.
 
