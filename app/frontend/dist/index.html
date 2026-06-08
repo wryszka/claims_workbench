@@ -302,13 +302,20 @@ async function renderInsight(){ const v=document.getElementById('view');
   const g=state.gov||{};
   const bar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
      ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open full dashboard ↗</a>`:''}
-     ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask the book in Genie ↗</a>`:''}
      <button class="ghost" onclick="state.insApp=true;renderInsight()">📋 In-app summary (backup)</button></div>`;
   const frame=g.dashboard_embed_url
     ? `<div class="card" style="padding:6px"><iframe src="${g.dashboard_embed_url}" style="width:100%;height:760px;border:0;border-radius:10px" title="Claims Portfolio dashboard" loading="lazy"></iframe></div>`
     : `<div class="card"><p class="muted">Dashboard not resolved on this workspace.${g.dashboard_url?` <a class="link" href="${g.dashboard_url}" target="_blank">Open it in Databricks ↗</a>`:''}</p></div>`;
+  const genie=g.genie_embed_url
+    ? `<div style="margin-top:22px">
+         <div class="eyebrow">Ask the book</div>
+         <h3 style="margin:2px 0 4px">💬 AI/BI Genie — ask the claims book in plain English</h3>
+         <p class="muted" style="margin:0 0 10px">Natural-language questions over the same governed tables behind the dashboard. Try <em>"open claims by peril this month"</em> or <em>"average days to settle for motor"</em>.${g.genie_url?` · <a class="link" href="${g.genie_url}" target="_blank">Open Genie full-screen ↗</a>`:''}</p>
+         <div class="card" style="padding:6px"><iframe src="${g.genie_embed_url}" style="width:100%;height:640px;border:0;border-radius:10px" title="AI/BI Genie — claims book" loading="lazy"></iframe></div>
+       </div>`
+    : '';
   v.innerHTML=page('Head of Claims','Insight — the live Databricks dashboard',INS_LEAD)+bar+frame
-    +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview (open it full above if it needs a workspace sign-in or a refresh).</p>`;
+    +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview (open it full above if it needs a workspace sign-in or a refresh).</p>`+genie;
 }
 const INS_LEAD2='Where claims are, who is carrying them, and the trend — rendered live in the app. The very same view is a real Databricks Lakeview dashboard your team edits and can ask in plain English with Genie.';
 async function renderInsightApp(){ const v=document.getElementById('view'); const tab=state.insTab||'ops';
@@ -542,7 +549,7 @@ async function selectClaim(cid,first){ state.cid=cid; state.panels=null; state.s
   renderClaimView();
 }
 function renderClaimView(){ const v=document.getElementById('view'); const p=state.panels;
-  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)} · ${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
+  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}">${esc(PERIL[c.peril_type]||c.peril_type)} · ${gbp(c.total_incurred)}</option>`).join('');
   let body=''; if(!p){body='<p class="muted">Loading claim…</p>';}
   else if(p.__err){body='<div class="card" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c">Could not load this claim.</div>';}
   else{ const s=p.summary||{},t=p.triage||{},r=p.reserve||{},f=p.fraud||{},pol=p.policy||{},x=p.extra||{};
@@ -566,9 +573,30 @@ function renderClaimView(){ const v=document.getElementById('view'); const p=sta
     body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()
       +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place.</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
   }
-  v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision. Pick a hero: ★ cc:900001 (escalated) or ★ cc:900002 (auto-closed).')
-    +`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">Select a claim</b><select onchange="selectClaim(this.value)" style="min-width:320px">${opts}</select></div>${body}`;
+  const chips=HEROCHIPS.map(h=>`<button class="ghost" onclick="selectClaim('${h.id}')" style="text-align:left;padding:9px 13px;border-radius:11px;${h.id===state.cid?'border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,58,237,.16)':''}"><div style="font-weight:700;font-size:13px">★ ${h.id}</div><div class="muted" style="font-size:11px">${h.t}</div></button>`).join('');
+  const search=`<div class="card" style="margin-bottom:16px">
+     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+       <div><b style="font-size:14px">🔎 Find a claim</b><div class="muted" style="font-size:12px;margin-top:2px">Type a claim id (e.g. <b>cc:900001</b>) and press Enter — or pick one of the demo claims below.</div></div>
+       <div style="display:flex;gap:8px">
+         <input id="claimSearch" list="claimList" value="${esc(state.cid||'')}" placeholder="cc:900001" autocomplete="off" style="min-width:240px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')doClaimSearch()">
+         <datalist id="claimList">${opts}</datalist>
+         <button class="btnv" onclick="doClaimSearch()">Open</button>
+       </div>
+     </div>
+     <div style="margin-top:13px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:7px">Demo walk-through — work these in order</div>
+       <div style="display:flex;gap:9px;flex-wrap:wrap">${chips}</div></div>
+   </div>`;
+  v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision.')
+    +search+body;
 }
+const HEROCHIPS=[
+  {id:'cc:900001',t:'Escalated → referred to SIU (the complex one)'},
+  {id:'cc:900002',t:'Auto-closed → paid straight through (clean & low-value)'},
+  {id:'cc:900003',t:'Photo vs. the account → investigate'},
+];
+function doClaimSearch(){ const el=document.getElementById('claimSearch'); if(!el)return; let v=(el.value||'').trim(); if(!v)return;
+  if(!/^cc:/i.test(v)){ if(/^\d+$/.test(v)) v='cc:'+v; }
+  v=v.toLowerCase().replace(/^cc:\s*/,'cc:'); selectClaim(v); }
 function recoveryLabel(r){ if(!r)return '—'; if(r.recovery_flag)return `<span class="badge b-green">recoverable ${gbp(r.recoverable_amount)}</span>`; return '<span class="muted">none</span>'; }
 const EXPERTS=[{role:'reserving',name:'Senior Reserving Actuary',icon:'📐',c:'blue',blurb:'Is the reserve adequate?'},{role:'adjuster',name:'Senior Loss Adjuster',icon:'🔧',c:'amber',blurb:'Is the quantum right — what to inspect?'},{role:'coverage',name:'Coverage Counsel',icon:'⚖️',c:'slate',blurb:'Does the policy respond?'},{role:'conduct',name:'Consumer-Duty Reviewer',icon:'🤝',c:'green',blurb:'Was the customer treated fairly?'}];
 function secondOpinions(){ const ops=state.expertOps||{};
