@@ -88,25 +88,37 @@ try:
 except Exception as e:
     print(f"sandbox wipe skipped: {e}")
 
-# 2) Re-warm the vivid claim — synthesis (exact app input) + both sub-agents.
-# Best-effort: a warming hiccup must NEVER fail the reset (the cache was already cleared).
-warmed = {}
-try:
-    syn = asyncio.run(svc.get_synthesis(CID, use_cache=False))      # bypass -> real + save
-    warmed["synthesis"] = {"endpoint": syn["endpoint"][-24:], "cache": syn["cache"], "chars": len(syn.get("text") or "")}
-except Exception as e:
-    warmed["synthesis"] = f"error: {str(e)[:120]}"
+# 2) Re-warm every Work-a-claim agent call for the demo heroes — the EXACT cache keys the app
+# hits (get_synthesis + expert_opinion per claim), so the orchestrated brief and all four second
+# opinions are instant in the room. Best-effort: a warming hiccup must NEVER fail the reset.
+HEROES = ["cc:900001", "cc:900002", "cc:900003"]
+EXPERT_ROLES = ["reserving", "adjuster", "coverage", "conduct"]
+warmed = {"synthesis": {}, "experts": {}, "subagents": {}}
+for cid in HEROES:
+    try:
+        syn = asyncio.run(svc.get_synthesis(cid, use_cache=False))   # bypass -> real + cache
+        warmed["synthesis"][cid] = syn.get("cache")
+    except Exception as e:
+        warmed["synthesis"][cid] = f"error: {str(e)[:80]}"
+    for role in EXPERT_ROLES:
+        try:
+            o = asyncio.run(svc.expert_opinion(cid, role, use_cache=False))
+            warmed["experts"][f"{cid}:{role}"] = "ok" if o.get("text") else (o.get("error") or "?")[:60]
+        except Exception as e:
+            warmed["experts"][f"{cid}:{role}"] = f"error: {str(e)[:60]}"
 
-for label, ep, prompt in [
-    ("fraud", config.ENDPOINT_FRAUD, "Assess the fraud risk for claim cc:900001."),
-    ("context", config.ENDPOINT_CONTEXT, "Give me the before-you-pick-up-the-phone brief for claim cc:900001."),
+# Ask-window sub-agents for the pinned questions (fraud + context).
+for cid, ep, prompt in [
+    ("cc:900001", config.ENDPOINT_FRAUD, "Assess the fraud risk for claim cc:900001."),
+    ("cc:900003", config.ENDPOINT_FRAUD, "Does the photo on cc:900003 match the reported account?"),
+    ("cc:900001", config.ENDPOINT_CONTEXT, "Give me the before-you-pick-up-the-phone brief for claim cc:900001."),
 ]:
-    inp = {"messages": [{"role": "user", "content": prompt}], "custom_inputs": {"claim_public_id": CID}}
+    inp = {"messages": [{"role": "user", "content": prompt}], "custom_inputs": {"claim_public_id": cid}}
     try:
         out = get_agent_response(ep, inp, use_cache=False)
-        warmed[label] = out["cache"]
+        warmed["subagents"][f"{cid}:{ep[-4:]}"] = out["cache"]
     except Exception as e:
-        warmed[label] = f"error: {e}"
+        warmed["subagents"][f"{cid}:{ep[-4:]}"] = f"error: {str(e)[:60]}"
 
 rows = spark.sql(f"SELECT count(*) c FROM `{catalog}`.`{schema}`.cache_agent_responses").collect()[0]["c"]
 print(json.dumps({"warmed": warmed, "cache_rows": int(rows)}, indent=2))
