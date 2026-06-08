@@ -166,13 +166,27 @@ function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearIn
   const done=/TERMINATED|INTERNAL_ERROR|SKIPPED/.test(lc)||res!==''||mins>=30;
   if(done){clearInterval(_rt);document.getElementById('resetBtn').disabled=false; const ok=res.includes('SUCCESS'); m.textContent=ok?'✓ Reset complete':(mins>=30&&!res?'Reset timed out — check the job':'Reset failed — check the job'); if(ok)location.reload();}
   else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={home:renderHome,control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,performance:renderInsight,fraud:renderFraud,trends:renderInsight,ingestion:renderIngestion,enrichment:renderEnrichment,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={home:renderHome,control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,fraud:renderFraud,ingestion:renderIngestion,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
 function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
 const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
 const fmtv=(v,f)=>f==='gbp'?gbp(v):f==='pct'?pct(v):f==='days'?((v??'—')+' d'):num(v);
 function trendArrow(tr){ if(!tr||tr.dir==='flat')return ''; const c=tr.good?'#059669':'#dc2626'; const ar=tr.dir==='up'?'▲':'▼'; return ` <span style="color:${c};font-size:11px;font-weight:700">${ar}${Math.abs(tr.delta)}</span>`; }
-function page(eyebrow,title,lead,desc){ return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
+// One-line "what this is / vs the screen it resembles" caption, keyed by section, so a
+// demoer never fumbles the distinction live. Injected by page() under the headline.
+const VS_CAPTION={
+  control:"Your action cockpit — targets, alerts and the auto-close dial. To explore the raw dashboard, see <b>Insight</b>.",
+  insight:"The live Databricks dashboard + Genie to ask the book anything. For targets &amp; what-to-do, see <b>Control Tower</b>.",
+  fnol360:"What we know at first notice — every datapoint and <b>where it comes from</b>. To decide &amp; record, go to <b>Work a claim</b>.",
+  claim:"Decide, reserve and record one claim. To see the assembled inputs and their sources first, see <b>FNOL 360</b>.",
+  myqueue:"One handler's personal day. Thematic cross-book queues live in <b>Worklists</b>; fraud-specific work in <b>Fraud &amp; SIU</b>.",
+  worklists:"Thematic cross-book queues (recovery, aged, large, fraud…). For your own claims, see <b>My Queue</b>.",
+  fraud:"The SIU's fraud lens and high-score queue. The same claims also surface in the high-fraud <b>Worklist</b>.",
+  claimsai:"Where you <b>use</b> the agents, live. The audit trail of what they decided is in <b>Governance › AI agents</b>.",
+  governance:"Controls &amp; audit — what's collected, what the agents did, fair outcomes. To <b>use</b> the agents, see <b>Claims AI</b>.",
+};
+function page(eyebrow,title,lead,desc){ const vs=VS_CAPTION[state.section];
+  return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${vs?`<div style="display:inline-block;margin:0 0 10px;padding:5px 11px;border-radius:999px;background:#f3efff;color:#6d28d9;font-size:12px;font-weight:600;border:1px solid #e9defc">↔ ${vs}</div>`:''}${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
 
 // ============ HOME — landing page ============
 // Stage -> where it leads in the app (aligned to LIFECYCLE order: FNOL, Triage, Coverage,
@@ -888,23 +902,6 @@ async function drillQuar(reason){ try{state.quar=await J('/ingestion/quarantine?
 async function loadSample(t){ state.ingSample={table:t,loading:true}; try{state.ingSample=await J('/ingestion/sample?table='+encodeURIComponent(t));}catch(e){state.ingSample={table:t,error:'unavailable'};} renderIngestion(); }
 
 // ============ ENRICHMENT (was Transformation) ============
-async function renderEnrichment(){ const v=document.getElementById('view'); if(!state.claims.length) await loadClaims();
-  const opts=state.claims.map(c=>`<option value="${esc(c.claim_public_id)}" ${c.claim_public_id===state.cid?'selected':''}>${(c.claim_public_id==='cc:900001'||c.claim_public_id==='cc:900002')?'★ ':''}${esc(c.claim_public_id)}</option>`).join('');
-  v.innerHTML=page('Pipeline','Enrichment — the automatic 360° picture',"The silver layer assembles everything we know about a claim — policy, history, fraud, recovery, weather — <b>before a handler picks up the phone</b>. This is what turns a bare FNOL into a decision-ready record.")
-    +`<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">Inspect a claim's enriched record</b><select onchange="state.cid=this.value;renderEnrichment()" style="min-width:260px">${opts}</select></div><p class="muted" id="tload">Loading…</p>`;
-  let e; try{e=await J('/claim/enrichment?cid='+encodeURIComponent(state.cid));}catch(err){document.getElementById('tload').textContent='Unavailable.';return;}
-  const yn=x=>x===true||x==='true'?'Yes':x===false||x==='false'?'No':(x??'—');
-  const g=(t,rows)=>`<div class="card"><h2>${t}</h2>${rows.map(([k,val])=>`<div class="row"><span class="k">${k}</span><span class="v">${esc(val??'—')}</span></div>`).join('')}</div>`;
-  v.querySelector('#tload')?.remove();
-  v.insertAdjacentHTML('beforeend',`<div class="grid2">
-    ${g('Claim &amp; incident',[['Claim number',e.claim_number],['Peril',e.peril_type],['Loss cause',e.loss_cause],['Reported',e.report_date],['Channel',e.report_channel],['Reporting lag',e.reporting_lag_days+' days'],['Incident',e.description_text],['Status',e.claim_status]])}
-    ${g('Policy',[['Policy number',e.policy_number],['Product',e.product],['Sum insured',gbp(e.sum_insured)],['Annual premium',gbp(e.annual_premium)],['Tenure (yrs)',e.policy_tenure_years],['Prior claims (12m)',e.prior_claims_12m]])}
-    ${g('Location &amp; weather',[['Postcode district',e.postcode_district],['Third party',yn(e.third_party_involved)],['Flood',e.flood_risk_score+'/10'],['Wind',e.wind_risk_score+'/10'],['Freeze',e.freeze_risk_score+'/10'],['Composite',e.weather_risk_composite]])}
-    ${g('Recovery &amp; lifecycle',[['Total incurred',gbp(e.total_incurred)],['Paid',gbp(e.paid_amount)],['Ultimate reserve',gbp(e.ultimate_reserve)],['Recovery flag',yn(e.recovery_flag)],['Recoverable',gbp(e.recoverable_amount)],['Leakage',yn(e.leakage_flag)]])}
-    ${g('Risk &amp; ML labels',[['Fraud score',e.fraud_score+'/100'],['High value',yn(e.is_high_value)],['Potential fraud',yn(e.is_potential_fraud)],['At fault',yn(e.at_fault)],['Triage label',e.triage_decision],['Reserve bracket',e.reserve_bracket]])}
-  </div>`);
-}
-
 // ============ GOVERNANCE (sub-tabs) ============
 function renderGovernance(){ const v=document.getElementById('view');
   v.innerHTML=page('Govern','Governance &amp; control','Board reporting, what data is collected and how it is used, the AI agents, and a full track of any claim — the regulator-readable view.')
