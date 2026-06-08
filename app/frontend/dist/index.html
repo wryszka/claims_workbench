@@ -96,6 +96,8 @@
   .ph{ background:repeating-linear-gradient(45deg,#fafbfc,#fafbfc 10px,#f1f3f6 10px,#f1f3f6 20px); border:1px dashed #cbd5e1; border-radius:11px; padding:14px; color:#94a3b8; } .ph b{ color:#64748b; display:block; font-size:13px; margin-bottom:3px; } .uc{ font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#b45309; background:#fef3c7; border-radius:999px; padding:1px 7px; }
   .disclaimer{ background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:13px 16px; font-size:12px; color:#92400e; line-height:1.5; margin-bottom:22px; }
   .fab{ position:fixed; bottom:22px; right:22px; background:var(--v); color:#fff; border:0; border-radius:999px; padding:12px 18px; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 8px 24px rgba(37,99,235,.4); display:flex; gap:8px; align-items:center; }
+  .soon{ border:1px dashed #c7d2e8; border-radius:12px; padding:13px 14px; background:#fafbff; }
+  .soon .sb{ display:inline-block; font-size:9px; font-weight:800; letter-spacing:.06em; color:#1d4ed8; background:#dbeafe; border-radius:999px; padding:2px 7px; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -137,6 +139,7 @@ const state={ section:'home', host:'', cid:'cc:900001', claims:[], panels:null, 
 const gbp=v=>{const n=parseFloat(v);return isNaN(n)?'—':'£'+n.toLocaleString('en-GB',{maximumFractionDigits:0});};
 const num=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toLocaleString('en-GB');};
 const pct=v=>{const n=parseFloat(v);return isNaN(n)?'—':n.toFixed(1)+'%';};
+function soonTile(ic,t,d){ return `<div class="soon"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px"><b style="font-size:13px">${ic} ${t}</b><span class="sb">SOON</span></div><div class="muted" style="font-size:11.5px;margin-top:4px;line-height:1.4">${d}</div></div>`; }
 const DLABEL={pay_direct:'FAST-TRACK',escalate:'ESCALATE',refer_siu:'REFER TO SIU'};
 const PERIL={motor_tp:'Motor Third Party',home_escape_water:'Home — Escape of Water',home_storm:'Home — Storm',home_fire:'Home — Fire'};
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -283,6 +286,12 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
         <div class="srow"><label>Max amount</label><input type="range" id="s_cap" min="250" max="10000" step="250" value="${Math.round(state.cfg.amount_cap)}" oninput="segChange()"><span class="val" id="v_cap">${gbp(state.cfg.amount_cap)}</span></div>
         <div class="srow"><label>Max fraud score</label><input type="range" id="s_fraud" min="0" max="100" value="${Math.round(state.cfg.fraud_floor)}" oninput="segChange()"><span class="val" id="v_fraud">${Math.round(state.cfg.fraud_floor)}</span></div>
         <div style="margin-top:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:var(--v)" id="seg_pct">${pct(h.pct_auto_closed)}</div><div class="muted" id="seg_n">${num(h.auto_closed)} auto-closed · ${num(h.escalated)} escalated</div></div></div></div>
+    <div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap</div>
+    <div class="grid3" style="margin-bottom:18px">
+      ${soonTile('🌪️','Catastrophe surge mode','Detect storm-driven FNOL spikes and auto-scale triage capacity so the book holds up under surge.')}
+      ${soonTile('⚖️','Litigation early-warning','Flag in week 1 the claims likely to become the expensive litigated / large-loss tail.')}
+      ${soonTile('♻️','Reopen-risk','Predict claims likely to reopen after closure — a core quality signal.')}
+    </div>
     <div style="margin:18px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="ghost" onclick="var e=document.getElementById('ctScore');var sh=e.style.display==='none';e.style.display=sh?'block':'none';this.textContent=(sh?'▴ Hide':'▾ Show')+' full KPI scorecard';">▾ Show full KPI scorecard</button>
       <span class="muted" style="font-size:12px">All ${(t.efficiency||[]).length+(t.effectiveness||[]).length} operational &amp; financial KPIs · or see <a class="link" onclick="go('insight')">Insight</a> for trends &amp; performance.</span></div>
@@ -429,7 +438,12 @@ async function renderFraud(){ const v=document.getElementById('view'); v.innerHT
     ${howCard}${modelsCard}
     <div class="grid2">
       <div class="card"><h2>📊 Fraud-score distribution</h2><div style="margin-top:8px">${bucket}</div></div>
-      <div class="card"><h2>🔍 SIU queue — highest score open claims</h2><table><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">Score</th><th style="text-align:right">Prior</th><th style="text-align:right">Lag</th></tr>${q||'<tr><td class="muted" colspan=6>Queue clear.</td></tr>'}</table></div></div>`;
+      <div class="card"><h2>🔍 SIU queue — highest score open claims</h2><table><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">Score</th><th style="text-align:right">Prior</th><th style="text-align:right">Lag</th></tr>${q||'<tr><td class="muted" colspan=6>Queue clear.</td></tr>'}</table></div></div>
+    <div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap</div>
+    <div class="grid2">
+      ${soonTile('🕸️','Fraud network / ring detection','Link analysis across claims, parties, addresses, phones and bank accounts to surface organised rings — what SIU actually wants, beyond a single score.')}
+      ${soonTile('🛰️','Bureau & device signals','Live CIFAS / IFB / MIAFTR matches and device / network fingerprints folded into the score as first-class indicators.')}
+    </div>`;
 }
 
 // ============ TRENDS ============
@@ -623,6 +637,14 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
     body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
     body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()
+      +`<div class="card" style="margin-top:16px"><h2 style="margin:0 0 4px">🧭 Coming soon — handler assists</h2><p class="muted" style="margin:0 0 10px">Agent-assisted steps on the roadmap — the handler always approves; the agent drafts and recommends.</p><div class="grid3">
+        ${soonTile('✍️','Draft customer comms','Auto-draft the FNOL acknowledgement, decision / repudiation letter and settlement breakdown for you to approve.')}
+        ${soonTile('♻️','Draft recovery pack','Auto-assemble the subrogation demand to the third-party insurer where the claim is recoverable.')}
+        ${soonTile('🔧','Repairer & parts steering','Recommend approved repairer, parts and hire at the decision point to control leakage.')}
+        ${soonTile('📐','Reserve adequacy','Flag under-reserved claims with the £ gap and the reason (e.g. comparable claims developed 1.25×).')}
+        ${soonTile('🏷️','Deterministic reason codes','Machine-readable reason codes on every decision for the customer and the regulator, alongside the agent narrative.')}
+        ${soonTile('🗂️','Full handling in-line','Cover & excess, liability split, payments, diary/tasks, complaints & vulnerability — with write-back to ClaimCenter.')}
+      </div></div>`
       +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place. Designed to overlay Guidewire ClaimCenter — the decision, reserve and notes write back to the system of record (integration on the roadmap).</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
   }
   const chips=HEROCHIPS.map(h=>`<button class="ghost" onclick="selectClaim('${h.id}')" style="text-align:left;padding:9px 13px;border-radius:11px;${h.id===state.cid?'border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.16)':''}"><div style="font-weight:700;font-size:13px">★ ${h.id}</div><div class="muted" style="font-size:11px">${h.t}</div></button>`).join('');
