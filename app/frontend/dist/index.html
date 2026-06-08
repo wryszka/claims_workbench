@@ -734,11 +734,23 @@ async function renderMyQueue(){ const v=document.getElementById('view'); const h
       <div style="flex:1 1 210px;border-left:3px solid #94a3b8;padding:6px 10px;background:#fff;border-radius:8px"><b style="font-size:12px">When you can</b><div class="muted" style="font-size:11.5px">Routine claims progressing within SLA. Ranked by time open.</div></div>
     </div>
     <p class="muted" style="margin:8px 0 0;font-size:11.5px">So a claim is <b>top of the list</b> when it's an SIU referral or high fraud in <b>today</b> — that's why ★ cc:900001 leads. Demo heroes (★) are always pinned to the top of <b>today</b>.</p></div>`;
+  const assignCard=`<div class="card" style="margin-bottom:12px;background:#fbfaff;border-color:#e9defc">
+    <b style="font-size:13px">ⓘ How claims reach a handler</b>
+    <p class="muted" style="margin:6px 0 8px;font-size:13px">A claim is matched to the right handler the moment it's triaged — not picked off a shared pile. The factors a routing engine should weigh:</p>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;font-size:11.5px">
+      <span class="badge b-slate">Specialism — peril &amp; product (motor / property / liability)</span>
+      <span class="badge b-slate">Complexity &amp; value — large or complex losses → senior desks</span>
+      <span class="badge b-slate">Risk — suspected fraud → SIU; litigation / vulnerability → trained handlers</span>
+      <span class="badge b-slate">Authority — within the handler's reserve &amp; settlement limit</span>
+      <span class="badge b-slate">Capacity — balanced across the team's live caseload</span>
+      <span class="badge b-slate">Continuity — related claims stay with the same handler</span>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:11.5px">The platform already holds both sides — the claim's features and each handler's skills, authority and open caseload — so assignment can be automated with a human override. In this demo, claims carry a pre-assigned handler; switch the desk above to see any handler's real open caseload (Sarah is an illustrative senior on the Motor Complex desk).</p></div>`;
   const note=(q.selected==='sarah'||!q.selected)
     ? 'Sarah Chen is an illustrative persona; her queue is a curated view of the live book — the sacred demo claims are never reassigned. Click any claim to work it.'
     : `${esc(p.name||'')}'s real open caseload from the book — click any claim to work it.`;
   v.innerHTML=page('Handler view','My Queue','Your prioritised worklist — what needs you today, this week, and when you can. The triage layer and your agents have already done the sifting.')
-    +picker+personaCard+monitor+howCard+(q.buckets||[]).map(bucketCard).join('')
+    +picker+assignCard+personaCard+monitor+howCard+(q.buckets||[]).map(bucketCard).join('')
     +`<p class="muted" style="text-align:center;margin-top:6px">${note}</p>`;
 }
 
