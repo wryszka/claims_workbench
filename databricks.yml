@@ -58,6 +58,23 @@ variables:
     default: "1"
 
 targets:
+  # Prod = serverless workspace (fevm-lr-serverless-aws-us). Assets live under
+  # /Workspace/Shared so the whole org can reach them from one path.
+  prod:
+    mode: production
+    workspace:
+      host: https://fevm-lr-serverless-aws-us.cloud.databricks.com
+      profile: DEFAULT
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: lr_serverless_aws_us_catalog
+      schema: claims_workbench
+      warehouse_id: ab79eced8207d29b
+    resources:
+      pipelines:
+        claims_workbench_01_bronze_dlt:
+          development: false
+
   dev:
     mode: development
     default: true
