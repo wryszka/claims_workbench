@@ -2310,6 +2310,34 @@ async def comms_history(cid: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Supplier accountability layer (Phase 6) — cost / cycle / quality per
+# repairer in one governed view (gold_supplier_scorecard), with peer indices
+# and a steer recommendation per trade.
+# --------------------------------------------------------------------------
+async def supplier_view() -> dict:
+    try:
+        rows = await execute_query(f"""
+            SELECT supplier_id, supplier_name, trade, segment, jobs, open_jobs, avg_paid,
+                   total_paid_m, avg_cycle_days, leakage_rate_pct, sla_hit_pct,
+                   cost_index, cycle_index, steer
+            FROM {_fq('gold_supplier_scorecard')}
+            ORDER BY trade, avg_paid""")
+    except Exception:
+        rows = []
+    head = {"suppliers": len(rows),
+            "jobs": sum(int(r.get("jobs") or 0) for r in rows),
+            "open_jobs": sum(int(r.get("open_jobs") or 0) for r in rows),
+            "total_paid_m": round(sum(float(r.get("total_paid_m") or 0) for r in rows), 1)}
+
+    def _links():
+        from server.sql import _client
+        host = _client().config.host.rstrip("/")
+        return {"scorecard_url": f"{host}/explore/data/{CAT}/{SCH}/gold_supplier_scorecard",
+                "ref_url": f"{host}/explore/data/{CAT}/{SCH}/ref_supplier"}
+    return {"suppliers": rows, "headline": head, **(await asyncio.to_thread(_links))}
+
+
+# --------------------------------------------------------------------------
 # Reserve adequacy (Phase 5) — suggested reserve, £ gap and the reason, per
 # open claim, benchmarked against the book's own settled comparables.
 # --------------------------------------------------------------------------

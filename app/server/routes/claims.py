@@ -257,6 +257,11 @@ async def claim_reserve_adequacy(cid: str):
     return await svc.claim_reserve_adequacy(cid)
 
 
+@router.get("/suppliers")
+async def suppliers():
+    return await svc.supplier_view()
+
+
 @router.get("/claim/vulnerability")
 async def claim_vulnerability(cid: str):
     return await svc.claim_vulnerability(cid)

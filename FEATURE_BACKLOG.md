@@ -59,7 +59,7 @@ the app · `Idea` = not yet represented anywhere.
 
 | Feature | What it is | Where it fits | Source | Size | Status |
 |---|---|---|---|---|---|
-| Supplier accountability layer | Cost / quality / cycle-time per repairer in one governed view | New Insight tab or screen | workshop | M | Tile |
+| Supplier accountability layer | Cost / cycle / quality per repairer + peer indices + steer (gold_supplier_scorecard) | Insight › 🔩 Suppliers tab | workshop | M | **Live** (2026-07-07) |
 | Repairer & parts steering | Right repairer by capacity, quality score, parts availability | Work a claim | review + workshop | M | Tile |
 | Repair evidence validation | Photos/video vs claimed scope of work; quality + fraud flags (extends the photo agent) | Fraud / Work a claim | workshop | M | Tile |
 | TPA / delegated authority oversight | Bordereaux ingestion, delegated-handler audit | Governance / Ingestion | gap-scan | L | Tile |
@@ -169,10 +169,16 @@ adjustment); otherwise a slim "in line with comparables" note. The view independ
 rediscovers the seeded escape-of-water 1.25× under-reserving: 1,626 open claims,
 £21.2M total gap. *View only; notebook 03 §4f.*
 
-**Phase 6 — Supplier accountability layer (M).** Deterministic repairer dimension
-(same salted-hash pattern as brokers), `gold_supplier_scorecard` (cost/quality/cycle
-per repairer); Insight tab + feeds the repairer-steering tile later. *Views over
-copies; one schema.*
+**Phase 6 — Supplier accountability layer (M) — DONE 2026-07-07.** `ref_supplier`
+(8 fictional repairers: 4 motor incl. a mobile SMART specialist, drying / fire-rebuild /
+2 general restoration) + `gold_supplier_scorecard` view: jobs assigned deterministically
+(peril + light-damage rule + postcode hash — labelled synthetic), metrics computed from
+the real claims each supplier carries (so differences are genuine job-mix effects:
+Silverline £646 avg / 25d cycle / preferred; heavy bodyshops £20k / review), peer cost
+& cycle indices per trade, steer = preferred / watch / review. Surfaced: Insight ›
+**🔩 Suppliers** tab + a "Supplier scorecard" button on the main Insight page. £1,175M
+through the panel. Honesty caption: severity-adjusted like-for-like = next increment.
+*This is the data layer the repairer-steering tile will act on.*
 
 **Then:** re-prioritise from client workshops — the tiles make that conversation visual.
 Bigger L items (BI lane, payments control, cat surge, ring detection, TPA oversight)

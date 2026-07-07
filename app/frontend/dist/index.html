@@ -343,7 +343,8 @@ async function renderInsight(){ const v=document.getElementById('view');
   const g=state.gov||{};
   const bar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
      ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open full dashboard ↗</a>`:''}
-     <button class="ghost" onclick="state.insApp=true;renderInsight()">📋 In-app summary (backup)</button></div>`;
+     <button class="ghost" onclick="state.insApp=true;state.insTab='suppliers';renderInsight()">🔩 Supplier scorecard</button>
+     <button class="ghost" onclick="state.insApp=true;state.insTab='ops';renderInsight()">📋 In-app summary (backup)</button></div>`;
   const frame=g.dashboard_embed_url
     ? `<div class="card" style="padding:6px"><iframe src="${g.dashboard_embed_url}" style="width:100%;height:760px;border:0;border-radius:10px" title="Claims Portfolio dashboard" loading="lazy"></iframe></div>`
     : `<div class="card"><p class="muted">Dashboard not resolved on this workspace.${g.dashboard_url?` <a class="link" href="${g.dashboard_url}" target="_blank">Open it in Databricks ↗</a>`:''}</p></div>`;
@@ -358,7 +359,6 @@ async function renderInsight(){ const v=document.getElementById('view');
   v.innerHTML=page('Head of Claims','Insight — the live Databricks dashboard',INS_LEAD)+bar+frame
     +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview (open it full above if it needs a workspace sign-in or a refresh).</p>`+genie
     +`<div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — deeper insight</div><div class="grid2">
-      ${soonTile('🔩','Supplier accountability layer','Cost, quality and cycle time per repairer and supplier in one governed view — panel management off data, not anecdote.')}
       ${soonTile('🧾','Claims pricing gap','Quote-time cost assumptions vs settlement actuals (repair-basket inflation) — the claims book feeding pricing on the same platform.')}
     </div>`;
 }
@@ -366,19 +366,46 @@ const INS_LEAD2='Where claims are, who is carrying them, and the trend — rende
 async function renderInsightApp(){ const v=document.getElementById('view'); const tab=state.insTab||'ops';
   v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends',INS_LEAD2,'Loading…');
   if(!state.gov){ try{state.gov=await J('/governance');}catch(e){state.gov={};} }
-  let H={},T={},O={};
+  let H={},T={},O={},S={};
   if(tab==='performance'){ try{H=await J('/handlers');}catch(e){} }
   else if(tab==='trends'){ try{T=await J('/trends');}catch(e){} }
+  else if(tab==='suppliers'){ try{S=await J('/suppliers');}catch(e){} }
   else { try{O=await J('/operations');}catch(e){} }
   const g=state.gov||{};
   const dash=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
      ${g.dashboard_url?`<a class="btnv" style="text-decoration:none" href="${g.dashboard_url}" target="_blank">📊 Open the live Databricks dashboard ↗</a>`:''}
      ${g.genie_url?`<a class="ghost" style="text-decoration:none" href="${g.genie_url}" target="_blank">💬 Ask in Genie ↗</a>`:''}
      <button class="ghost" onclick="state.insApp=false;renderInsight()">← Back to the dashboard</button></div>`;
-  const TABS=[['ops','🗺️ Where claims are'],['performance','👥 Handler performance'],['trends','📈 Trends']];
+  const TABS=[['ops','🗺️ Where claims are'],['performance','👥 Handler performance'],['trends','📈 Trends'],['suppliers','🔩 Suppliers']];
   const tabbar=`<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">${TABS.map(t=>`<button class="${tab===t[0]?'btnv':'ghost'}" style="padding:6px 14px;font-size:13px" onclick="setInsTab('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
-  const body = tab==='trends'?trendsBody(T) : tab==='performance'?perfBody(H) : opsBody(O);
+  const body = tab==='trends'?trendsBody(T) : tab==='performance'?perfBody(H) : tab==='suppliers'?suppliersBody(S) : opsBody(O);
   v.innerHTML=page('Head of Claims','Insight — operations, handlers & trends',INS_LEAD2)+dash+tabbar+body;
+}
+// Supplier accountability layer (Phase 6) — panel management off data, not anecdote.
+const STEERB={preferred:'b-green',watch:'b-amber',review:'b-red'};
+function suppliersBody(S){ const rows=S.suppliers||[], h=S.headline||{};
+  if(!rows.length) return '<div class="card"><p class="muted">Supplier scorecard unavailable — has notebook 03 (§4g) been run on this workspace?</p></div>';
+  let lastTrade='';
+  const tr=rows.map(r=>{ const hd=r.trade!==lastTrade?`<tr><td colspan="9" style="background:#f8fafc;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569">${esc(r.trade)}</td></tr>`:''; lastTrade=r.trade;
+    return hd+`<tr><td><b>${esc(r.supplier_name)}</b><div class="muted" style="font-size:11px">${esc(r.segment)}</div></td>
+      <td style="text-align:right">${num(r.jobs)}<div class="muted" style="font-size:10px">${num(r.open_jobs)} open</div></td>
+      <td style="text-align:right">${gbp(r.avg_paid)}</td>
+      <td style="text-align:right">${r.avg_cycle_days??'—'}d</td>
+      <td style="text-align:right">${pct(r.sla_hit_pct)}</td>
+      <td style="text-align:right">${pct(r.leakage_rate_pct)}</td>
+      <td style="text-align:right">${esc(r.cost_index)}×</td>
+      <td style="text-align:right">${gbp((+r.total_paid_m||0)*1e6)}</td>
+      <td><span class="badge ${STEERB[r.steer]||'b-slate'}">${esc(r.steer)}</span></td></tr>`; }).join('');
+  return `<div class="card" style="margin-bottom:16px"><h2>🔩 Supplier accountability — panel management off data, not anecdote</h2>
+    <p class="muted" style="font-size:13px;margin:6px 0 0">The claims-team pain this answers: supplier performance data usually sits outside claims. Here <b>cost, cycle time and quality per repairer</b> live in one governed view over the same claims book — with peer indices per trade and a <b>steer</b> recommendation. This is the data layer the <i>repairer &amp; parts steering</i> roadmap item will act on.${S.scorecard_url?` <a class="link" href="${S.scorecard_url}" target="_blank">gold_supplier_scorecard ↗</a>`:''}</p>
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0">ⓘ Job assignment is deterministic-synthetic (the CDA book has no repairer field) — but the metrics are computed from the real claims each supplier carries, so differences are genuine job-mix effects: the mobile SMART repairer really does carry the light fast jobs. A like-for-like severity adjustment is the next increment.</p></div>
+  <div class="grid4" style="margin-bottom:14px">
+    <div class="tile"><div class="l">Panel</div><div class="n">${num(h.suppliers)}</div><div class="s">approved suppliers</div></div>
+    <div class="tile"><div class="l">Jobs on the book</div><div class="n">${num(h.jobs)}</div><div class="s">${num(h.open_jobs)} in flight</div></div>
+    <div class="tile"><div class="l">Total paid through panel</div><div class="n">£${esc(h.total_paid_m)}M</div><div class="s">indemnity via suppliers</div></div>
+    <div class="tile"><div class="l">Steer</div><div class="n">${rows.filter(r=>r.steer==='review').length}</div><div class="s">suppliers flagged for review</div></div></div>
+  <div class="card"><div style="overflow-x:auto"><table><tr><th>Supplier</th><th style="text-align:right">Jobs</th><th style="text-align:right">Avg cost</th><th style="text-align:right">Cycle</th><th style="text-align:right">SLA hit</th><th style="text-align:right">Leakage</th><th style="text-align:right">Cost idx</th><th style="text-align:right">Total paid</th><th>Steer</th></tr>${tr}</table></div>
+    <p class="muted" style="font-size:11.5px;margin-top:8px">Cost index = supplier avg cost vs its trade's average. <b>preferred</b> = at/below peer cost &amp; cycle · <b>review</b> = cost &gt;8% above peers or leakage &gt;25% above peers · <b>watch</b> = in between.</p></div>`;
 }
 function opsBody(o){
   const bars=(rows,labelKey,valKey,color)=>{const mx=Math.max(...rows.map(r=>parseFloat(r[valKey])||0),1);

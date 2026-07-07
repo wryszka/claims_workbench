@@ -459,6 +459,72 @@ print("gold_reserve_adequacy: " + ", ".join(f"{r['adequacy']}={r['n']:,}" for r 
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 4g · ref_supplier + gold_supplier_scorecard — the supplier accountability layer
+# MAGIC The workshop pain: supplier performance data is invisible to the claims team.
+# MAGIC This puts **cost, cycle time and quality per repairer** in one governed view.
+# MAGIC The synthetic book has no repairer dimension, so jobs are assigned
+# MAGIC **deterministically** (peril + light-damage rule + postcode hash — stable across
+# MAGIC resets, labelled synthetic); the METRICS are then computed from the real claim
+# MAGIC rows each supplier carries, so differences are genuine (the drying specialist
+# MAGIC really does carry water jobs, the mobile repairer really does carry cheap fast
+# MAGIC ones). Peer comparison + steer recommendation per trade.
+
+# COMMAND ----------
+
+_SUPPLIERS = [
+    ("SUP-101", "Crownfield Accident Repair", "motor bodyshop", "National motor bodyshop network"),
+    ("SUP-102", "Reeves & Drayton Bodyworks", "motor bodyshop", "Regional bodyshop group — North"),
+    ("SUP-103", "Apex Vehicle Repair Group", "motor bodyshop", "Regional bodyshop group — South"),
+    ("SUP-104", "Silverline Mobile Repairs", "motor bodyshop", "Mobile SMART repairs — light damage"),
+    ("SUP-201", "Restorex Property Services", "general restoration", "National property restoration"),
+    ("SUP-202", "AquaDry Response", "water damage & drying", "Escape-of-water & drying specialist"),
+    ("SUP-203", "Hearthstone Building Contractors", "fire & rebuild", "Fire reinstatement & rebuild"),
+    ("SUP-204", "Northgate Restoration Co.", "general restoration", "Regional restoration — North"),
+]
+sup_ref = spark.createDataFrame(
+    _SUPPLIERS, "supplier_id string, supplier_name string, trade string, segment string")
+write_gold(sup_ref, "ref_supplier", layer="reference")
+
+_H = "pmod(abs(hash(postcode_district, 'sup')), 10)"
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_supplier_scorecard')}
+ COMMENT 'Supplier accountability: cost / cycle / quality per repairer with peer indices and a steer recommendation. Job assignment is deterministic-synthetic (peril + damage size + postcode hash); metrics are computed from the real claims each supplier carries.' AS
+ WITH assigned AS (
+   SELECT s.*, CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END AS sla_days,
+     CASE
+       WHEN peril_type = 'motor_tp' AND paid_amount < 1500 AND {_H} <= 5 THEN 'SUP-104'
+       WHEN peril_type = 'motor_tp' THEN CASE WHEN {_H} <= 3 THEN 'SUP-101' WHEN {_H} <= 6 THEN 'SUP-102' ELSE 'SUP-103' END
+       WHEN peril_type = 'home_escape_water' THEN CASE WHEN {_H} <= 4 THEN 'SUP-202' WHEN {_H} <= 7 THEN 'SUP-201' ELSE 'SUP-204' END
+       WHEN peril_type = 'home_fire' THEN CASE WHEN {_H} <= 5 THEN 'SUP-203' ELSE 'SUP-201' END
+       ELSE CASE WHEN {_H} <= 4 THEN 'SUP-201' WHEN {_H} <= 7 THEN 'SUP-204' ELSE 'SUP-203' END
+     END AS supplier_id
+   FROM {tbl('silver_claims_enriched')} s WHERE paid_amount > 0),
+ agg AS (
+   SELECT supplier_id, count(*) AS jobs,
+     sum(CASE WHEN claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) AS open_jobs,
+     round(avg(paid_amount), 0) AS avg_paid,
+     round(sum(paid_amount) / 1e6, 2) AS total_paid_m,
+     round(avg(CASE WHEN claim_status = 'settled' THEN days_to_settle END), 1) AS avg_cycle_days,
+     round(100 * avg(CASE WHEN leakage_flag THEN 1.0 ELSE 0.0 END), 2) AS leakage_rate_pct,
+     round(100 * avg(CASE WHEN claim_status = 'settled' AND days_to_settle <= sla_days THEN 1.0
+                          WHEN claim_status = 'settled' THEN 0.0 END), 1) AS sla_hit_pct
+   FROM assigned GROUP BY supplier_id)
+ SELECT r.supplier_id, r.supplier_name, r.trade, r.segment,
+   a.jobs, a.open_jobs, a.avg_paid, a.total_paid_m, a.avg_cycle_days, a.leakage_rate_pct, a.sla_hit_pct,
+   round(a.avg_paid / avg(a.avg_paid) OVER (PARTITION BY r.trade), 3) AS cost_index,
+   round(a.avg_cycle_days / avg(a.avg_cycle_days) OVER (PARTITION BY r.trade), 3) AS cycle_index,
+   CASE WHEN a.avg_paid > 1.08 * avg(a.avg_paid) OVER (PARTITION BY r.trade)
+          OR a.leakage_rate_pct > 1.25 * avg(a.leakage_rate_pct) OVER (PARTITION BY r.trade) THEN 'review'
+        WHEN a.avg_paid <= avg(a.avg_paid) OVER (PARTITION BY r.trade)
+         AND coalesce(a.avg_cycle_days, 0) <= avg(a.avg_cycle_days) OVER (PARTITION BY r.trade) THEN 'preferred'
+        ELSE 'watch' END AS steer
+ FROM {tbl('ref_supplier')} r JOIN agg a USING (supplier_id)""")
+sc = spark.sql(f"SELECT supplier_id, jobs, avg_paid, avg_cycle_days, leakage_rate_pct, steer FROM {tbl('gold_supplier_scorecard')} ORDER BY trade, supplier_id").collect()
+for r in sc:
+    print(f"  {r['supplier_id']}: jobs={r['jobs']:,} avg_paid=£{r['avg_paid']} cycle={r['avg_cycle_days']}d leak={r['leakage_rate_pct']}% → {r['steer']}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 5 · gold_handler_scorecard — "How is my team performing?"
 # MAGIC Grain: handler_id.
 
