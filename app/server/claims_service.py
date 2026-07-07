@@ -2207,3 +2207,90 @@ async def claim_vulnerability(cid: str) -> dict:
         WHERE f.claim_public_id = '{_esc(cid)}'
         ORDER BY {_SEV_ORDER}""")
     return {"claim_public_id": cid, "flags": flags}
+
+
+# --------------------------------------------------------------------------
+# Calls & Comms (Phase 3).
+# gold_call_insights = batch ai_query analysis of every transcript (source-
+# agnostic: claims helpline + sales). draft_comms = live FM draft with the
+# claim facts AND the vulnerability agent_guidance in the prompt; every draft
+# and approval is written to gold_comms_drafts — the audit trail IS the feature.
+# --------------------------------------------------------------------------
+COMM_TYPES = {
+    "acknowledgement": "FNOL acknowledgement letter — confirm the claim is logged, set expectations on next steps and timescales",
+    "update": "progress update letter — where the claim is, what happens next, and what we need from the customer (if anything)",
+    "settlement": "settlement breakdown letter — what we are paying, how it is calculated (incurred minus the policy excess), and how it will be paid",
+    "decision": "decision letter — the outcome of the claim with clear reasons, next steps, and how to complain if unhappy",
+}
+
+
+async def claim_calls(cid: str) -> dict:
+    try:
+        rows = await execute_query(f"""
+            SELECT call_id, source, caller_type, agent_id, cast(call_ts AS string) call_ts,
+                   duration_sec, summary, sentiment, intent, missing_info, vulnerability_cues,
+                   follow_up_actions, complaint_risk, model_endpoint, transcript
+            FROM {_fq('gold_call_insights')}
+            WHERE claim_public_id = '{_esc(cid)}' ORDER BY call_ts""")
+    except Exception:
+        rows = []
+    return {"claim_public_id": cid, "calls": rows}
+
+
+async def draft_comms(cid: str, comm_type: str) -> dict:
+    ct = COMM_TYPES.get(comm_type)
+    if not ct:
+        return {"error": f"unknown comm_type '{comm_type}'"}
+    ctx, vul = await asyncio.gather(enrichment(cid), claim_vulnerability(cid))
+    if not ctx:
+        return {"error": "claim not found"}
+    facts = {k: str(ctx.get(k)) for k in (
+        "claim_public_id", "claim_number", "policy_number", "peril_type", "loss_cause",
+        "loss_date", "report_date", "product", "sum_insured", "total_incurred",
+        "paid_amount", "claim_status", "triage_decision", "postcode_district")
+        if ctx.get(k) is not None}
+    guid = [f"[{f['category_id']} {f['category']}] {f['agent_guidance']}" for f in vul.get("flags", [])]
+    vul_txt = " | ".join(guid) if guid else "No vulnerability indicators on this claim."
+    prompt = (
+        "You draft customer communications for Bricksurance SE, a UK insurer. "
+        f"Draft a {ct}. Write ONLY the letter body in plain UK English (Consumer Duty: clear, "
+        "fair, not misleading), short paragraphs, no jargon, no bracketed placeholders — address "
+        "the customer as 'Dear Policyholder', reference the claim number, and sign off as "
+        "'Bricksurance SE Claims Team'. Maximum 220 words.\n\n"
+        f"CLAIM FACTS: {json.dumps(facts)}\n\n"
+        f"VULNERABILITY HANDLING GUIDANCE (must be followed in tone and content): {vul_txt}")
+    rows = await execute_query(
+        f"SELECT ai_query('{config.FM_ENDPOINT}', '{_esc(prompt)}') AS draft")
+    draft = (rows[0].get("draft") or "").strip() if rows else ""
+    if not draft:
+        return {"error": "the model returned an empty draft"}
+    comm_id = uuid.uuid4().hex[:12]
+    await execute_query(f"""
+        INSERT INTO {_fq('gold_comms_drafts')} VALUES (
+          '{comm_id}', '{_esc(cid)}', '{_esc(comm_type)}', 'letter',
+          '{_esc(draft)}', '{_esc(vul_txt)}', '{config.FM_ENDPOINT}',
+          'drafted', current_timestamp(), NULL, NULL)""")
+    return {"comm_id": comm_id, "claim_public_id": cid, "comm_type": comm_type,
+            "draft": draft, "vulnerability_context": vul_txt,
+            "endpoint": config.FM_ENDPOINT}
+
+
+async def comms_history(cid: str) -> dict:
+    try:
+        rows = await execute_query(f"""
+            SELECT comm_id, comm_type, status, cast(drafted_ts AS string) drafted_ts,
+                   approved_by, cast(approved_ts AS string) approved_ts, draft_text
+            FROM {_fq('gold_comms_drafts')}
+            WHERE claim_public_id = '{_esc(cid)}'
+            ORDER BY drafted_ts DESC LIMIT 10""")
+    except Exception:
+        rows = []
+    return {"claim_public_id": cid, "history": rows}
+
+
+async def approve_comms(comm_id: str, approver: str) -> dict:
+    await execute_query(f"""
+        UPDATE {_fq('gold_comms_drafts')}
+        SET status = 'approved', approved_by = '{_esc(approver)}', approved_ts = current_timestamp()
+        WHERE comm_id = '{_esc(comm_id)}'""")
+    return {"comm_id": comm_id, "status": "approved", "approved_by": approver}

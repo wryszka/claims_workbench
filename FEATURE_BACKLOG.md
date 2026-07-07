@@ -16,8 +16,8 @@ the app · `Idea` = not yet represented anywhere.
 | Feature | What it is | Where it fits | Source | Size | Status |
 |---|---|---|---|---|---|
 | FNOL call co-pilot | Live transcript prompts: required info collected? gaps flagged, vulnerability cues | Claims AI / new Voice panel | workshop | L | Tile (voice intake) |
-| Call summarisation → claim record | Synthetic FNOL transcript → FM-generated structured summary, handler approves | Try a claim / Work a claim | workshop | M | Tile |
-| Automated note-taking | Every interaction transcribed + structured to the claim record | Work a claim | workshop | M | Tile (folded into co-pilot) |
+| Call summarisation → claim record | Batch ai_query analysis of every transcript: summary, sentiment, missing info, vulnerability cues, complaint risk | Work a claim › Calls & comms | workshop | M | **Live** (2026-07-07; post-call batch — live co-pilot still Tile) |
+| Automated note-taking | Every interaction transcribed + structured to the claim record | Work a claim | workshop | M | Partially live (post-call, via call insights); live in-call = co-pilot Tile |
 | Dynamic FNOL questioning | Next question adapts to prior answers; no redundant questions | Try a claim | workshop | M | Tile |
 | Digital FNOL journey | Customer-facing web/app/chat notification flow | New "Customer" lane | gap-scan | L | Tile |
 | Customer portal | Policyholder self-service status (reuse the Broker Portal pattern 1:1) | New screen next to Broker Portal | gap-scan | M | Tile |
@@ -27,7 +27,7 @@ the app · `Idea` = not yet represented anywhere.
 
 | Feature | What it is | Where it fits | Source | Size | Status |
 |---|---|---|---|---|---|
-| Customer comms drafting | Personalised, channel-aware update drafts; handler approves | Work a claim | workshop + review | M | Tile |
+| Customer comms drafting | Live Claude FM drafts (ack / update / settlement / decision) with the claim's vulnerability guidance in the prompt; handler approves; audited in gold_comms_drafts | Work a claim › Calls & comms | workshop + review | M | **Live** (2026-07-07) |
 | **Customer vulnerability standards** | Flag + classification + recommended handling protocol at point of interaction; outcomes dashboard | Work a claim (protocol card) + Governance › Vulnerability tab | workshop | M | **Live** (2026-07-07; FNOL 360 surfacing + agent-prompt wiring = next increment) |
 | Reserve adequacy | £ + reason vs peer claims; root-cause of adjustments; benchmark vs historicals | Work a claim | review + workshop | M | Tile |
 | Deterministic reason codes | Stable code set behind every model/rule decision | Work a claim / Governance | review | S | Tile |
@@ -135,11 +135,17 @@ big escape-of-water / repeat claimant / tenure+phone proxy, plus a ~5% salted-ha
 Both objects UC-linked from the app. *Next increment: FNOL 360 surfacing + wiring
 agent_guidance into the live agent prompts.*
 
-**Phase 3 — Customer comms drafting (M).** Real FM call (Claude via Foundation Model
-API) drafting the acknowledgement / decision letter / settlement breakdown from claim
-context; handler approves; drafts + approvals persisted to `gold_comms_drafts` (the
-audit trail IS the feature); cache-first for the demo heroes. *Promotes an existing
-tile; zero standing cost (on-demand FM).*
+**Phase 3 — Customer comms drafting + call-transcript analysis (M) — DONE 2026-07-07.**
+(a) **Comms**: live Claude FM drafts (acknowledgement / update / settlement / decision)
+from the claim facts **with the claim's vulnerability agent_guidance in the prompt**
+(Phase 2 wired into a real generation path); handler approves in-app; every draft +
+approval written to `gold_comms_drafts`. (b) **Transcripts**: `bronze_call_transcripts`
+(deterministic synthetic calls — heroes, a distressed fire victim, a broker status-chase,
+capability/financial-strain calls, and two `sales` calls to prove the pipeline is
+**source-agnostic**) + `gold_call_insights` = REAL batch `ai_query` analysis (summary,
+sentiment, intent, missing info, vulnerability cues, follow-ups, complaint risk). Both
+surfaced on Work a claim › **Calls & comms**; notebook `13_call_transcripts.py`.
+*Zero standing cost: pay-per-token FM, no serving infra.*
 
 **Phase 4 — small oversight wins (3×S).** Predictive SLA breach (rule-based predictor
 over pace-vs-SLA, written to a gold view + Control Tower tile + worklist); leakage audit

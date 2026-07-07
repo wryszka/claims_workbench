@@ -1,7 +1,7 @@
 """Claims AI API routes — thin wrappers over claims_service."""
 import logging
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
 
 from utils import config
@@ -250,6 +250,36 @@ async def governance_vulnerability():
 @router.get("/claim/vulnerability")
 async def claim_vulnerability(cid: str):
     return await svc.claim_vulnerability(cid)
+
+
+@router.get("/claim/calls")
+async def claim_calls(cid: str):
+    return await svc.claim_calls(cid)
+
+
+class CommsDraftIn(BaseModel):
+    cid: str
+    comm_type: str
+
+
+@router.post("/claim/comms/draft")
+async def comms_draft(c: CommsDraftIn):
+    return await svc.draft_comms(c.cid, c.comm_type)
+
+
+@router.get("/claim/comms")
+async def comms_history(cid: str):
+    return await svc.comms_history(cid)
+
+
+class CommsApproveIn(BaseModel):
+    comm_id: str
+
+
+@router.post("/claim/comms/approve")
+async def comms_approve(c: CommsApproveIn, request: Request):
+    approver = request.headers.get("x-forwarded-email") or "handler (demo)"
+    return await svc.approve_comms(c.comm_id, approver)
 
 
 # --- Phase 12 Stage B1: Handler "My Queue" (persona: Sarah Chen) ---

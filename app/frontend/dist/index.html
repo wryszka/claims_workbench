@@ -650,9 +650,8 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         <div class="row"><span class="k">Recovery</span><span class="v">${recoveryLabel(p.recovery)}</span></div>
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
     body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
-    body+=`<div class="actions">${actionBar()}</div>`+`<div id="vulslot"></div>`+secondOpinions()
+    body+=`<div class="actions">${actionBar()}</div>`+`<div id="vulslot"></div>`+secondOpinions()+`<div id="commslot"></div>`
       +`<div class="card" style="margin-top:16px"><h2 style="margin:0 0 4px">🧭 Coming soon — handler assists</h2><p class="muted" style="margin:0 0 10px">Agent-assisted steps on the roadmap — the handler always approves; the agent drafts and recommends.</p><div class="grid3">
-        ${soonTile('✍️','Draft customer comms','Auto-draft the FNOL acknowledgement, decision / repudiation letter and settlement breakdown for you to approve.')}
         ${soonTile('♻️','Draft recovery pack','Auto-assemble the subrogation demand to the third-party insurer where the claim is recoverable.')}
         ${soonTile('🔧','Repairer & parts steering','Recommend approved repairer, parts and hire at the decision point to control leakage.')}
         ${soonTile('📐','Reserve adequacy','Flag under-reserved claims with the £ gap and the reason (e.g. comparable claims developed 1.25×).')}
@@ -679,8 +678,68 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
    </div>`;
   v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision.')
     +search+body;
-  if(p) loadClaimVul(state.cid);
+  if(p){ loadClaimVul(state.cid); loadClaimComms(state.cid); }
 }
+// ---- Calls & Comms (Phase 3) ----
+// Calls: batch ai_query insights over every transcript (source-agnostic pipeline).
+// Comms: live FM draft with the vulnerability guidance in the prompt; draft +
+// approval audited in gold_comms_drafts.
+const SENTB={positive:'b-green',neutral:'b-slate',negative:'b-red'};
+const CRISKB={low:'b-green',medium:'b-amber',high:'b-red'};
+const jarr=x=>{ if(Array.isArray(x))return x; try{const a=JSON.parse(x);return Array.isArray(a)?a:[];}catch(e){return x?[String(x)]:[];} };
+async function loadClaimComms(cid){ state.callsCache=state.callsCache||{};
+  let d=state.callsCache[cid];
+  if(!d){ try{ const [calls,hist]=await Promise.all([J('/claim/calls?cid='+encodeURIComponent(cid)),J('/claim/comms?cid='+encodeURIComponent(cid))]); d={calls:calls.calls||[],history:hist.history||[]}; state.callsCache[cid]=d; }catch(e){return;} }
+  if(state.section!=='claim'||state.cid!==cid) return;
+  _slot('commslot',commsCard(cid,d));
+}
+function callRow(c,i){ const mi=jarr(c.missing_info),vc=jarr(c.vulnerability_cues),fa=jarr(c.follow_up_actions);
+  const chips=(a,cls,pre)=>a.map(x=>`<span class="badge ${cls}" style="margin:2px;font-weight:600">${pre||''}${esc(x)}</span>`).join('');
+  return `<div style="border:1px solid var(--line);border-radius:10px;margin-top:8px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 12px;cursor:pointer" onclick="var d=document.getElementById('call-${i}');d.style.display=d.style.display==='none'?'':'none'">
+      <span class="badge b-blue">${esc(c.source)}</span><span class="badge b-slate">${esc(c.caller_type)}</span>
+      <span class="badge ${SENTB[c.sentiment]||'b-slate'}">${esc(c.sentiment||'')}</span>
+      <span class="badge ${CRISKB[c.complaint_risk]||'b-slate'}">complaint risk: ${esc(c.complaint_risk||'—')}</span>
+      ${vc.length?`<span class="badge b-amber">🫶 ${vc.length} vulnerability cue${vc.length>1?'s':''}</span>`:''}
+      <span class="muted" style="font-size:11px;margin-left:auto">${esc((c.call_ts||'').slice(0,16))} · ${Math.round((c.duration_sec||0)/60)}m · ▾</span></div>
+    <div style="padding:0 12px 6px;font-size:12.5px;color:#334155">${esc(c.summary||'')}</div>
+    <div id="call-${i}" style="display:none;border-top:1px solid var(--line);padding:10px 12px">
+      <div style="font-size:12px"><b>Intent:</b> ${esc(c.intent||'—')}</div>
+      ${mi.length?`<div style="font-size:12px;margin-top:6px"><b>Missing information:</b><br>${chips(mi,'b-red')}</div>`:''}
+      ${vc.length?`<div style="font-size:12px;margin-top:6px"><b>Vulnerability cues:</b><br>${chips(vc,'b-amber')}</div>`:''}
+      ${fa.length?`<div style="font-size:12px;margin-top:6px"><b>Follow-ups:</b><br>${chips(fa,'b-slate')}</div>`:''}
+      <div style="margin-top:8px"><div class="muted" style="font-size:11px;font-weight:700;margin-bottom:3px">TRANSCRIPT</div>
+      <pre style="white-space:pre-wrap;font-size:11px;background:#f8fafc;border-radius:8px;padding:10px;max-height:220px;overflow:auto;margin:0">${esc(c.transcript||'')}</pre></div></div></div>`; }
+function commsCard(cid,d){ const ucI=ucLink('gold_call_insights'),ucC=ucLink('gold_comms_drafts');
+  const calls=d.calls.length? d.calls.map(callRow).join('')
+    : `<p class="muted" style="font-size:12px;margin:6px 0 0">No calls linked to this claim yet. The three demo claims (cc:900001/2/3) have analysed calls.</p>`;
+  const CT=[['acknowledgement','✉️ Acknowledgement'],['update','🔄 Progress update'],['settlement','💷 Settlement breakdown'],['decision','📄 Decision letter']];
+  const hist=d.history.map(h=>`<span class="badge ${h.status==='approved'?'b-green':'b-slate'}" style="margin:2px" title="${esc((h.draft_text||'').slice(0,180))}">${esc(h.comm_type)} · ${esc(h.status)}${h.approved_by?' · '+esc(h.approved_by.split('@')[0]):''}</span>`).join('');
+  return `<div class="card" style="margin-top:16px"><h2 style="margin:0 0 2px">📞 Calls &amp; comms</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 8px">Every transcript is analysed <b>in batch with ai_query</b> on the Foundation Model API — summary, sentiment, missing info, vulnerability cues, complaint risk. The pipeline is <b>source-agnostic</b>: sales &amp; renewal calls flow through the same one.${ucI?` <a class="link" href="${ucI}" target="_blank" style="font-size:11px">gold_call_insights ↗</a>`:''}</p>
+    ${calls}
+    <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+      <b style="font-size:13px">✍️ Draft a customer communication</b>
+      <p class="muted" style="font-size:12px;margin:3px 0 8px">Drafted live by Claude on the Foundation Model API from the claim facts — <b>with this claim's vulnerability handling guidance in the prompt</b>. You approve; draft + approval are recorded in <span class="mono">gold_comms_drafts</span>.${ucC?` <a class="link" href="${ucC}" target="_blank" style="font-size:11px">audit table ↗</a>`:''}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${CT.map(([k,l])=>`<button class="ghost" style="padding:7px 12px;font-size:12px" onclick="draftComms('${esc(cid)}','${k}')">${l}</button>`).join('')}</div>
+      <div id="commdraft"></div>
+      ${hist?`<div style="margin-top:10px"><div class="muted" style="font-size:11px;font-weight:700;margin-bottom:3px">AUDIT TRAIL — THIS CLAIM</div>${hist}</div>`:''}
+    </div></div>`; }
+async function draftComms(cid,type){ const el=document.getElementById('commdraft'); if(!el)return;
+  el.innerHTML='<p class="muted" style="margin-top:10px">✍️ Drafting with the Foundation Model API…</p>';
+  let d; try{ d=await J('/claim/comms/draft',{method:'POST',body:JSON.stringify({cid:cid,comm_type:type})}); }catch(e){ d={error:'Draft failed — is the FM endpoint reachable?'}; }
+  const el2=document.getElementById('commdraft'); if(!el2||state.cid!==cid)return;
+  if(d.error){ el2.innerHTML=`<p class="muted" style="margin-top:10px">⚠️ ${esc(d.error)}</p>`; return; }
+  delete (state.callsCache||{})[cid];
+  el2.innerHTML=`<div style="border:1px solid #bfdbfe;background:#f5faff;border-radius:10px;padding:12px;margin-top:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:12.5px">Draft — ${esc(type)} <span class="badge b-slate">${esc(d.endpoint||'')}</span></b>
+      <button class="btnv" style="padding:6px 14px;font-size:12px" onclick="approveComms('${esc(d.comm_id)}','${esc(cid)}')">✓ Approve &amp; record</button></div>
+    <pre style="white-space:pre-wrap;font-size:12px;margin:8px 0 0;font-family:inherit">${esc(d.draft)}</pre>
+    <div class="muted" style="font-size:10.5px;margin-top:8px">Vulnerability guidance applied: ${esc(d.vulnerability_context)}</div></div>`;
+}
+async function approveComms(commId,cid){ try{ const r=await J('/claim/comms/approve',{method:'POST',body:JSON.stringify({comm_id:commId})});
+    const el=document.getElementById('commdraft'); if(el) el.innerHTML+=`<p style="font-size:12px;color:#047857;margin-top:6px">✓ Approved and recorded in gold_comms_drafts by <b>${esc(r.approved_by)}</b>.</p>`;
+    delete (state.callsCache||{})[cid]; }catch(e){} }
 // Vulnerability (Consumer Duty) — real flags from gold_vulnerability_flags, protocols
 // from ref_vulnerability_standards. Fills #vulslot in place so re-renders stay cheap.
 const SEVB={high:'b-red',medium:'b-amber',low:'b-slate'};
@@ -871,8 +930,7 @@ function renderNewClaimView(){ const v=liveView('newclaim'); if(!v)return; const
   v.innerHTML=page('Handler view','New claim — score it live','Create a hypothetical FNOL, score it synchronously against the real models, and watch the rule engine decide — in seconds. Created claims are ephemeral; the Reset button wipes them and the sacred demo claims are never touched.')
     +form+ncResult()+ncSandbox()
     +`<div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — smarter intake</div><div class="grid3">
-      ${soonTile('🎙️','FNOL call co-pilot','Live transcript prompts during the call: required info collected? gaps flagged, vulnerability cues surfaced — and the notes write themselves.')}
-      ${soonTile('📝','Call summarisation → claim record','A structured, handler-approved summary of every call saved straight to the claim record — no manual note-taking.')}
+      ${soonTile('🎙️','FNOL call co-pilot','LIVE transcript prompts during the call: required info collected? gaps flagged, vulnerability cues surfaced. (Post-call analysis is already real — see Calls &amp; comms on Work a claim.)')}
       ${soonTile('🔀','Dynamic questioning','The next question adapts to the last answer — everything captured in one interaction, no redundant questions.')}
     </div>`;
 }

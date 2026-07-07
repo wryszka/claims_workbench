@@ -38,6 +38,11 @@ ENDPOINT_CONTEXT = _env("CLAIMS_EP_CONTEXT",
 # synthesis box falls back to the Context agent via the same cache wrapper.
 ENDPOINT_SUPERVISOR = _env("CLAIMS_EP_SUPERVISOR", default="")
 
+# Foundation Model API endpoint for comms drafting + transcript analysis (Phase 3).
+# NOTE: must be an ai_query-enabled (batch-inference) endpoint — claude-sonnet-5 is NOT
+# (AI_FUNCTION_SESSION_PERMISSION_DENIED); claude-sonnet-4-5 and claude-haiku-4-5 are.
+FM_ENDPOINT = _env("CLAIMS_FM_ENDPOINT", default="databricks-claude-sonnet-4-5")
+
 # Governance & Portfolio section (Stage B)
 GENIE_SPACE_ID = _env("GENIE_SPACE_ID", default="01f15e4e509f1410b5596f5c90b20ca4")
 GENIE_JOINED_SPACE_ID = _env("GENIE_JOINED_SPACE_ID", default="")
