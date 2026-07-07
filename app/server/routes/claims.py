@@ -242,6 +242,16 @@ async def broker_portal(broker: str | None = None):
     return await svc.broker_portal(broker)
 
 
+@router.get("/governance/vulnerability")
+async def governance_vulnerability():
+    return await svc.vulnerability_view()
+
+
+@router.get("/claim/vulnerability")
+async def claim_vulnerability(cid: str):
+    return await svc.claim_vulnerability(cid)
+
+
 # --- Phase 12 Stage B1: Handler "My Queue" (persona: Sarah Chen) ---
 @router.get("/handler/queue")
 async def handler_queue(handler: str | None = None):

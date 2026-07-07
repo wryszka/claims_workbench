@@ -275,6 +275,85 @@ print("gold_broker_claims by broker: " + ", ".join(f"{r['broker_id']}={r['n']:,}
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 4d · ref_vulnerability_standards + gold_vulnerability_flags — Consumer Duty
+# MAGIC The centralised **vulnerability standard**: category definitions, the claim-level
+# MAGIC indicators used to flag, the handling protocol for humans, and the guidance AI
+# MAGIC agents must follow. Flags are **deterministic** over silver signals (distress
+# MAGIC perils, repeat claimants, channel/tenure proxy) plus a **synthetic
+# MAGIC customer-declared cohort** (salted hash, ~5%) — labelled synthetic; in production
+# MAGIC the declared flag comes from FNOL/CRM declared data. Both objects are governed UC
+# MAGIC assets the app links straight back to.
+
+# COMMAND ----------
+
+_VUL_STANDARDS = [
+    ("VUL-01", "Life event — severe loss",
+     "The insured event itself has upended the customer's life: home uninhabitable, "
+     "serious disruption, acute distress.",
+     "peril = home fire; escape of water with incurred > £25k",
+     "Priority handling by a single named handler. Proactive contact at least twice a week. "
+     "Offer alternative accommodation and emergency payment early. No automated repudiation — "
+     "any adverse decision is made and delivered by a human.",
+     "Never auto-close. Use plain, empathetic language. Surface urgency to the handler and "
+     "flag accommodation/emergency-payment entitlements proactively."),
+    ("VUL-02", "Resilience — financial strain",
+     "Customers with low financial resilience for whom delay or excess collection causes real hardship.",
+     "3+ claims in the last 12 months (repeat claimant)",
+     "Check affordability before collecting excess; offer staged collection. Prioritise interim "
+     "payments. Review for fair value and signpost free debt advice where appropriate.",
+     "Check the file for hardship indicators and surface them. Recommend interim payment where "
+     "cover is clear. Do not recommend cash-settlement pressure tactics."),
+    ("VUL-03", "Capability — access & understanding",
+     "Customers who struggle with digital journeys, complex documents or financial terminology.",
+     "phone-only reporting from the longest-tenure customers (proxy signal)",
+     "Plain-language letters; confirm understanding on calls; never force a digital-only journey; "
+     "allow extra time at every stage.",
+     "Simplify all generated wording to plain English. Offer the phone channel in every "
+     "communication. Repeat key facts back for confirmation."),
+    ("VUL-04", "Health — declared vulnerability",
+     "A physical or mental health condition the customer has declared that affects how the claim "
+     "must be handled. Special-category data under UK GDPR.",
+     "declared at FNOL / on the CRM record (synthetic ~5% cohort in this demo)",
+     "Route to a vulnerability-trained handler. Follow the declared-needs plan on file. Record "
+     "the lawful basis and consent for using the declared data. Extra time; no pressure at decision points.",
+     "No automated decisions of any kind — always hand to a human. Follow the declared-needs "
+     "plan verbatim. Never reference the health condition in generated customer wording."),
+]
+vul_std = spark.createDataFrame(
+    _VUL_STANDARDS, "category_id string, category string, definition string, "
+                    "indicators string, handling_protocol string, agent_guidance string")
+write_gold(vul_std, "ref_vulnerability_standards", layer="reference")
+
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_vulnerability_flags')}
+ COMMENT 'Claim-level vulnerability flags (Consumer Duty). Deterministic over silver signals + synthetic declared cohort (is_synthetic=true). Protocols in ref_vulnerability_standards.' AS
+ WITH s AS (SELECT claim_public_id, peril_type, total_incurred, prior_claims_12m,
+                   report_channel, policy_tenure_years, claim_status
+            FROM {tbl('silver_claims_enriched')})
+ SELECT claim_public_id, 'VUL-01' AS category_id, 'high' AS severity,
+        'Severe home fire — home likely uninhabitable' AS rationale, false AS is_synthetic, claim_status
+ FROM s WHERE peril_type = 'home_fire'
+ UNION ALL
+ SELECT claim_public_id, 'VUL-01', 'medium',
+        'Major escape of water (incurred over £25k) — significant disruption to the home', false, claim_status
+ FROM s WHERE peril_type = 'home_escape_water' AND total_incurred > 25000
+ UNION ALL
+ SELECT claim_public_id, 'VUL-02', 'medium',
+        concat('Repeat claimant — ', prior_claims_12m, ' claims in 12 months; check affordability and fair value'), false, claim_status
+ FROM s WHERE prior_claims_12m >= 3
+ UNION ALL
+ SELECT claim_public_id, 'VUL-03', 'low',
+        'Long-tenure, phone-only contact — possible digital-capability barrier (proxy signal)', false, claim_status
+ FROM s WHERE report_channel = 'phone' AND policy_tenure_years > 4.5
+ UNION ALL
+ SELECT claim_public_id, 'VUL-04', 'high',
+        'Customer-declared vulnerability on record (synthetic cohort in this demo — declared FNOL/CRM data in production)', true, claim_status
+ FROM s WHERE pmod(abs(hash(claim_public_id, 'v')), 100) < 5""")
+vmix = spark.sql(f"SELECT category_id, count(*) n FROM {tbl('gold_vulnerability_flags')} GROUP BY category_id ORDER BY category_id").collect()
+print("gold_vulnerability_flags: " + ", ".join(f"{r['category_id']}={r['n']:,}" for r in vmix))
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 5 · gold_handler_scorecard — "How is my team performing?"
 # MAGIC Grain: handler_id.
 

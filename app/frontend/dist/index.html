@@ -650,7 +650,7 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         <div class="row"><span class="k">Recovery</span><span class="v">${recoveryLabel(p.recovery)}</span></div>
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
     body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
-    body+=`<div class="actions">${actionBar()}</div>`+secondOpinions()
+    body+=`<div class="actions">${actionBar()}</div>`+`<div id="vulslot"></div>`+secondOpinions()
       +`<div class="card" style="margin-top:16px"><h2 style="margin:0 0 4px">🧭 Coming soon — handler assists</h2><p class="muted" style="margin:0 0 10px">Agent-assisted steps on the roadmap — the handler always approves; the agent drafts and recommends.</p><div class="grid3">
         ${soonTile('✍️','Draft customer comms','Auto-draft the FNOL acknowledgement, decision / repudiation letter and settlement breakdown for you to approve.')}
         ${soonTile('♻️','Draft recovery pack','Auto-assemble the subrogation demand to the third-party insurer where the claim is recoverable.')}
@@ -658,7 +658,6 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         ${soonTile('📐','Reserve adequacy','Flag under-reserved claims with the £ gap and the reason (e.g. comparable claims developed 1.25×).')}
         ${soonTile('🏷️','Deterministic reason codes','Machine-readable reason codes on every decision for the customer and the regulator, alongside the agent narrative.')}
         ${soonTile('🗂️','Full handling in-line','Cover & excess, liability split, payments, diary/tasks, complaints & vulnerability — with write-back to ClaimCenter.')}
-        ${soonTile('🫶','Vulnerability-aware handling','Vulnerability flag, classification and the recommended handling protocol surfaced at the point of interaction — for the handler and every agent.')}
         ${soonTile('💷','Payments & indemnity control','Payee verification, dual authorisation over threshold, excess collection and sanctions screening before any money moves.')}
         ${soonTile('🚙','Total loss & salvage','Market valuation, write-off category and salvage recovery tracked to the pound.')}
         ${soonTile('🩹','Bodily injury lane','Injury coding, rehabilitation, care costs and OIC/MOJ portal handling for the BI tail that drives motor indemnity.')}
@@ -680,6 +679,24 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
    </div>`;
   v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision.')
     +search+body;
+  if(p) loadClaimVul(state.cid);
+}
+// Vulnerability (Consumer Duty) — real flags from gold_vulnerability_flags, protocols
+// from ref_vulnerability_standards. Fills #vulslot in place so re-renders stay cheap.
+const SEVB={high:'b-red',medium:'b-amber',low:'b-slate'};
+async function loadClaimVul(cid){ state.vulCache=state.vulCache||{};
+  let d=state.vulCache[cid];
+  if(!d){ try{d=await J('/claim/vulnerability?cid='+encodeURIComponent(cid)); state.vulCache[cid]=d;}catch(e){return;} }
+  if(state.section!=='claim'||state.cid!==cid) return;
+  const flags=d.flags||[];
+  const uc=ucLink('ref_vulnerability_standards'); const link=uc?` <a class="link" href="${uc}" target="_blank" style="font-size:11px">standards in Unity Catalog ↗</a>`:'';
+  if(!flags.length){ _slot('vulslot',`<div class="card" style="margin-top:16px;padding:10px 16px"><span style="font-size:13px">🫶 <b>Vulnerability check:</b> <span class="muted">no indicators on this claim — checked against the four categories in the vulnerability standard.</span></span>${link}</div>`); return; }
+  const rows=flags.map(f=>`<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:10px 12px;margin-top:8px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="badge ${SEVB[f.severity]||'b-slate'}">${esc((f.severity||'').toUpperCase())}</span><b style="font-size:13px">${esc(f.category)}</b><span class="mono muted" style="font-size:10px">${esc(f.category_id)}</span>${f.is_synthetic?'<span class="badge b-slate" style="font-size:9px">synthetic declared cohort — demo</span>':''}</div>
+    <div style="font-size:12.5px;color:#334155;margin-top:5px">${esc(f.rationale)}</div>
+    <div style="font-size:12px;color:#334155;margin-top:6px"><b>Handle it like this:</b> ${esc(f.handling_protocol)}</div>
+    <div style="font-size:11.5px;color:#64748b;margin-top:4px"><b>AI agents must:</b> ${esc(f.agent_guidance)}</div></div>`).join('');
+  _slot('vulslot',`<div class="card" style="margin-top:16px;border-left:3px solid #f59e0b"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">🫶 Vulnerability — handle with care</h2><span style="font-size:11px" class="muted">from <span class="mono">gold_vulnerability_flags</span> ·${link}</span></div>${rows}</div>`);
 }
 const HEROCHIPS=[
   {id:'cc:900001',t:'Escalated → referred to SIU (the complex one)'},
@@ -974,6 +991,7 @@ function renderGovernance(){ const v=document.getElementById('view');
       <div class="tab ${state.govtab==='agents'?'on':''}" onclick="setGovTab('agents')">🤖 AI agents</div>
       <div class="tab ${state.govtab==='track'?'on':''}" onclick="setGovTab('track')">📋 Claim track</div>
       <div class="tab ${state.govtab==='fair'?'on':''}" onclick="setGovTab('fair')">🤝 Fair outcomes</div>
+      <div class="tab ${state.govtab==='vuln'?'on':''}" onclick="setGovTab('vuln')">🫶 Vulnerability</div>
     </div><div id="govbody"><p class="muted">Loading…</p></div>
     <div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — oversight &amp; compliance</div><div class="grid3">
       ${soonTile('💯','QA on every interaction','AI adherence scoring on 100% of claims instead of a sampled handful — flags deviations, never overrides, feeds coaching and audit.')}
@@ -991,6 +1009,29 @@ async function renderGovBody(){ const el=document.getElementById('govbody'); if(
   if(state.govtab==='agents') return renderGovAgents(el);
   if(state.govtab==='track') return renderGovTrack(el);
   if(state.govtab==='fair') return renderGovFair(el);
+  if(state.govtab==='vuln') return renderGovVuln(el);
+}
+async function renderGovVuln(el){
+  let d; try{d=await J('/governance/vulnerability');}catch(e){el.innerHTML='<p class="muted">Unavailable — has notebook 03 (§4d) been run on this workspace?</p>';return;}
+  if(state.section!=='governance'||state.govtab!=='vuln')return;
+  const h=d.headline||{};
+  const tiles=`<div class="grid4" style="margin-bottom:14px">
+    <div class="tile" style="border-left:3px solid #f59e0b"><div class="l">Open claims flagged</div><div class="n">${num(h.flagged_open)}</div><div class="s">${h.pct_of_open!=null?pct(h.pct_of_open)+' of the open book':''}</div></div>
+    <div class="tile"><div class="l">Flagged all-time</div><div class="n">${num(h.flagged_claims)}</div><div class="s">claims with ≥1 indicator</div></div>
+    <div class="tile"><div class="l">Categories</div><div class="n">${(d.standards||[]).length}</div><div class="s">in the standard</div></div>
+    <div class="tile"><div class="l">One standard</div><div class="n">UC</div><div class="s">read by handlers, agents &amp; MI alike</div></div></div>`;
+  const stdCard=s=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h2 style="margin:0">${esc(s.category)}</h2><span class="badge b-amber">${num(s.open_flags)} open</span></div>
+    <p class="muted" style="font-size:12.5px;margin:6px 0 0">${esc(s.definition)}</p>
+    <div style="font-size:12px;margin-top:8px"><b>Flagged when:</b> <span class="muted">${esc(s.indicators)}</span></div>
+    <div style="font-size:12px;margin-top:6px"><b>Handling protocol:</b> <span style="color:#334155">${esc(s.handling_protocol)}</span></div>
+    <div style="font-size:11.5px;margin-top:6px;padding:7px 9px;background:#eff6ff;border-radius:8px"><b>🤖 AI agents must:</b> <span style="color:#334155">${esc(s.agent_guidance)}</span></div></div>`;
+  const chips=(d.sample||[]).map(f=>`<span class="badge ${SEVB[f.severity]||'b-slate'}" style="cursor:pointer;margin:2px" onclick="openWork('${esc(f.claim_public_id)}')" title="${esc(f.rationale)}">${esc(f.claim_public_id)} · ${esc(f.category_id)}</span>`).join('');
+  el.innerHTML=`<div class="card" style="margin-bottom:16px"><h2>🫶 Vulnerability — one standard, applied everywhere</h2>
+    <p class="muted" style="margin:6px 0 0;font-size:13px">The vulnerability standard is a <b>governed Unity Catalog table</b> — definitions, the signals that flag a claim, the handling protocol for humans and the guidance AI agents must follow. The same record drives the handler panel in <b>Work a claim</b>, the agents, and this dashboard — change the standard once, every surface follows.${d.standards_url?` <a class="link" href="${d.standards_url}" target="_blank">standards ↗</a>`:''}${d.flags_url?` · <a class="link" href="${d.flags_url}" target="_blank">flags view ↗</a>`:''}</p>
+    <p class="muted" style="margin:8px 0 0;font-size:11.5px">ⓘ Flags are deterministic from claim signals; the "declared" cohort is <b>synthetic</b> in this demo (labelled) — in production it comes from declared FNOL/CRM data, handled as special-category data.</p></div>
+  ${tiles}
+  <div class="grid2" style="margin-bottom:16px">${(d.standards||[]).map(stdCard).join('')}</div>
+  <div class="card"><h2 style="margin:0 0 6px">Open flagged claims — highest severity first</h2><p class="muted" style="font-size:12px;margin:0 0 8px">Click one to open it in <b>Work a claim</b> — the handling protocol appears on the claim.</p>${chips||'<span class="muted">None right now.</span>'}</div>`;
 }
 async function renderGovFair(el){ if(!state.claims.length) await loadClaims();
   let d={}; try{d=await J('/governance/fair-outcomes');}catch(e){d={};}
@@ -1044,7 +1085,7 @@ async function renderGovTrack(el){ if(!state.claims.length) await loadClaims();
   if(!state.pkgs){ try{state.pkgs=await J('/claim/packages');}catch(e){state.pkgs=[];} }
   const closedChips=(state.pkgs||[]).map(p=>`<span class="badge b-green" style="cursor:pointer;margin:2px" onclick="state.trackCid='${esc(p.claim_public_id)}';doTrack()">📦 ${esc(p.claim_public_id)} (closed)</span>`).join('');
   el.innerHTML=`<div class="card" style="margin-bottom:16px"><h2>📋 Track a claim end-to-end</h2>
-    <p class="muted" style="margin-bottom:10px">The whole story in one place — what came in, what was decided, what documents arrived, and what's still outstanding. When a claim is <b>closed (resolved)</b>, the full file is compiled into a single <b>PDF closure package</b> and kept in a governed Unity Catalog Volume.</p>
+    <p class="muted" style="margin-bottom:10px">The whole story in one place — what came in, what was decided, what documents arrived, and what's still outstanding. When a claim is <b>closed (resolved)</b>, the full file is compiled into a single <b>PDF closure package</b> and kept in a governed Unity Catalog Volume. This is also the <b>auditor's single view</b>: claim data, every decision with its reasons, and prior actions aggregated in one place — no system-hopping to reconstruct a file.</p>
     <div style="display:flex;gap:8px"><input id="trackinput" placeholder="Claim number, e.g. cc:900001" value="${esc(state.trackCid)}" style="flex:1" onkeydown="if(event.key==='Enter')doTrack()"><button class="btnv" onclick="doTrack()">Track</button></div>
     ${closedChips?`<div style="margin-top:11px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Closed claims — closure package ready</div>${closedChips}</div>`:''}
     <div style="margin-top:9px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px">Other claims (in flight)</div>${state.claims.slice(0,6).map(c=>`<span class="badge b-violet" style="cursor:pointer;margin:2px" onclick="state.trackCid='${esc(c.claim_public_id)}';doTrack()">${esc(c.claim_public_id)}</span>`).join('')}</div></div>
@@ -1214,7 +1255,7 @@ function brokerSignIn(id){ state.bkBroker=id; state.bk=null; renderBroker(); }
 function brokerSignOut(){ state.bkBroker=null; state.bk=null; renderBroker(); }
 function renderBrokerLogin(){ const el=document.getElementById('bkbody'); if(!el)return;
   const story=`<div class="card" style="border-top:3px solid #2563eb;margin-bottom:16px"><h2>📞 Why this exists — the helpline problem</h2>
-    <p style="font-size:13.5px;color:#334155;line-height:1.6;margin:6px 0 0">A large share of claims-helpline capacity goes to <b>brokers chasing status</b> on their clients' claims — calls that rarely change the claim, only relay where it is. This portal gives each broker a governed, self-service window on <b>their own book only</b>: open claims, where each one stands in plain English, what happens next, and Genie to ask anything else. The handler's phone stops ringing; the broker gets a better answer, instantly, 24/7.</p>
+    <p style="font-size:13.5px;color:#334155;line-height:1.6;margin:6px 0 0">In a typical claims operation, <b>up to ~70% of inbound handler calls are about claims already in flight</b> — status chasing, not new losses — and <b>brokers ringing on their clients' behalf</b> are a big slice of it: calls that rarely change the claim, only relay where it is. This portal gives each broker a governed, self-service window on <b>their own book only</b>: open claims, where each one stands in plain English, what happens next, and Genie to ask anything else. The handler's phone stops ringing; the broker gets a better answer, instantly, 24/7.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
       <span class="badge b-blue">Row-level security — each broker sees only their book</span>
       <span class="badge b-blue">Column-level security — no fraud or handler fields</span>

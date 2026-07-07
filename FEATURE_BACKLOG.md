@@ -28,7 +28,7 @@ the app · `Idea` = not yet represented anywhere.
 | Feature | What it is | Where it fits | Source | Size | Status |
 |---|---|---|---|---|---|
 | Customer comms drafting | Personalised, channel-aware update drafts; handler approves | Work a claim | workshop + review | M | Tile |
-| **Customer vulnerability standards** | Flag + classification + recommended handling protocol at point of interaction; complaints/outcomes dashboard | FNOL 360 + Work a claim + Governance | workshop | M | Tile — **top gap** |
+| **Customer vulnerability standards** | Flag + classification + recommended handling protocol at point of interaction; outcomes dashboard | Work a claim (protocol card) + Governance › Vulnerability tab | workshop | M | **Live** (2026-07-07; FNOL 360 surfacing + agent-prompt wiring = next increment) |
 | Reserve adequacy | £ + reason vs peer claims; root-cause of adjustments; benchmark vs historicals | Work a claim | review + workshop | M | Tile |
 | Deterministic reason codes | Stable code set behind every model/rule decision | Work a claim / Governance | review | S | Tile |
 | Payments & indemnity control | Payee verification, dual authorisation, excess collection, push-payment fraud check | Work a claim / Governance | gap-scan | L | Tile |
@@ -121,17 +121,19 @@ the app · `Idea` = not yet represented anywhere.
 app as coming-soon tiles on the screen where they'll live (41 tiles) + the Roadmap page
 regrouped. The app IS the roadmap; future workshops point at tiles and prioritise.
 
-**Phase 1 — copy-level enrichment (S).** The ~70%-of-calls-are-live-claims framing in
-the Broker Portal story card; "the auditor's single view" positioning on Claim Track;
-closes workshop items with zero build. *Governance/doc: demo-doc lines updated.*
+**Phase 1 — copy-level enrichment (S) — DONE 2026-07-07.** The ~70%-of-calls-are-live-claims
+framing in the Broker Portal story card; "the auditor's single view" positioning on Claim
+Track; demo-doc lines updated (repo + Google Doc).
 
-**Phase 2 — Vulnerability standards (M) — top gap.** `ref_vulnerability_standards` UC
-table (categories, definitions, handling protocols); deterministic vulnerability
-signals at silver (distress perils, repeat claimants, channel patterns — honestly
-labelled synthetic where synthetic); flag + protocol panel in FNOL 360 / Work a claim;
-Governance dashboard tile (volumes, outcomes, complaints proxy by category); agents read
-the protocol via the context function. *Every surfaced flag traceable to the standards
-table; shows up in Claim Track.*
+**Phase 2 — Vulnerability standards (M) — DONE 2026-07-07 (core).**
+`ref_vulnerability_standards` UC table (4 categories: definitions, indicators, handling
+protocol, agent guidance) + `gold_vulnerability_flags` view (deterministic: home fire /
+big escape-of-water / repeat claimant / tenure+phone proxy, plus a ~5% salted-hash
+**synthetic declared cohort, labelled**). Surfaced: Governance › **Vulnerability** tab
+(headline, standards cards, click-through flagged claims) + a real protocol card on
+**Work a claim** (replaces the tile; clean claims show "checked, no indicators").
+Both objects UC-linked from the app. *Next increment: FNOL 360 surfacing + wiring
+agent_guidance into the live agent prompts.*
 
 **Phase 3 — Customer comms drafting (M).** Real FM call (Claude via Foundation Model
 API) drafting the acknowledgement / decision letter / settlement breakdown from claim

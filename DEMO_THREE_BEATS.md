@@ -34,7 +34,7 @@ Three heroes thread through every beat:
 **Strong example:**
 1. **Control Tower** — the four vital signs (straight‑through %, aged/SLA, recovery, under‑reserved), the **Daily brief**, and the **auto‑close risk‑appetite dial** (drag it → the book re‑segments live).
 2. **Insight** — the **live Lakeview dashboard** (your team edits it; Genie answers it in plain English). *"Self‑serve MI — not a hand‑built screen."*
-3. **Governance →** *What's collected* (PII / SECRET tiers, masking, CMK) · *AI agents & reasoning audit* (every agent's reasoning on the heroes, **regulator‑viewable**) · *Claim track* (lifecycle + docs received/missing + completeness %) · *Fair outcomes* (Consumer‑Duty consistency + run the reviewer on a claim).
+3. **Governance →** *What's collected* (PII / SECRET tiers, masking, CMK) · *AI agents & reasoning audit* (every agent's reasoning on the heroes, **regulator‑viewable**) · *Claim track* (lifecycle + docs received/missing + completeness % — also **the auditor's single view**, and closed claims carry a PDF closure package) · *Fair outcomes* (Consumer‑Duty consistency + run the reviewer on a claim) · *Vulnerability* (**one governed standard in UC** — definitions, flags, the handling protocol for humans and the guidance agents must follow; click an open flagged claim → the protocol appears on the claim in Work a claim).
 
 **Anchor line:** *"This is what lets you actually automate — you can't safely auto‑decide a claim you can't prove was fair. Governance isn't the brake; it's the enabler. The real blocker to auto‑closing claims is conduct fear — 'can we defend this to the FCA?' — and this removes it."*
 
@@ -56,7 +56,7 @@ Three heroes thread through every beat:
 
 ## BEAT 4 (optional) — Broker Portal: broker calls off the helpline  *(~3 min)*
 
-**The pain (say this first):** *"A big slice of your claims-helpline capacity is brokers ringing for status on their clients' claims — calls that don't change the claim, only relay where it is."*
+**The pain (say this first):** *"In a typical claims operation, up to ~70% of inbound handler calls are about claims already in flight — status chasing, not new losses — and brokers ringing on their clients' behalf are a big slice of it. Calls that don't change the claim, only relay where it is."*
 
 **Screen:** **🤝 Broker Portal** (sidebar, under Distribution).
 

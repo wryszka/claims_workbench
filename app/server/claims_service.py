@@ -2142,3 +2142,68 @@ async def broker_portal(broker: str | None = None) -> dict:
     return {"brokers": brokers, "profile": profile, "view_name": f"{CAT}.{SCH}.{view}",
             "kpis": kpis[0] if kpis else {}, "claims": claims, "recent": recent,
             "stage_mix": stage_mix, "peril_mix": peril_mix, "ageing": ageing, **links}
+
+
+# --------------------------------------------------------------------------
+# Vulnerability standards (Consumer Duty) — Phase 2.
+# The standard lives in ref_vulnerability_standards (definitions, handling
+# protocol, agent guidance); claim-level flags in gold_vulnerability_flags
+# (deterministic signals + a labelled synthetic declared cohort).
+# --------------------------------------------------------------------------
+_SEV_ORDER = "CASE f.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END"
+
+
+async def vulnerability_view() -> dict:
+    std_q = execute_query(
+        f"SELECT * FROM {_fq('ref_vulnerability_standards')} ORDER BY category_id")
+    agg_q = execute_query(f"""
+        SELECT f.category_id, count(*) total,
+               sum(CASE WHEN f.claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) open
+        FROM {_fq('gold_vulnerability_flags')} f GROUP BY f.category_id""")
+    head_q = execute_query(f"""
+        SELECT count(DISTINCT claim_public_id) flagged_claims,
+               count(DISTINCT CASE WHEN claim_status IN ('open','under_investigation')
+                                   THEN claim_public_id END) flagged_open
+        FROM {_fq('gold_vulnerability_flags')}""")
+    sample_q = execute_query(f"""
+        SELECT f.claim_public_id, f.category_id, f.severity, f.rationale,
+               s.peril_type, s.total_incurred
+        FROM {_fq('gold_vulnerability_flags')} f
+        JOIN {_fq('silver_claims_enriched')} s USING (claim_public_id)
+        WHERE f.claim_status IN ('open','under_investigation')
+        ORDER BY {_SEV_ORDER}, s.total_incurred DESC LIMIT 12""")
+    open_q = execute_query(f"""
+        SELECT count(*) c FROM {_fq('silver_claims_enriched')}
+        WHERE claim_status IN ('open','under_investigation')""")
+    std, agg, head, sample, open_total = await asyncio.gather(
+        std_q, agg_q, head_q, sample_q, open_q)
+
+    def _links():
+        from server.sql import _client
+        host = _client().config.host.rstrip("/")
+        return {"standards_url": f"{host}/explore/data/{CAT}/{SCH}/ref_vulnerability_standards",
+                "flags_url": f"{host}/explore/data/{CAT}/{SCH}/gold_vulnerability_flags"}
+    links = await asyncio.to_thread(_links)
+    agg_map = {r["category_id"]: r for r in agg}
+    for s in std:
+        s["total_flags"] = int(agg_map.get(s["category_id"], {}).get("total", 0) or 0)
+        s["open_flags"] = int(agg_map.get(s["category_id"], {}).get("open", 0) or 0)
+    h = head[0] if head else {}
+    ot = int(open_total[0]["c"]) if open_total else 0
+    fo = int(h.get("flagged_open", 0) or 0)
+    return {"standards": std, "sample": sample,
+            "headline": {"flagged_claims": int(h.get("flagged_claims", 0) or 0),
+                         "flagged_open": fo, "open_total": ot,
+                         "pct_of_open": round(100.0 * fo / ot, 1) if ot else None},
+            **links}
+
+
+async def claim_vulnerability(cid: str) -> dict:
+    flags = await execute_query(f"""
+        SELECT f.category_id, f.severity, f.rationale, f.is_synthetic,
+               s.category, s.definition, s.handling_protocol, s.agent_guidance
+        FROM {_fq('gold_vulnerability_flags')} f
+        JOIN {_fq('ref_vulnerability_standards')} s USING (category_id)
+        WHERE f.claim_public_id = '{_esc(cid)}'
+        ORDER BY {_SEV_ORDER}""")
+    return {"claim_public_id": cid, "flags": flags}
