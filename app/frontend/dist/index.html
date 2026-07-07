@@ -131,6 +131,7 @@ const SECTIONS=[
   {id:'fraud',label:'🔍 Fraud & SIU',grp:'Fraud & SIU'},
   {id:'ingestion',label:'📥 Ingestion',grp:'Data & Governance'},
   {id:'governance',label:'🛡️ Governance',grp:'Data & Governance'},
+  {id:'broker',label:'🤝 Broker Portal',grp:'Distribution'},
   {id:'claimsai',label:'🤖 Claims AI',grp:'The platform'},
 ];
 const state={ section:'home', host:'', cid:'cc:900001', claims:[], panels:null, synth:null, disp:null, reason:null, confirmation:null, overriding:false,
@@ -182,7 +183,7 @@ function pollReset(rid,t0){ const m=document.getElementById('resetMsg'); clearIn
   const done=/TERMINATED|INTERNAL_ERROR|SKIPPED/.test(lc)||res!==''||mins>=30;
   if(done){clearInterval(_rt);document.getElementById('resetBtn').disabled=false; const ok=res.includes('SUCCESS'); m.textContent=ok?'✓ Reset complete':(mins>=30&&!res?'Reset timed out — check the job':'Reset failed — check the job'); if(ok)location.reload();}
   else{m.textContent=`Reset running… ${mins}m`;}}catch(e){}}; tick(); _rt=setInterval(tick,15000); }
-function render(){ const f={home:renderHome,control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,fraud:renderFraud,ingestion:renderIngestion,governance:renderGovernance,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
+function render(){ const f={home:renderHome,control:renderControl,insight:renderInsight,myqueue:renderMyQueue,fnol360:renderFnol360,worklists:renderWorklists,claim:renderClaim,newclaim:renderNewClaim,claimsai:renderClaimsAI,fraud:renderFraud,ingestion:renderIngestion,governance:renderGovernance,broker:renderBroker,learn:renderLearn,roadmap:renderRoadmap}[state.section]; if(f)f(); }
 function openWork(cid){ state.cid=cid; state.panels=null; state.synth=null; state.disp=null; state.reason=null; state.confirmation=null; state.expertOps={}; go('claim'); }
 function goWork(kind){ state.worklistKind=kind; go('worklists'); }
 const RAGC={green:'#10b981',amber:'#f59e0b',red:'#ef4444',info:'#94a3b8'};
@@ -200,6 +201,7 @@ const VS_CAPTION={
   fraud:"The SIU's fraud lens and high-score queue. The same claims also surface in the high-fraud <b>Worklist</b>.",
   claimsai:"Where you <b>use</b> the agents, live. The audit trail of what they decided is in <b>Governance › AI agents</b>.",
   governance:"Controls &amp; audit — what's collected, what the agents did, fair outcomes. To <b>use</b> the agents, see <b>Claims AI</b>.",
+  broker:"What an <b>external broker</b> sees — only their book, broker-safe columns only. Every internal lens (fraud, handlers, reserves detail) stays in the other lanes.",
 };
 function page(eyebrow,title,lead,desc){ const vs=VS_CAPTION[state.section];
   return `<div class="eyebrow">${eyebrow}</div><h1 class="big">${title}</h1>${vs?`<div style="display:inline-block;margin:0 0 10px;padding:5px 11px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600;border:1px solid #dbeafe">↔ ${vs}</div>`:''}${lead?`<p class="lead">${lead}</p>`:''}${desc?`<div class="pagedesc">${desc}</div>`:''}`; }
@@ -1160,6 +1162,95 @@ function renderLearn(){ const v=document.getElementById('view'); const n=LEARN_P
 
 // ============ ROADMAP ============
 function renderRoadmap(){ document.getElementById('view').innerHTML=page('Reference','Roadmap — under construction','What this accelerator intentionally does NOT do yet. Greyed = not built — shown to frame the platform’s reach honestly.')+roadmapStrip(); }
+
+// ============ BROKER PORTAL (demo) ============
+// The story: brokers generate a big share of claims-helpline volume — mostly
+// "any update on my client's claim?". This portal answers that self-service.
+// Mock sign-in picks a broker; the session then reads that broker's pre-filtered
+// UC view (v_broker_*_claims) — broker-safe columns only, never fraud or handler
+// fields. Production = ONE view + a UC row filter on the broker's identity.
+const BK_STAGE_BADGE={'Payment in progress':'b-green','Under review — additional checks':'b-amber','New — being assessed':'b-blue','In handling':'b-slate','Settled & closed':'b-green','Declined':'b-red','Withdrawn':'b-slate'};
+const BK_COLORS=['#2563eb','#059669','#d97706'];
+async function renderBroker(){ const v=document.getElementById('view');
+  v.innerHTML=page('Distribution','Broker Portal','Brokers self-serve claim status on their own book — and the "any update on my client\'s claim?" calls come off your helpline.')+'<div id="bkbody"><p class="muted">Loading…</p></div>';
+  if(!state.bkRoster){ try{const d=await J('/broker/portal'); state.bkRoster=d.brokers||[];}catch(e){ if(liveView('broker'))document.getElementById('bkbody').innerHTML='<p class="muted">Broker book unavailable — has notebook 03 (§4c) been run on this workspace?</p>'; return; } }
+  if(!liveView('broker'))return;
+  if(!state.bkBroker){ renderBrokerLogin(); } else { renderBrokerHome(); }
+}
+function brokerSignIn(id){ state.bkBroker=id; state.bk=null; renderBroker(); }
+function brokerSignOut(){ state.bkBroker=null; state.bk=null; renderBroker(); }
+function renderBrokerLogin(){ const el=document.getElementById('bkbody'); if(!el)return;
+  const story=`<div class="card" style="border-top:3px solid #2563eb;margin-bottom:16px"><h2>📞 Why this exists — the helpline problem</h2>
+    <p style="font-size:13.5px;color:#334155;line-height:1.6;margin:6px 0 0">A large share of claims-helpline capacity goes to <b>brokers chasing status</b> on their clients' claims — calls that rarely change the claim, only relay where it is. This portal gives each broker a governed, self-service window on <b>their own book only</b>: open claims, where each one stands in plain English, what happens next, and Genie to ask anything else. The handler's phone stops ringing; the broker gets a better answer, instantly, 24/7.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <span class="badge b-blue">Row-level security — each broker sees only their book</span>
+      <span class="badge b-blue">Column-level security — no fraud or handler fields</span>
+      <span class="badge b-blue">Same governed tables as the internal workbench</span>
+      <span class="badge b-blue">Genie — plain-English questions, no SQL</span></div></div>`;
+  const bcard=(b,i)=>`<div class="card" style="cursor:pointer;border-top:3px solid ${BK_COLORS[i%3]}" onclick="brokerSignIn('${esc(b.broker_id)}')">
+    <div style="display:flex;gap:10px;align-items:center"><div style="width:40px;height:40px;border-radius:10px;background:${BK_COLORS[i%3]}18;color:${BK_COLORS[i%3]};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">${esc((b.broker_name||'?')[0])}</div>
+      <div><b style="font-size:14px">${esc(b.broker_name)}</b><div class="muted" style="font-size:11px">${esc(b.segment||'')} · ${esc(b.producer_code||'')}</div></div></div>
+    <div style="display:flex;gap:14px;margin-top:10px;font-size:12px"><span><b>${num(b.open_claims)}</b> <span class="muted">open</span></span><span><b>${num(b.book_claims)}</b> <span class="muted">claims on book</span></span></div>
+    <div style="color:${BK_COLORS[i%3]};font-size:12px;font-weight:700;margin-top:8px">Sign in as ${esc((b.contact_name||'').split(' ')[0])} →</div></div>`;
+  const how=`<div class="card" style="margin-top:16px"><h2>🔐 How the "each broker sees only their data" works</h2>
+    <p style="font-size:13px;color:#334155;line-height:1.6;margin:6px 0 0">In this demo, sign-in is <b>mocked</b> (we're limited on accounts) — picking a broker points the session at that broker's <b>pre-filtered Unity Catalog view</b> (<span class="mono">v_broker_…_claims</span>), so the data really is row-filtered at the platform, not hidden in the UI. In production you wouldn't build a view per broker: it's <b>one view + a UC row filter</b> — a function on the table that matches rows to the broker's identity (<span class="mono">is_account_group_member()</span>) when they log in via SSO — plus <b>column masks</b> for anything internal. Same tables, one governance model, per-broker reality.</p></div>`;
+  const soon=`<div style="margin-top:16px"><div class="eyebrow">Coming soon — broker self-service, phase 2</div><div class="grid4" style="margin-top:8px">
+    ${soonTile('📄','Upload documents','Brokers drop claim documents straight into the claim file — no email chains.')}
+    ${soonTile('📊','Bordereaux downloads','Monthly claims bordereaux and performance packs, generated from the same governed views.')}
+    ${soonTile('🔔','Status notifications','Push updates (email / webhook) when a claim moves stage — before the broker thinks to call.')}
+    ${soonTile('🔌','API access','The same row-filtered views served to broker platforms (Acturis, Applied) via SQL endpoint or Delta Sharing.')}</div></div>`;
+  el.innerHTML=story+`<div class="eyebrow" style="margin-bottom:8px">Sign in as (demo — pick a broker)</div><div class="grid3">${(state.bkRoster||[]).map(bcard).join('')}</div>`+how+soon;
+}
+function bkBar(label,n,max,color){ const w=max?Math.max(3,Math.round(100*n/max)):0;
+  return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0"><div style="flex:0 0 190px;font-size:12px;color:#334155">${esc(label)}</div><div style="flex:1;background:#f1f5f9;border-radius:6px;height:16px"><div style="width:${w}%;height:16px;border-radius:6px;background:${color}"></div></div><div style="flex:0 0 52px;text-align:right;font-size:12px;font-weight:700">${num(n)}</div></div>`; }
+function brokerFilter(q){ q=(q||'').toLowerCase(); document.querySelectorAll('#bktable tr[data-search]').forEach(tr=>{ const hit=tr.getAttribute('data-search').includes(q); tr.style.display=hit?'':'none'; const d=document.getElementById('bkd-'+tr.getAttribute('data-i')); if(d&&!hit)d.style.display='none'; }); }
+function bkToggle(i){ const d=document.getElementById('bkd-'+i); if(d)d.style.display=d.style.display==='none'?'':'none'; }
+async function renderBrokerHome(){ const el=document.getElementById('bkbody'); if(!el)return;
+  if(!state.bk||state.bk._id!==state.bkBroker){ el.innerHTML='<p class="muted">Loading your book…</p>';
+    try{ const d=await J('/broker/portal?broker='+encodeURIComponent(state.bkBroker)); d._id=state.bkBroker; state.bk=d; if(!liveView('broker'))return; }
+    catch(e){ if(liveView('broker'))el.innerHTML='<p class="muted">Unavailable.</p>'; return; } }
+  const d=state.bk, p=d.profile||{}, k=d.kpis||{};
+  const head=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;background:#0f172a;border:0">
+    <div style="display:flex;gap:12px;align-items:center"><div style="width:44px;height:44px;border-radius:11px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">${esc((p.broker_name||'?')[0])}</div>
+      <div><b style="color:#fff;font-size:15px">${esc(p.broker_name||'')}</b><div style="color:#94a3b8;font-size:11.5px">Signed in as <b style="color:#cbd5e1">${esc(p.contact_name||'')}</b> · producer ${esc(p.producer_code||'')} · ${esc(p.segment||'')}</div></div></div>
+    <div style="display:flex;gap:8px;align-items:center"><span class="badge b-blue">🔒 ROW-FILTERED VIEW</span><button class="ghost" style="background:#1e293b;color:#cbd5e1;border-color:#334155" onclick="brokerSignOut()">Switch broker ⇄</button></div></div>`;
+  const filt=`<div style="display:inline-block;margin:0 0 14px;padding:6px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;border:1px solid #dbeafe">🔒 This session reads <b class="mono">${esc(d.view_name||'')}</b> — only your book, and never internal columns (fraud indicators, handler notes, reserve detail).${d.view_url?` <a class="link" href="${d.view_url}" target="_blank">See the view in Unity Catalog ↗</a>`:''}</div>`;
+  const tile=(l,vv,s)=>`<div class="tile"><div class="l">${l}</div><div class="n">${vv}</div><div class="s">${s||''}</div></div>`;
+  const tiles=`<div class="grid4" style="margin-bottom:16px">
+    ${tile('Open claims',num(k.open),'on your book right now')}
+    ${tile('Under review',num(k.under_review),'additional checks in progress')}
+    ${tile('New (30 days)',num(k.new_30d),'reported in the last month')}
+    ${tile('Settled (30 days)',num(k.settled_30d),'closed in the last month')}</div>
+    <div class="grid2" style="margin-bottom:16px">
+    ${tile('Avg days open',(k.avg_days_open??'—'),'across your open claims')}
+    ${tile('Outstanding estimate',gbp(k.outstanding_total),'incurred not yet paid, open claims')}</div>`;
+  const row=(r,i)=>{ const sb=BK_STAGE_BADGE[r.stage]||'b-slate';
+    const s=[r.claim_public_id,r.client_name,r.policy_number,PERIL[r.peril_type]||r.peril_type,r.stage].join(' ').toLowerCase();
+    return `<tr data-search="${esc(s)}" data-i="${i}" style="cursor:pointer" onclick="bkToggle(${i})">
+      <td class="mono link">${esc(r.claim_public_id)}</td><td>${esc(r.client_name)}</td><td>${esc(PERIL[r.peril_type]||r.peril_type||'')}</td>
+      <td>${esc(r.report_date||'')}</td><td><span class="badge ${sb}">${esc(r.stage)}</span></td><td>${esc(r.last_update||'')}</td>
+      <td style="text-align:right">${gbp(r.paid_amount)}</td><td style="text-align:right">${gbp(r.outstanding_estimate)}</td></tr>
+    <tr id="bkd-${i}" style="display:none"><td colspan="8" style="background:#f8fafc;border-radius:8px;padding:10px 12px">
+      <div style="font-size:12.5px;color:#334155;line-height:1.7"><b>What happens next:</b> ${esc(r.next_step||'—')}<br>
+      <span class="muted">Policy <b class="mono">${esc(r.policy_number||'')}</b> · ${esc(r.product||'')} · cause: ${esc(r.loss_cause||'—')} · loss ${esc(r.loss_date||'')} · ${esc(r.postcode_district||'')} · open ${num(r.days_open)} days</span></div></td></tr>`; };
+  const open=`<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">📋 Your open claims</h2>
+      <input placeholder="Search claim, client, policy…" oninput="brokerFilter(this.value)" style="width:280px;padding:8px 11px;font-size:13px"></div>
+    <p class="muted" style="margin:4px 0 8px;font-size:12px">Click a claim for what happens next. Showing the ${(d.claims||[]).length} most recently updated open claims of ${num(k.open)}.</p>
+    <div style="overflow-x:auto"><table id="bktable"><tr><th>Claim</th><th>Client</th><th>Peril</th><th>Reported</th><th>Where it is</th><th>Last update</th><th style="text-align:right">Paid</th><th style="text-align:right">Outstanding</th></tr>
+    ${(d.claims||[]).map(row).join('')||'<tr><td colspan=8 class="muted">No open claims — a quiet book.</td></tr>'}</table></div></div>`;
+  const smax=Math.max(1,...(d.stage_mix||[]).map(x=>+x.n)), amax=Math.max(1,...(d.ageing||[]).map(x=>+x.n)), pmax=Math.max(1,...(d.peril_mix||[]).map(x=>+x.n));
+  const dash=`<div class="card" style="margin-bottom:16px"><h2>📊 Your book at a glance</h2><div class="grid3" style="margin-top:10px">
+    <div><div class="eyebrow">Open claims — by stage</div>${(d.stage_mix||[]).map(x=>bkBar(x.stage,+x.n,smax,'#2563eb')).join('')}</div>
+    <div><div class="eyebrow">Open claims — time open</div>${(d.ageing||[]).map(x=>bkBar(x.bucket,+x.n,amax,'#059669')).join('')}</div>
+    <div><div class="eyebrow">Whole book — by peril</div>${(d.peril_mix||[]).map(x=>bkBar(PERIL[x.peril_type]||x.peril_type,+x.n,pmax,'#d97706')).join('')}</div></div></div>`;
+  const recent=`<div class="card" style="margin-bottom:16px"><h2>✅ Recently closed</h2><table style="margin-top:6px"><tr><th>Claim</th><th>Client</th><th>Peril</th><th>Outcome</th><th>Closed</th><th style="text-align:right">Paid</th></tr>
+    ${(d.recent||[]).map(r=>`<tr><td class="mono">${esc(r.claim_public_id)}</td><td>${esc(r.client_name)}</td><td>${esc(PERIL[r.peril_type]||r.peril_type||'')}</td><td><span class="badge ${BK_STAGE_BADGE[r.stage]||'b-slate'}">${esc(r.stage)}</span></td><td>${esc(r.last_update||'')}</td><td style="text-align:right">${gbp(r.paid_amount)}</td></tr>`).join('')||'<tr><td colspan=6 class="muted">None in the window.</td></tr>'}</table></div>`;
+  const genie=d.genie_embed_url?`<div style="margin-bottom:16px"><div class="eyebrow">Ask about your claims</div>
+    <h3 style="margin:2px 0 4px">💬 Genie — ask your book in plain English</h3>
+    <p class="muted" style="margin:0 0 8px;font-size:12.5px">Try <em>"my open claims over £10,000"</em> or <em>"which of my claims settled this month?"</em>. In production this Genie space sits over the broker's <b>row-filtered view</b>, so answers can only come from their own book.${d.genie_url?` · <a class="link" href="${d.genie_url}" target="_blank">Open full-screen ↗</a>`:''}</p>
+    <div class="card" style="padding:6px"><iframe src="${d.genie_embed_url}" style="width:100%;height:560px;border:0;border-radius:10px" title="Genie — broker book" loading="lazy"></iframe></div></div>`:'';
+  el.innerHTML=head+filt+tiles+open+dash+recent+genie;
+}
 
 // ============ boot ============
 (async function(){ renderNav(); try{const cfg=await J('/config');state.host=cfg.workspace_host||'';state.cat=cfg.catalog||'';state.sch=cfg.schema||'';}catch(e){} await initFoot(); await loadClaims(); render(); })();

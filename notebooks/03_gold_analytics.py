@@ -196,6 +196,85 @@ print(f"ref_postcode_centroid rows: {centroids.count()} · gold_geo_map view cre
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 4c · ref_broker + gold_broker_claims — the Broker Portal book
+# MAGIC Brokers clog the claims helpline asking "any update on my client's claim?". The
+# MAGIC Broker Portal answers that self-service — each broker sees **only their own book**.
+# MAGIC
+# MAGIC The synthetic data has no producer dimension, so brokers are assigned
+# MAGIC **deterministically** from `hash(policy_number)` (40/30/20% across three brokers,
+# MAGIC 10% direct) — stable across resets. `gold_broker_claims` exposes **broker-safe
+# MAGIC columns only** (status, stage, paid, outstanding — never fraud indicators or
+# MAGIC handler fields: that's the column-security half of the story), and the three
+# MAGIC `v_broker_*_claims` views are the **mock row filter** — in production this is one
+# MAGIC view + a Unity Catalog ROW FILTER function keyed on the broker's identity
+# MAGIC (`is_account_group_member`), not three views.
+
+# COMMAND ----------
+
+_BROKERS = [
+    ("BRK-001", "Aldgate Risk Partners", "ARP-114", "Commercial motor & fleet",
+     "Priya Nair", "claims@aldgaterisk.example"),
+    ("BRK-002", "Caldwell & Vane", "CDV-227", "Household & high-net-worth property",
+     "James Caldwell", "claims@caldwellvane.example"),
+    ("BRK-003", "Northgate Insurance Brokers", "NGB-305", "SME & regional retail",
+     "Ellen Okafor", "claims@northgatebrokers.example"),
+]
+brokers_ref = spark.createDataFrame(
+    _BROKERS, "broker_id string, broker_name string, producer_code string, "
+              "segment string, contact_name string, contact_email string")
+write_gold(brokers_ref, "ref_broker", layer="reference")
+
+# Broker-safe book view. Client names are deterministic synthetics (salted hashes of
+# the policy number) so brokers see a human book, not bare policy numbers.
+_FIRST = "'Amelia','Oliver','Sophia','Harry','Isla','George','Ava','Noah','Emily','Jack','Grace','Leo','Freya','Oscar','Poppy','Arthur'"
+_LAST = "'Hughes','Patel','Walsh','Thompson','Okafor','Bennett','Kaur','Murray','Ellis','Nowak','Doyle','Ferguson','Ademola','Price','Whitfield','Sharma'"
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_broker_claims')}
+ COMMENT 'Broker Portal book: broker-safe columns only (no fraud/handler fields). Broker assigned deterministically from hash(policy_number).' AS
+ WITH assigned AS (
+   SELECT s.*, CASE WHEN pmod(abs(hash(s.policy_number)), 10) <= 3 THEN 'BRK-001'
+                    WHEN pmod(abs(hash(s.policy_number)), 10) <= 6 THEN 'BRK-002'
+                    WHEN pmod(abs(hash(s.policy_number)), 10) <= 8 THEN 'BRK-003'
+                    ELSE 'DIRECT' END AS broker_id
+   FROM {tbl('silver_claims_enriched')} s)
+ SELECT broker_id, claim_public_id, claim_number, policy_number,
+   concat(element_at(array({_FIRST}), pmod(abs(hash(policy_number, 'f')), 16) + 1), ' ',
+          element_at(array({_LAST}),  pmod(abs(hash(policy_number, 's')), 16) + 1)) AS client_name,
+   product, peril_type, loss_cause, postcode_district,
+   loss_date, report_date, claim_status,
+   CASE WHEN claim_status = 'settled' THEN 'Settled & closed'
+        WHEN claim_status = 'declined' THEN 'Declined'
+        WHEN claim_status = 'withdrawn' THEN 'Withdrawn'
+        WHEN claim_status = 'under_investigation' THEN 'Under review — additional checks'
+        WHEN paid_amount > 0 THEN 'Payment in progress'
+        WHEN days_since_incident <= 7 THEN 'New — being assessed'
+        ELSE 'In handling' END AS stage,
+   CASE WHEN claim_status IN ('settled','declined','withdrawn') THEN 'None — file closed'
+        WHEN claim_status = 'under_investigation' THEN 'We may contact your client for more information'
+        WHEN paid_amount > 0 THEN 'Payment on its way to your client'
+        WHEN days_since_incident <= 7 THEN 'Assessment in progress — no action needed'
+        ELSE 'With the handling team' END AS next_step,
+   paid_amount,
+   greatest(total_incurred - paid_amount, 0) AS outstanding_estimate,
+   CASE WHEN settlement_date IS NOT NULL THEN settlement_date
+        ELSE greatest(report_date, date_sub(current_date(), pmod(abs(hash(claim_public_id)), 21))) END AS last_update,
+   datediff(coalesce(settlement_date, current_date()), report_date) AS days_open
+ FROM assigned""")
+
+# Mock row filter: one pre-filtered view per broker (what the portal session reads).
+_BROKER_VIEWS = {"BRK-001": "v_broker_aldgate_claims",
+                 "BRK-002": "v_broker_caldwell_claims",
+                 "BRK-003": "v_broker_northgate_claims"}
+for bid, vname in _BROKER_VIEWS.items():
+    bname = next(b[1] for b in _BROKERS if b[0] == bid)
+    spark.sql(f"""CREATE OR REPLACE VIEW {tbl(vname)}
+      COMMENT 'Mock row filter: {bname} book only. Production: single view + UC ROW FILTER on is_account_group_member().' AS
+      SELECT * FROM {tbl('gold_broker_claims')} WHERE broker_id = '{bid}'""")
+mix = spark.sql(f"SELECT broker_id, count(*) n FROM {tbl('gold_broker_claims')} GROUP BY broker_id ORDER BY broker_id").collect()
+print("gold_broker_claims by broker: " + ", ".join(f"{r['broker_id']}={r['n']:,}" for r in mix))
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 5 · gold_handler_scorecard — "How is my team performing?"
 # MAGIC Grain: handler_id.
 

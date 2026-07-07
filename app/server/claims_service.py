@@ -2065,3 +2065,80 @@ async def governance_inventory() -> dict:
                 {"tier": "PII", "rule": "postcode, names — masked unless in claims_workbench_pii_readers"},
                 {"tier": "SECRET", "rule": "claim narrative / health — withheld unless claims_workbench_secret_readers; CMK-encrypted at rest"},
             ]}
+
+
+# --------------------------------------------------------------------------
+# Broker Portal — broker-scoped self-service book (helpline-deflection story).
+# Each "signed-in" broker reads its own pre-filtered view (the mock row filter);
+# the views expose broker-safe columns only — never fraud or handler fields.
+# --------------------------------------------------------------------------
+BROKER_VIEWS = {"BRK-001": "v_broker_aldgate_claims",
+                "BRK-002": "v_broker_caldwell_claims",
+                "BRK-003": "v_broker_northgate_claims"}
+
+
+async def _broker_roster() -> list[dict]:
+    return await execute_query(f"""
+        SELECT b.broker_id, b.broker_name, b.producer_code, b.segment,
+               b.contact_name, b.contact_email,
+               count(c.claim_public_id) AS book_claims,
+               sum(CASE WHEN c.claim_status IN ('open','under_investigation') THEN 1 ELSE 0 END) AS open_claims
+        FROM {_fq('ref_broker')} b
+        LEFT JOIN {_fq('gold_broker_claims')} c ON b.broker_id = c.broker_id
+        GROUP BY b.broker_id, b.broker_name, b.producer_code, b.segment, b.contact_name, b.contact_email
+        ORDER BY b.broker_id""")
+
+
+async def broker_portal(broker: str | None = None) -> dict:
+    brokers = await _broker_roster()
+    view = BROKER_VIEWS.get(broker or "")
+    if not view:
+        return {"brokers": brokers}
+    v = _fq(view)
+    open_st = "claim_status IN ('open','under_investigation')"
+    kpis_q = execute_query(f"""
+        SELECT count(*) total,
+          sum(CASE WHEN {open_st} THEN 1 ELSE 0 END) open,
+          sum(CASE WHEN claim_status='under_investigation' THEN 1 ELSE 0 END) under_review,
+          sum(CASE WHEN report_date >= date_sub(current_date(), 30) THEN 1 ELSE 0 END) new_30d,
+          sum(CASE WHEN claim_status='settled' AND last_update >= date_sub(current_date(), 30) THEN 1 ELSE 0 END) settled_30d,
+          round(avg(CASE WHEN {open_st} THEN days_open END), 1) avg_days_open,
+          sum(CASE WHEN {open_st} THEN outstanding_estimate ELSE 0 END) outstanding_total
+        FROM {v}""")
+    claims_q = execute_query(f"""
+        SELECT claim_public_id, claim_number, policy_number, client_name, product, peril_type,
+               loss_cause, postcode_district, cast(loss_date AS string) loss_date,
+               cast(report_date AS string) report_date, claim_status, stage, next_step,
+               paid_amount, outstanding_estimate, cast(last_update AS string) last_update, days_open
+        FROM {v} WHERE {open_st}
+        ORDER BY last_update DESC, days_open LIMIT 60""")
+    recent_q = execute_query(f"""
+        SELECT claim_public_id, client_name, peril_type, stage, paid_amount,
+               cast(last_update AS string) last_update, days_open
+        FROM {v} WHERE claim_status IN ('settled','declined','withdrawn')
+        ORDER BY last_update DESC LIMIT 10""")
+    stage_q = execute_query(
+        f"SELECT stage, count(*) n FROM {v} WHERE {open_st} GROUP BY stage ORDER BY n DESC")
+    peril_q = execute_query(
+        f"SELECT peril_type, count(*) n FROM {v} GROUP BY peril_type ORDER BY n DESC")
+    ageing_q = execute_query(f"""
+        SELECT CASE WHEN days_open <= 7 THEN '0–7 days' WHEN days_open <= 30 THEN '8–30 days'
+                    WHEN days_open <= 90 THEN '31–90 days' ELSE '90+ days' END bucket, count(*) n
+        FROM {v} WHERE {open_st} GROUP BY 1""")
+    kpis, claims, recent, stage_mix, peril_mix, ageing = await asyncio.gather(
+        kpis_q, claims_q, recent_q, stage_q, peril_q, ageing_q)
+
+    def _links():
+        from server.sql import _client
+        host = _client().config.host.rstrip("/")
+        gid = config.GENIE_SPACE_ID
+        return {"genie_embed_url": f"{host}/embed/genie/rooms/{gid}" if gid else None,
+                "genie_url": f"{host}/genie/rooms/{gid}" if gid else None,
+                "view_url": f"{host}/explore/data/{config.CATALOG}/{config.SCHEMA}/{view}"}
+    links = await asyncio.to_thread(_links)
+    profile = next((b for b in brokers if b.get("broker_id") == broker), {})
+    order = ["0–7 days", "8–30 days", "31–90 days", "90+ days"]
+    ageing = sorted(ageing, key=lambda r: order.index(r["bucket"]) if r["bucket"] in order else 9)
+    return {"brokers": brokers, "profile": profile, "view_name": f"{CAT}.{SCH}.{view}",
+            "kpis": kpis[0] if kpis else {}, "claims": claims, "recent": recent,
+            "stage_mix": stage_mix, "peril_mix": peril_mix, "ageing": ageing, **links}
