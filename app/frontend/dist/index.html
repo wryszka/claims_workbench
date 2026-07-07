@@ -649,11 +649,10 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         <div class="row"><span class="k">Recovery</span><span class="v">${recoveryLabel(p.recovery)}</span></div>
         <div class="row"><span class="k">Policy tenure</span><span class="v">${pol.policy_tenure_years??'—'} yrs</span></div></div></div>`;
     body+=`<div class="synth"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13px">✨ Claims AI — orchestrated brief</b>${synthPill()}</div>${synthBody()}</div>`;
-    body+=`<div class="actions">${actionBar()}</div>`+`<div id="vulslot"></div>`+secondOpinions()+`<div id="commslot"></div>`
+    body+=`<div class="actions">${actionBar()}</div>`+`<div id="vulslot"></div>`+`<div id="resslot"></div>`+secondOpinions()+`<div id="commslot"></div>`
       +`<div class="card" style="margin-top:16px"><h2 style="margin:0 0 4px">🧭 Coming soon — handler assists</h2><p class="muted" style="margin:0 0 10px">Agent-assisted steps on the roadmap — the handler always approves; the agent drafts and recommends.</p><div class="grid3">
         ${soonTile('♻️','Draft recovery pack','Auto-assemble the subrogation demand to the third-party insurer where the claim is recoverable.')}
         ${soonTile('🔧','Repairer & parts steering','Recommend approved repairer, parts and hire at the decision point to control leakage.')}
-        ${soonTile('📐','Reserve adequacy','Flag under-reserved claims with the £ gap and the reason (e.g. comparable claims developed 1.25×).')}
         ${soonTile('🏷️','Deterministic reason codes','Machine-readable reason codes on every decision for the customer and the regulator, alongside the agent narrative.')}
         ${soonTile('🗂️','Full handling in-line','Cover & excess, liability split, payments, diary/tasks, complaints & vulnerability — with write-back to ClaimCenter.')}
         ${soonTile('💷','Payments & indemnity control','Payee verification, dual authorisation over threshold, excess collection and sanctions screening before any money moves.')}
@@ -677,7 +676,25 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
    </div>`;
   v.innerHTML=page('Work a claim','Decide, reserve, and brief in one screen','The handler view — the model recommends, the agents reason, and you record the human decision.')
     +search+body;
-  if(p){ loadClaimVul(state.cid); loadClaimComms(state.cid); }
+  if(p){ loadClaimVul(state.cid); loadClaimComms(state.cid); loadReserveAdequacy(state.cid); }
+}
+// Reserve adequacy (Phase 5) — £ gap + reason vs the book's own settled comparables.
+async function loadReserveAdequacy(cid){ state.resCache=state.resCache||{};
+  let d=state.resCache[cid];
+  if(d===undefined){ try{ d=(await J('/claim/reserve-adequacy?cid='+encodeURIComponent(cid))).adequacy||null; state.resCache[cid]=d; }catch(e){return;} }
+  if(state.section!=='claim'||state.cid!==cid) return;
+  const uc=ucLink('gold_reserve_adequacy'); const link=uc?` <a class="link" href="${uc}" target="_blank" style="font-size:11px">gold_reserve_adequacy ↗</a>`:'';
+  if(!d){ _slot('resslot',''); return; }   // settled / no reserve — nothing to assess
+  if(d.adequacy!=='under_reserved'){
+    _slot('resslot',`<div class="card" style="margin-top:16px;padding:10px 16px"><span style="font-size:13px">📐 <b>Reserve adequacy:</b> <span class="muted">${d.adequacy==='over_reserved'?'above':'in line with'} comparable outcomes — cohort developed ${esc(d.dev_ratio)}× (${num(d.cohort_n)} settled comparables).</span></span>${link}</div>`);
+    return; }
+  _slot('resslot',`<div class="card" style="margin-top:16px;border-left:3px solid #f59e0b">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">📐 Reserve adequacy — under-reserved vs comparables</h2><span class="badge b-amber">gap ${gbp(d.reserve_gap)}</span></div>
+    <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px">
+      <div><div class="muted" style="font-size:11px">Initial reserve</div><div style="font-weight:800;font-size:17px">${gbp(d.initial_reserve)}</div></div>
+      <div><div class="muted" style="font-size:11px">Suggested reserve</div><div style="font-weight:800;font-size:17px;color:#b45309">${gbp(d.suggested_reserve)}</div></div>
+      <div><div class="muted" style="font-size:11px">Cohort development</div><div style="font-weight:800;font-size:17px">${esc(d.dev_ratio)}×</div></div></div>
+    <p style="font-size:12.5px;color:#334155;margin:10px 0 0"><b>Why:</b> ${esc(d.reason)} A recommendation for the handler to consider — never an automatic adjustment.${link}</p></div>`);
 }
 // ---- Calls & Comms (Phase 3) ----
 // Calls: batch ai_query insights over every transcript (source-agnostic pipeline).

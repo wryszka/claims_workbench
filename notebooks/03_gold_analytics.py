@@ -423,6 +423,42 @@ print("gold_qa_scores: " + ", ".join(f"{r['qa_band']}={r['n']:,}" for r in qa))
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 4f · gold_reserve_adequacy — the £ gap and the reason, per open claim
+# MAGIC The workshop-validated shape: a reserve recommendation **with a plain-language
+# MAGIC explanation and a benchmark against historicals**. The benchmark is the book's
+# MAGIC own settled outcomes: how did comparable claims (same peril × value band)
+# MAGIC actually develop vs their initial reserve? Open claims get a suggested reserve,
+# MAGIC the £ gap, and the reason — self-healing view, no compute.
+
+# COMMAND ----------
+
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_reserve_adequacy')}
+ COMMENT 'Reserve adequacy per open claim: suggested reserve = initial x cohort development ratio (settled comparables, peril x value band), the GBP gap, and the plain-language reason.' AS
+ WITH bench AS (
+   SELECT peril_type, is_high_value,
+          round(sum(coalesce(ultimate_reserve, paid_amount)) / nullif(sum(initial_reserve), 0), 3) AS dev_ratio,
+          count(*) AS cohort_n
+   FROM {tbl('silver_claims_enriched')}
+   WHERE claim_status = 'settled' AND initial_reserve > 0
+   GROUP BY peril_type, is_high_value)
+ SELECT s.claim_public_id, s.peril_type, s.is_high_value, s.claim_status, s.total_incurred,
+        s.initial_reserve, b.dev_ratio, b.cohort_n,
+        round(s.initial_reserve * b.dev_ratio, 0) AS suggested_reserve,
+        round(s.initial_reserve * b.dev_ratio - s.initial_reserve, 0) AS reserve_gap,
+        CASE WHEN (s.initial_reserve * b.dev_ratio - s.initial_reserve) > greatest(500, 0.15 * s.initial_reserve) THEN 'under_reserved'
+             WHEN (s.initial_reserve * b.dev_ratio - s.initial_reserve) < -greatest(500, 0.15 * s.initial_reserve) THEN 'over_reserved'
+             ELSE 'adequate' END AS adequacy,
+        concat('Comparable settled ', s.peril_type, CASE WHEN s.is_high_value THEN ' high-value' ELSE '' END,
+               ' claims developed to ', b.dev_ratio, 'x their initial reserve (', b.cohort_n, ' settled claims in the cohort).') AS reason
+ FROM {tbl('silver_claims_enriched')} s
+ JOIN bench b USING (peril_type, is_high_value)
+ WHERE s.claim_status IN ('open','under_investigation') AND s.initial_reserve > 0""")
+ra = spark.sql(f"SELECT adequacy, count(*) n, round(sum(CASE WHEN adequacy='under_reserved' THEN reserve_gap ELSE 0 END)/1e6,2) gap_m FROM {tbl('gold_reserve_adequacy')} GROUP BY adequacy").collect()
+print("gold_reserve_adequacy: " + ", ".join(f"{r['adequacy']}={r['n']:,}" for r in ra))
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 5 · gold_handler_scorecard — "How is my team performing?"
 # MAGIC Grain: handler_id.
 

@@ -2310,6 +2310,21 @@ async def comms_history(cid: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Reserve adequacy (Phase 5) — suggested reserve, £ gap and the reason, per
+# open claim, benchmarked against the book's own settled comparables.
+# --------------------------------------------------------------------------
+async def claim_reserve_adequacy(cid: str) -> dict:
+    try:
+        rows = await execute_query(f"""
+            SELECT adequacy, initial_reserve, suggested_reserve, reserve_gap,
+                   dev_ratio, cohort_n, reason
+            FROM {_fq('gold_reserve_adequacy')} WHERE claim_public_id = '{_esc(cid)}'""")
+    except Exception:
+        rows = []
+    return {"claim_public_id": cid, "adequacy": rows[0] if rows else None}
+
+
+# --------------------------------------------------------------------------
 # QA on every claim (Phase 4) — deterministic adherence checks over 100% of
 # the book (gold_qa_scores view). Flags, never overrides.
 # --------------------------------------------------------------------------

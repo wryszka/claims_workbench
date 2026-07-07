@@ -29,7 +29,7 @@ the app · `Idea` = not yet represented anywhere.
 |---|---|---|---|---|---|
 | Customer comms drafting | Live Claude FM drafts (ack / update / settlement / decision) with the claim's vulnerability guidance in the prompt; handler approves; audited in gold_comms_drafts | Work a claim › Calls & comms | workshop + review | M | **Live** (2026-07-07) |
 | **Customer vulnerability standards** | Flag + classification + recommended handling protocol at point of interaction; outcomes dashboard | Work a claim (protocol card) + Governance › Vulnerability tab | workshop | M | **Live** (2026-07-07; FNOL 360 surfacing + agent-prompt wiring = next increment) |
-| Reserve adequacy | £ + reason vs peer claims; root-cause of adjustments; benchmark vs historicals | Work a claim | review + workshop | M | Tile |
+| Reserve adequacy | Suggested reserve + £ gap + plain reason vs the book's settled comparables (gold_reserve_adequacy) | Work a claim (auto card) | review + workshop | M | **Live** (2026-07-07) |
 | Deterministic reason codes | Stable code set behind every model/rule decision | Work a claim / Governance | review | S | Tile |
 | Payments & indemnity control | Payee verification, dual authorisation, excess collection, push-payment fraud check | Work a claim / Governance | gap-scan | L | Tile |
 | Bodily injury / PI lane | Injury coding, rehab, care costs, OIC/MOJ portal, Ogden-rate sensitivity | New peril + screens | gap-scan | L | Tile |
@@ -160,10 +160,14 @@ check-failure breakdown, failing claims click through to Work a claim). Real fin
 the synthetic book: 176 claims fast-tracked with fraud score > 70. *Views only — no
 compute, no copies; flags, never overrides.*
 
-**Phase 5 — Reserve adequacy (M).** Cohort development benchmark in SQL (comparable
-claims by peril/value band), £ gap + reason per open claim → `gold_reserve_adequacy`;
-Work-a-claim card + Control Tower drill. *Workshop-validated shape: recommendation +
-plain-language explanation + historical benchmark.*
+**Phase 5 — Reserve adequacy (M) — DONE 2026-07-07.** `gold_reserve_adequacy` view:
+suggested reserve = initial × the cohort development ratio (settled comparables by
+peril × value band, the book's own actuals), £ gap, plain-language reason, adequacy
+band (±15% / £500 dead-band). Every open claim on Work a claim gets an automatic card:
+under-reserved → amber card (initial / suggested / cohort ×, "Why:", never an automatic
+adjustment); otherwise a slim "in line with comparables" note. The view independently
+rediscovers the seeded escape-of-water 1.25× under-reserving: 1,626 open claims,
+£21.2M total gap. *View only; notebook 03 §4f.*
 
 **Phase 6 — Supplier accountability layer (M).** Deterministic repairer dimension
 (same salted-hash pattern as brokers), `gold_supplier_scorecard` (cost/quality/cycle
