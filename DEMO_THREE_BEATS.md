@@ -54,6 +54,27 @@ Three heroes thread through every beat:
 
 ---
 
+## BEAT 4 (optional) — Broker Portal: broker calls off the helpline  *(~3 min)*
+
+**The pain (say this first):** *"A big slice of your claims-helpline capacity is brokers ringing for status on their clients' claims — calls that don't change the claim, only relay where it is."*
+
+**Screen:** **🤝 Broker Portal** (sidebar, under Distribution).
+
+**Run:**
+1. Open **Broker Portal** — read the story card: the helpline problem and the self-service answer, with the four governance badges.
+2. **Sign in as Aldgate Risk Partners** (mock login — any broker card works). Point at the dark header: signed-in broker + the **🔒 ROW-FILTERED VIEW** badge.
+3. **Governance line:** this session reads `v_broker_aldgate_claims` — a Unity Catalog **view filtered to this broker's book**, broker-safe columns only (**no fraud indicators, no handler fields**). For a technical audience, click *"See the view in Unity Catalog ↗"*.
+4. **Your open claims:** search a client name, click a row — *"what happens next"* in plain English. That line is the exact question the broker used to ring about.
+5. **Your book at a glance** — stage / time-open / peril bars: the broker's mini-MI without an analyst.
+6. **Genie:** ask *"my open claims over £10,000"*. Line: in production this Genie space sits over the row-filtered view, so answers can only come from the broker's own book.
+7. Close on the **coming-soon tiles** — document upload, bordereaux, status notifications, API / Delta Sharing to broker platforms (Acturis, Applied): the phase-2 roadmap.
+
+**If asked "how do real brokers log in?":** SSO/OAuth into the portal; identity maps to a Unity Catalog **ROW FILTER** (`is_account_group_member`) on **one** view — the three per-broker views in the demo are the mock of exactly that — plus **column masks** for internal fields. Broker access is audited like everything else.
+
+**Numbers if probed:** three fictional brokers hold ~40/30/20% of the book (~10% direct), assigned deterministically from `hash(policy_number)` — the split survives demo resets. Aldgate ≈ 3,469 open claims.
+
+---
+
 ## Close — turn it into a discovery question
 *"That's the arc: one platform brings the data together, which lets you govern the process, which lets you safely automate it with AI — and FNOL is where all three pay off at once. Where would you start — is it the data‑assembly problem at FNOL, the governance/automation blocker, or the agent assist for your handlers?"*
 
