@@ -294,6 +294,9 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
       ${soonTile('🌪️','Catastrophe surge mode','Detect storm-driven FNOL spikes and auto-scale triage capacity so the book holds up under surge.')}
       ${soonTile('⚖️','Litigation early-warning','Flag in week 1 the claims likely to become the expensive litigated / large-loss tail.')}
       ${soonTile('♻️','Reopen-risk','Predict claims likely to reopen after closure — a core quality signal.')}
+      ${soonTile('⏱️','Predictive SLA intervention','Flag the claims that WILL breach their SLA before the clock runs out — intervene up front, not in the post-mortem.')}
+      ${soonTile('🛡️','Reinsurance recovery','Notify reinsurers on large losses automatically and track the XoL recovery to the pound.')}
+      ${soonTile('⛈️','Weather event early-warning','Overlay the incoming storm footprint on the book — contact exposed customers before the loss happens.')}
     </div>
     <div style="margin:18px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="ghost" onclick="var e=document.getElementById('ctScore');var sh=e.style.display==='none';e.style.display=sh?'block':'none';this.textContent=(sh?'▴ Hide':'▾ Show')+' full KPI scorecard';">▾ Show full KPI scorecard</button>
@@ -312,7 +315,7 @@ function briefHtml(){ const b=state.brief; if(!b||!b.sections)return '<p class="
 let _st=null;
 function segChange(){ const conf=+s_conf.value,cap=+s_cap.value,fraud=+s_fraud.value; v_conf.textContent=conf+'%'; v_cap.textContent=gbp(cap); v_fraud.textContent=fraud;
   clearTimeout(_st); _st=setTimeout(async()=>{try{const r=await J(`/auto-close/segment?conf=${conf}&cap=${cap}&fraud=${fraud}`); seg_pct.textContent=pct(r.pct_auto_closed); seg_n.textContent=`${num(r.auto_closed)} auto-closed · ${num(r.escalated)} escalated`;}catch(e){}},250); }
-const ROADMAP={'Intake & documents':['Document classification','Email → structured extraction','Translation','Damage-photo analysis'],'System integration':['CMS write-back','Lakebase-as-CMS','Zero-copy to underwriting'],'Downstream':['Compliance / finance checks','Payment execution','Litigation routing'],'Specialty':['Marine contagion','Parametric / satellite payout','IoT verification','SDI'],'Enrichment':['D&B / S&P / Moody’s','Telematics']};
+const ROADMAP={'Intake & documents':['Document classification','Email → structured extraction','Translation','Damage-photo analysis','FNOL call co-pilot & summarisation','Dynamic questioning','Duplicate claim detection'],'Customer & distribution':['Customer portal','Digital FNOL journey','Personalised customer comms','Broker phase 2 (upload · bordereaux · notifications · API)'],'System integration':['CMS write-back','Lakebase-as-CMS','Zero-copy to underwriting','TPA / delegated bordereaux'],'Downstream':['Compliance / finance checks','Payments & indemnity control','Litigation routing','Total loss & salvage','Reinsurance recovery','Bodily injury lane'],'Oversight & compliance':['QA on every interaction','Complaints / FOS / CSAT','Consumer Duty outcomes','Sanctions & AML screening','Claims triangles → actuarial','Indemnity factorial testing','Supplier accountability'],'Specialty':['Marine contagion','Parametric / satellite payout','IoT verification','SDI'],'Enrichment':['D&B / S&P / Moody’s','Telematics vs reported account','Weather event early-warning']};
 function roadmapStrip(){ return `<div class="grid3">${Object.entries(ROADMAP).map(([g,it])=>`<div class="ph"><b>${esc(g)} <span class="uc">soon</span></b>${it.map(i=>`<div>• ${esc(i)}</div>`).join('')}</div>`).join('')}</div>`; }
 
 // ============ WORKLISTS (drill-through, actionable) ============
@@ -354,7 +357,11 @@ async function renderInsight(){ const v=document.getElementById('view');
        </div>`
     : '';
   v.innerHTML=page('Head of Claims','Insight — the live Databricks dashboard',INS_LEAD)+bar+frame
-    +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview (open it full above if it needs a workspace sign-in or a refresh).</p>`+genie;
+    +`<p class="muted" style="margin-top:8px">Embedded live from Lakeview (open it full above if it needs a workspace sign-in or a refresh).</p>`+genie
+    +`<div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — deeper insight</div><div class="grid2">
+      ${soonTile('🔩','Supplier accountability layer','Cost, quality and cycle time per repairer and supplier in one governed view — panel management off data, not anecdote.')}
+      ${soonTile('🧾','Claims pricing gap','Quote-time cost assumptions vs settlement actuals (repair-basket inflation) — the claims book feeding pricing on the same platform.')}
+    </div>`;
 }
 const INS_LEAD2='Where claims are, who is carrying them, and the trend — rendered live in the app. The very same view is a real Databricks Lakeview dashboard your team edits and can ask in plain English with Genie.';
 async function renderInsightApp(){ const v=document.getElementById('view'); const tab=state.insTab||'ops';
@@ -443,9 +450,13 @@ async function renderFraud(){ const v=document.getElementById('view'); v.innerHT
       <div class="card"><h2>📊 Fraud-score distribution</h2><div style="margin-top:8px">${bucket}</div></div>
       <div class="card"><h2>🔍 SIU queue — highest score open claims</h2><table><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">Score</th><th style="text-align:right">Prior</th><th style="text-align:right">Lag</th></tr>${q||'<tr><td class="muted" colspan=6>Queue clear.</td></tr>'}</table></div></div>
     <div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap</div>
-    <div class="grid2">
+    <div class="grid3">
       ${soonTile('🕸️','Fraud network / ring detection','Link analysis across claims, parties, addresses, phones and bank accounts to surface organised rings — what SIU actually wants, beyond a single score.')}
       ${soonTile('🛰️','Bureau & device signals','Live CIFAS / IFB / MIAFTR matches and device / network fingerprints folded into the score as first-class indicators.')}
+      ${soonTile('🚗','Telematics vs the reported account','Cross-check speed, braking and location at the moment of loss against the FNOL story — the vehicle data is already on the platform.')}
+      ${soonTile('🎯','Fraud identification attribution','Which signals and investigation steps actually caught confirmed fraud — feed the answer back into the rules and the model.')}
+      ${soonTile('🗃️','SIU case management','Investigation workflow, evidence chain and outcomes — the case file after the referral, not just the referral.')}
+      ${soonTile('📸','Repair evidence validation','Photos and video of completed repairs checked against the claimed scope of work — quality assurance and fraud in one pass.')}
     </div>`;
 }
 
@@ -647,6 +658,10 @@ function renderClaimView(){ const v=liveView('claim'); if(!v)return; const p=sta
         ${soonTile('📐','Reserve adequacy','Flag under-reserved claims with the £ gap and the reason (e.g. comparable claims developed 1.25×).')}
         ${soonTile('🏷️','Deterministic reason codes','Machine-readable reason codes on every decision for the customer and the regulator, alongside the agent narrative.')}
         ${soonTile('🗂️','Full handling in-line','Cover & excess, liability split, payments, diary/tasks, complaints & vulnerability — with write-back to ClaimCenter.')}
+        ${soonTile('🫶','Vulnerability-aware handling','Vulnerability flag, classification and the recommended handling protocol surfaced at the point of interaction — for the handler and every agent.')}
+        ${soonTile('💷','Payments & indemnity control','Payee verification, dual authorisation over threshold, excess collection and sanctions screening before any money moves.')}
+        ${soonTile('🚙','Total loss & salvage','Market valuation, write-off category and salvage recovery tracked to the pound.')}
+        ${soonTile('🩹','Bodily injury lane','Injury coding, rehabilitation, care costs and OIC/MOJ portal handling for the BI tail that drives motor indemnity.')}
       </div></div>`
       +`<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0">📄 Claim record</h2><p class="muted" style="margin:4px 0 0">One audit-ready document — summary, decision, rule engine, every agent's reasoning, the photo and documents. The complete record kept on file when a claim closes; if the regulator asks, it's all in one place. Designed to overlay Guidewire ClaimCenter — the decision, reserve and notes write back to the system of record (integration on the roadmap).</p></div><button class="btnv" onclick="claimRecord()">📄 Generate claim record (PDF)</button></div>`;
   }
@@ -837,7 +852,12 @@ function renderNewClaimView(){ const v=liveView('newclaim'); if(!v)return; const
     <button class="btnv" onclick="scoreClaim()" ${nc.scoring?'disabled':''}>${nc.scoring?'Scoring…':'⚡ Score this claim'}</button>
     <span class="muted" style="margin-left:12px;font-size:12px">Live scoring against the champion triage + reserve endpoints — not the batch pipeline.</span></div>`;
   v.innerHTML=page('Handler view','New claim — score it live','Create a hypothetical FNOL, score it synchronously against the real models, and watch the rule engine decide — in seconds. Created claims are ephemeral; the Reset button wipes them and the sacred demo claims are never touched.')
-    +form+ncResult()+ncSandbox();
+    +form+ncResult()+ncSandbox()
+    +`<div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — smarter intake</div><div class="grid3">
+      ${soonTile('🎙️','FNOL call co-pilot','Live transcript prompts during the call: required info collected? gaps flagged, vulnerability cues surfaced — and the notes write themselves.')}
+      ${soonTile('📝','Call summarisation → claim record','A structured, handler-approved summary of every call saved straight to the claim record — no manual note-taking.')}
+      ${soonTile('🔀','Dynamic questioning','The next question adapts to the last answer — everything captured in one interaction, no redundant questions.')}
+    </div>`;
 }
 function ncPolicy(){ const s=document.getElementById('nc_policy'); const o=s.options[s.selectedIndex]; if(o&&o.dataset.si){ document.getElementById('nc_si').value=Math.round(parseFloat(o.dataset.si)); } }
 async function scoreClaim(){ const nc=state.nc;
@@ -884,7 +904,11 @@ async function renderIngestion(){ const v=document.getElementById('view');
     <div><div class="eyebrow">Data &amp; Governance</div><h1 class="big" style="margin:0">Data Ingestion — Source Assets <span class="badge b-blue" style="font-size:10px;vertical-align:middle">UNITY CATALOG</span></h1></div>
     <div style="padding-top:8px">${counts}</div></div>
     <p class="lead">Each row is a tracked data asset (a Unity Catalog table) with its source system, freshness vs SLA, row count and DQ pass rate. <b>Click any asset</b> to drill into freshness history, completeness, expectations and a sample of rows.</p>`;
-  v.innerHTML=header+`<div style="display:flex;flex-direction:column;gap:10px">${(a.assets||[]).map(assetRow).join('')}</div>`;
+  v.innerHTML=header+`<div style="display:flex;flex-direction:column;gap:10px">${(a.assets||[]).map(assetRow).join('')}</div>`
+    +`<div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap</div><div class="grid2">
+      ${soonTile('👯','Duplicate claim detection','Fuzzy-match new notifications against the book (policy, date, peril, parties) and flag the same loss reported twice — at the door, before it costs anything.')}
+      ${soonTile('📦','TPA & delegated authority feeds','Bordereaux ingestion from TPAs and delegated handlers onto the same quality contract — one governed view of the whole book, delegated or not.')}
+    </div>`;
 }
 function _slot(id,html){ const el=document.getElementById(id); if(el)el.innerHTML=html; }
 const ASSET_TABS=[['freshness','Freshness'],['completeness','Completeness'],['dq','DQ Rules'],['preview','Data Preview'],['ownership','Ownership']];
@@ -950,7 +974,15 @@ function renderGovernance(){ const v=document.getElementById('view');
       <div class="tab ${state.govtab==='agents'?'on':''}" onclick="setGovTab('agents')">🤖 AI agents</div>
       <div class="tab ${state.govtab==='track'?'on':''}" onclick="setGovTab('track')">📋 Claim track</div>
       <div class="tab ${state.govtab==='fair'?'on':''}" onclick="setGovTab('fair')">🤝 Fair outcomes</div>
-    </div><div id="govbody"><p class="muted">Loading…</p></div>`;
+    </div><div id="govbody"><p class="muted">Loading…</p></div>
+    <div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — oversight &amp; compliance</div><div class="grid3">
+      ${soonTile('💯','QA on every interaction','AI adherence scoring on 100% of claims instead of a sampled handful — flags deviations, never overrides, feeds coaching and audit.')}
+      ${soonTile('📣','Complaints, FOS &amp; CSAT lens','Complaint volumes, root cause and ombudsman escalations next to satisfaction by segment — the customer half of oversight.')}
+      ${soonTile('🧭','Consumer Duty outcomes','Outcome monitoring by cohort — do vulnerable, digital and phone customers get the same result? Extends the fair-outcomes review.')}
+      ${soonTile('🚫','Sanctions &amp; AML screening','Screen every payee against sanctions lists before settlement money moves.')}
+      ${soonTile('📐','Claims triangles → actuarial','Development triangles straight off the claims book, feeding the reserving and Solvency II process on the same platform.')}
+      ${soonTile('🧪','Indemnity factorial testing','Auditable controlled experiments attributing indemnity impact to individual process changes.')}
+    </div>`;
   renderGovBody();
 }
 function setGovTab(t){ state.govtab=t; document.querySelectorAll('.tab').forEach(el=>{}); renderGovernance(); }
@@ -1199,7 +1231,9 @@ function renderBrokerLogin(){ const el=document.getElementById('bkbody'); if(!el
     ${soonTile('📄','Upload documents','Brokers drop claim documents straight into the claim file — no email chains.')}
     ${soonTile('📊','Bordereaux downloads','Monthly claims bordereaux and performance packs, generated from the same governed views.')}
     ${soonTile('🔔','Status notifications','Push updates (email / webhook) when a claim moves stage — before the broker thinks to call.')}
-    ${soonTile('🔌','API access','The same row-filtered views served to broker platforms (Acturis, Applied) via SQL endpoint or Delta Sharing.')}</div></div>`;
+    ${soonTile('🔌','API access','The same row-filtered views served to broker platforms (Acturis, Applied) via SQL endpoint or Delta Sharing.')}
+    ${soonTile('👤','Customer portal','The same self-service window for the policyholder — status, next step and documents, on the customer-facing pattern this portal proves.')}
+    ${soonTile('💬','Digital FNOL journey','Report a claim on web / app / chat with dynamic questioning — no redundant questions, straight into triage.')}</div></div>`;
   el.innerHTML=story+`<div class="eyebrow" style="margin-bottom:8px">Sign in as (demo — pick a broker)</div><div class="grid3">${(state.bkRoster||[]).map(bcard).join('')}</div>`+how+soon;
 }
 function bkBar(label,n,max,color){ const w=max?Math.max(3,Math.round(100*n/max)):0;
