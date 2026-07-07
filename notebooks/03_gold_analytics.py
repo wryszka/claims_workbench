@@ -354,6 +354,75 @@ print("gold_vulnerability_flags: " + ", ".join(f"{r['category_id']}={r['n']:,}" 
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 4e · gold_sla_prediction + gold_qa_scores — predictive oversight
+# MAGIC **Predictive SLA**: instead of reporting breaches after the fact, predict them —
+# MAGIC each open claim's expected total days = its own elapsed time vs the **cohort
+# MAGIC benchmark** (average settlement days for settled claims of the same peril ×
+# MAGIC value band, straight from the book's actuals). If the prediction exceeds the
+# MAGIC per-peril SLA, it's flagged BEFORE the clock runs out.
+# MAGIC
+# MAGIC **QA on every claim**: deterministic adherence checks codified in SQL and run
+# MAGIC over **100% of the book** (vs the industry's sampled handful) — flags, never
+# MAGIC overrides. Both are self-healing views; no compute, no copies.
+
+# COMMAND ----------
+
+_SLA_CASE = "CASE peril_type WHEN 'motor_tp' THEN 30 WHEN 'home_fire' THEN 60 ELSE 45 END"
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_sla_prediction')}
+ COMMENT 'Predictive SLA: open claims vs cohort benchmark (avg settled days per peril x value band). sla_outlook = breached | predicted_breach | on_track.' AS
+ WITH s AS (
+   SELECT claim_public_id, peril_type, is_high_value, total_incurred, claim_status, report_date,
+          {_SLA_CASE} AS sla_days
+   FROM {tbl('silver_claims_enriched')}),
+ bench AS (
+   SELECT peril_type, is_high_value, round(avg(days_to_settle), 1) AS expected_days, count(*) AS cohort_n
+   FROM {tbl('silver_claims_enriched')}
+   WHERE claim_status = 'settled' AND days_to_settle IS NOT NULL
+   GROUP BY peril_type, is_high_value)
+ SELECT s.claim_public_id, s.peril_type, s.is_high_value, s.total_incurred, s.claim_status,
+        s.report_date, s.sla_days, b.expected_days, b.cohort_n,
+        datediff(current_date(), s.report_date) AS days_elapsed,
+        greatest(datediff(current_date(), s.report_date), cast(b.expected_days AS int)) AS predicted_total_days,
+        CASE WHEN datediff(current_date(), s.report_date) > s.sla_days THEN 'breached'
+             WHEN greatest(datediff(current_date(), s.report_date), cast(b.expected_days AS int)) > s.sla_days THEN 'predicted_breach'
+             ELSE 'on_track' END AS sla_outlook
+ FROM s JOIN bench b USING (peril_type, is_high_value)
+ WHERE s.claim_status IN ('open','under_investigation')""")
+
+spark.sql(f"""CREATE OR REPLACE VIEW {tbl('gold_qa_scores')}
+ COMMENT 'QA on every claim: 6 deterministic adherence checks over 100% of the book. Flags, never overrides. qa_band = clean | attention | fail.' AS
+ WITH d AS (SELECT claim_public_id, max(disposition) AS disposition
+            FROM {tbl('gold_claim_disposition')} GROUP BY claim_public_id),
+ h AS (SELECT claim_public_id,
+              max(CASE WHEN override_flag AND length(coalesce(override_reason, '')) = 0 THEN 1 ELSE 0 END) AS missing_override_reason
+       FROM {tbl('gold_handler_decisions')} GROUP BY claim_public_id),
+ checks AS (
+   SELECT s.claim_public_id, s.peril_type, s.claim_status, s.total_incurred, s.handler_id,
+     CASE WHEN s.triage_decision IS NOT NULL THEN 1 ELSE 0 END AS chk_triage_recorded,
+     CASE WHEN s.initial_reserve > 0 THEN 1 ELSE 0 END AS chk_reserve_set,
+     CASE WHEN coalesce(s.days_to_settle, datediff(current_date(), s.report_date)) <= {_SLA_CASE} THEN 1 ELSE 0 END AS chk_within_sla,
+     CASE WHEN s.fraud_score > 70 AND s.triage_decision = 'pay_direct' THEN 0 ELSE 1 END AS chk_fraud_not_fasttracked,
+     CASE WHEN coalesce(dd.disposition, '') = 'auto_closed' AND s.total_incurred > 10000 THEN 0 ELSE 1 END AS chk_autoclose_in_appetite,
+     CASE WHEN coalesce(hh.missing_override_reason, 0) = 1 THEN 0 ELSE 1 END AS chk_override_reasoned
+   FROM {tbl('silver_claims_enriched')} s
+   LEFT JOIN d dd USING (claim_public_id) LEFT JOIN h hh USING (claim_public_id))
+ SELECT *,
+   round(100.0 * (chk_triage_recorded + chk_reserve_set + chk_within_sla + chk_fraud_not_fasttracked
+                  + chk_autoclose_in_appetite + chk_override_reasoned) / 6, 1) AS qa_score,
+   CASE WHEN (chk_triage_recorded + chk_reserve_set + chk_within_sla + chk_fraud_not_fasttracked
+              + chk_autoclose_in_appetite + chk_override_reasoned) = 6 THEN 'clean'
+        WHEN (chk_triage_recorded + chk_reserve_set + chk_within_sla + chk_fraud_not_fasttracked
+              + chk_autoclose_in_appetite + chk_override_reasoned) >= 5 THEN 'attention'
+        ELSE 'fail' END AS qa_band
+ FROM checks""")
+sp = spark.sql(f"SELECT sla_outlook, count(*) n FROM {tbl('gold_sla_prediction')} GROUP BY sla_outlook").collect()
+qa = spark.sql(f"SELECT qa_band, count(*) n FROM {tbl('gold_qa_scores')} GROUP BY qa_band").collect()
+print("gold_sla_prediction: " + ", ".join(f"{r['sla_outlook']}={r['n']:,}" for r in sp))
+print("gold_qa_scores: " + ", ".join(f"{r['qa_band']}={r['n']:,}" for r in qa))
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 5 · gold_handler_scorecard — "How is my team performing?"
 # MAGIC Grain: handler_id.
 

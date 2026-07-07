@@ -800,6 +800,11 @@ async def control_tower() -> dict:
     open_inv = int(base["open_inv"]) or 1
     past_sla = int(base["past_sla"])
     sla_breach_pct = round(100.0 * past_sla / open_inv, 1)
+    try:
+        pred_sla = int((await execute_query(
+            f"SELECT count(*) c FROM {_fq('gold_sla_prediction')} WHERE sla_outlook = 'predicted_breach'"))[0]["c"])
+    except Exception:
+        pred_sla = 0
     ac = int(disp["auto_closed"])
     gbp_saved = round(ac * HANDLER_COST_PER_CLAIM)
     hours_freed = round(ac * HANDLER_MINS_PER_CLAIM / 60)
@@ -841,6 +846,9 @@ async def control_tower() -> dict:
          "rag": _rag(pct_within_target, TARGETS["closed_within_target"], False), "worklist": None},
         {"key": "sla", "label": "Aged / past SLA", "value": past_sla, "fmt": "num",
          "sub": f"{sla_breach_pct}% of open · per-peril SLA", "rag": _rag(sla_breach_pct, TARGETS["sla_breach_pct"], True), "worklist": "aged"},
+        {"key": "pred_sla", "label": "Predicted SLA breaches", "value": pred_sla, "fmt": "num",
+         "sub": "on pace to breach — intervene now", "rag": "amber" if pred_sla else "green",
+         "worklist": "predicted_sla"},
         {"key": "fte", "label": "Claims per handler", "value": claims_per_fte, "fmt": "num",
          "sub": f"open caseload / {handlers_n} FTE", "rag": "info", "worklist": None},
     ]
@@ -1039,6 +1047,11 @@ _WORKLISTS = {
                    "order": "fraud_score DESC", "metric": ("fraud_score", "num", "Fraud score")},
     "autoclose": {"title": "Auto-closed straight-through (this run)",
                   "where": None, "order": None, "metric": ("model_confidence", "pct", "Confidence")},
+    "predicted_sla": {"title": "Predicted SLA breaches — intervene now",
+                      "where": None, "order": None, "metric": ("overrun_days", "days", "Predicted overrun")},
+    "leakage": {"title": "Settled claims flagged for leakage",
+                "where": "leakage_flag AND claim_status = 'settled'",
+                "order": "paid_amount DESC", "metric": ("paid_amount", "gbp", "Paid")},
 }
 
 
@@ -1053,6 +1066,14 @@ async def worklist(kind: str, limit: int = 100) -> dict:
             FROM {_fq('gold_claim_disposition')} WHERE disposition='auto_closed'
             ORDER BY model_confidence DESC LIMIT {int(limit)}""")
         return {"kind": kind, "title": spec["title"], "metric_label": "Confidence", "metric_fmt": "pct", "rows": rows}
+    if kind == "predicted_sla":
+        rows = await execute_query(f"""
+            SELECT claim_public_id, peril_type, total_incurred,
+                   (predicted_total_days - sla_days) AS metric
+            FROM {_fq('gold_sla_prediction')} WHERE sla_outlook = 'predicted_breach'
+            ORDER BY metric DESC LIMIT {int(limit)}""")
+        return {"kind": kind, "title": spec["title"], "metric_label": "Predicted overrun",
+                "metric_fmt": "days", "rows": rows}
     mcol, mfmt, mlabel = spec["metric"]
     where = spec["where"]
     if kind == "aged":
@@ -2286,6 +2307,51 @@ async def comms_history(cid: str) -> dict:
     except Exception:
         rows = []
     return {"claim_public_id": cid, "history": rows}
+
+
+# --------------------------------------------------------------------------
+# QA on every claim (Phase 4) — deterministic adherence checks over 100% of
+# the book (gold_qa_scores view). Flags, never overrides.
+# --------------------------------------------------------------------------
+QA_CHECKS = [
+    ("chk_triage_recorded", "Triage decision recorded"),
+    ("chk_reserve_set", "Initial reserve set"),
+    ("chk_within_sla", "Within peril SLA"),
+    ("chk_fraud_not_fasttracked", "High fraud never fast-tracked"),
+    ("chk_autoclose_in_appetite", "Auto-close inside appetite (≤£10k)"),
+    ("chk_override_reasoned", "Overrides carry a reason"),
+]
+
+
+async def qa_view() -> dict:
+    q = _fq("gold_qa_scores")
+    agg_q = execute_query(f"""
+        SELECT count(*) claims, round(avg(qa_score), 1) avg_score,
+               sum(CASE WHEN qa_band = 'clean' THEN 1 ELSE 0 END) clean,
+               sum(CASE WHEN qa_band = 'attention' THEN 1 ELSE 0 END) attention,
+               sum(CASE WHEN qa_band = 'fail' THEN 1 ELSE 0 END) failing
+        FROM {q}""")
+    fails_sel = ", ".join(f"sum(1 - {c}) AS {c}" for c, _ in QA_CHECKS)
+    checks_q = execute_query(f"SELECT {fails_sel} FROM {q}")
+    worst_q = execute_query(f"""
+        SELECT claim_public_id, peril_type, claim_status, total_incurred, qa_score,
+               {', '.join(c for c, _ in QA_CHECKS)}
+        FROM {q} WHERE qa_band = 'fail'
+        ORDER BY qa_score ASC, total_incurred DESC LIMIT 12""")
+    agg, checks, worst = await asyncio.gather(agg_q, checks_q, worst_q)
+    ck = checks[0] if checks else {}
+    breakdown = sorted(
+        [{"check": lbl, "fails": int(ck.get(c, 0) or 0)} for c, lbl in QA_CHECKS],
+        key=lambda x: -x["fails"])
+    for w in worst:
+        w["failed"] = [lbl for c, lbl in QA_CHECKS if str(w.get(c)) in ("0", "false", "False")]
+
+    def _link():
+        from server.sql import _client
+        host = _client().config.host.rstrip("/")
+        return f"{host}/explore/data/{CAT}/{SCH}/gold_qa_scores"
+    return {"summary": agg[0] if agg else {}, "breakdown": breakdown, "worst": worst,
+            "checks": [lbl for _, lbl in QA_CHECKS], "qa_url": await asyncio.to_thread(_link)}
 
 
 async def approve_comms(comm_id: str, approver: str) -> dict:

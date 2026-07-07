@@ -247,6 +247,11 @@ async def governance_vulnerability():
     return await svc.vulnerability_view()
 
 
+@router.get("/governance/qa")
+async def governance_qa():
+    return await svc.qa_view()
+
+
 @router.get("/claim/vulnerability")
 async def claim_vulnerability(cid: str):
     return await svc.claim_vulnerability(cid)

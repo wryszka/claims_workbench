@@ -68,10 +68,10 @@ the app · `Idea` = not yet represented anywhere.
 
 | Feature | What it is | Where it fits | Source | Size | Status |
 |---|---|---|---|---|---|
-| **QA on every interaction** | AI adherence scoring on 100% of claims (vs sampled); flags, never overrides; feeds coaching | Governance | workshop | M | Tile — **top gap** |
+| **QA on every interaction** | 6 deterministic adherence checks over 100% of the book (gold_qa_scores); flags, never overrides | Governance › QA tab | workshop | M | **Live** (2026-07-07; FM-scored narrative QA = future increment) |
 | Complaints, FOS & CSAT lens | Complaints volumes, root cause, FOS escalations, satisfaction by segment | Insight / Governance | workshop + gap-scan | M | Tile |
-| Predictive SLA intervention | Predicted-breach flag before the SLA clock runs out (near-SLA worklist exists) | Control Tower | workshop | S | Tile |
-| Leakage audit lens | Drill the existing leakage_flag into a worklist + £ story | Control Tower / Worklists | gap-scan | S | Tile |
+| Predictive SLA intervention | Cohort-benchmark prediction (gold_sla_prediction) → Control Tower tile + worklist | Control Tower + Worklists | workshop | S | **Live** (2026-07-07) |
+| Leakage audit lens | leakage_flag → 💸 Leakage worklist (paid £ ranked) | Worklists | gap-scan | S | **Live** (2026-07-07) |
 | Consumer Duty outcomes | Outcome monitoring by cohort (extends fair outcomes) | Governance | gap-scan | M | Tile |
 | Sanctions / AML payee screening | Screen payees before settlement | Governance / payments | gap-scan | S | Tile |
 | Claims triangles → actuarial feed | Development triangles from the claims book (bridges to the Solvency II demo's chain-ladder) | Insight / Governance | gap-scan | M | Tile |
@@ -147,11 +147,18 @@ sentiment, intent, missing info, vulnerability cues, follow-ups, complaint risk)
 surfaced on Work a claim › **Calls & comms**; notebook `13_call_transcripts.py`.
 *Zero standing cost: pay-per-token FM, no serving infra.*
 
-**Phase 4 — small oversight wins (3×S).** Predictive SLA breach (rule-based predictor
-over pace-vs-SLA, written to a gold view + Control Tower tile + worklist); leakage audit
-lens (existing `leakage_flag` → worklist + £ story); QA-coverage panel in Governance
-(batch FM+rules adherence scoring on the decided claims → `gold_qa_scores`, "100% vs
-sampled" story). *All batch/serverless; all land as governed tables first, UI second.*
+**Phase 4 — small oversight wins (3×S) — DONE 2026-07-07.** (a) **Predictive SLA**:
+`gold_sla_prediction` view — expected total days per open claim from the **cohort
+benchmark** (avg settled days per peril × value band, the book's own actuals) vs the
+per-peril SLA → `breached | predicted_breach | on_track`; Control Tower tile ("512 on
+pace to breach — intervene now") + ⏱️ Predicted-breach worklist. (b) **Leakage lens**:
+💸 Leakage worklist (settled + leakage_flag, ranked by paid £). (c) **QA on every
+claim**: `gold_qa_scores` view — 6 deterministic adherence checks over 100% of the book
+(triage recorded, reserve set, within SLA, high-fraud-never-fast-tracked, auto-close in
+appetite, overrides reasoned) → Governance › **QA** tab (coverage 100% vs ~2–5% sampled,
+check-failure breakdown, failing claims click through to Work a claim). Real finding in
+the synthetic book: 176 claims fast-tracked with fraud score > 70. *Views only — no
+compute, no copies; flags, never overrides.*
 
 **Phase 5 — Reserve adequacy (M).** Cohort development benchmark in SQL (comparable
 claims by peril/value band), £ gap + reason per open claim → `gold_reserve_adequacy`;

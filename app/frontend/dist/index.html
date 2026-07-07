@@ -294,7 +294,6 @@ async function renderControl(){ const v=document.getElementById('view'); v.inner
       ${soonTile('🌪️','Catastrophe surge mode','Detect storm-driven FNOL spikes and auto-scale triage capacity so the book holds up under surge.')}
       ${soonTile('⚖️','Litigation early-warning','Flag in week 1 the claims likely to become the expensive litigated / large-loss tail.')}
       ${soonTile('♻️','Reopen-risk','Predict claims likely to reopen after closure — a core quality signal.')}
-      ${soonTile('⏱️','Predictive SLA intervention','Flag the claims that WILL breach their SLA before the clock runs out — intervene up front, not in the post-mortem.')}
       ${soonTile('🛡️','Reinsurance recovery','Notify reinsurers on large losses automatically and track the XoL recovery to the pound.')}
       ${soonTile('⛈️','Weather event early-warning','Overlay the incoming storm footprint on the book — contact exposed customers before the loss happens.')}
     </div>
@@ -319,7 +318,7 @@ const ROADMAP={'Intake & documents':['Document classification','Email → struct
 function roadmapStrip(){ return `<div class="grid3">${Object.entries(ROADMAP).map(([g,it])=>`<div class="ph"><b>${esc(g)} <span class="uc">soon</span></b>${it.map(i=>`<div>• ${esc(i)}</div>`).join('')}</div>`).join('')}</div>`; }
 
 // ============ WORKLISTS (drill-through, actionable) ============
-const WL_TABS=[['recovery','💷 Recovery'],['aged','⏰ Past SLA'],['large','🏚️ Large losses'],['underreserved','📉 Under-reserved'],['high_fraud','🔍 High fraud'],['autoclose','✅ Auto-closed']];
+const WL_TABS=[['recovery','💷 Recovery'],['aged','⏰ Past SLA'],['predicted_sla','⏱️ Predicted breach'],['large','🏚️ Large losses'],['underreserved','📉 Under-reserved'],['high_fraud','🔍 High fraud'],['leakage','💸 Leakage'],['autoclose','✅ Auto-closed']];
 function openClaim(cid){ state.trackCid=cid; state.govtab='track'; go('governance'); }
 async function renderWorklists(){ const v=document.getElementById('view'); const kind=state.worklistKind||'recovery';
   v.innerHTML=page('Worklists','Turn a number into a queue','Each control-tower figure becomes a prioritised list of claims you can work. Click any claim to see its full track.')
@@ -1050,9 +1049,9 @@ function renderGovernance(){ const v=document.getElementById('view');
       <div class="tab ${state.govtab==='track'?'on':''}" onclick="setGovTab('track')">📋 Claim track</div>
       <div class="tab ${state.govtab==='fair'?'on':''}" onclick="setGovTab('fair')">🤝 Fair outcomes</div>
       <div class="tab ${state.govtab==='vuln'?'on':''}" onclick="setGovTab('vuln')">🫶 Vulnerability</div>
+      <div class="tab ${state.govtab==='qa'?'on':''}" onclick="setGovTab('qa')">💯 QA</div>
     </div><div id="govbody"><p class="muted">Loading…</p></div>
     <div class="eyebrow" style="margin:18px 0 8px">🧭 On the roadmap — oversight &amp; compliance</div><div class="grid3">
-      ${soonTile('💯','QA on every interaction','AI adherence scoring on 100% of claims instead of a sampled handful — flags deviations, never overrides, feeds coaching and audit.')}
       ${soonTile('📣','Complaints, FOS &amp; CSAT lens','Complaint volumes, root cause and ombudsman escalations next to satisfaction by segment — the customer half of oversight.')}
       ${soonTile('🧭','Consumer Duty outcomes','Outcome monitoring by cohort — do vulnerable, digital and phone customers get the same result? Extends the fair-outcomes review.')}
       ${soonTile('🚫','Sanctions &amp; AML screening','Screen every payee against sanctions lists before settlement money moves.')}
@@ -1068,6 +1067,33 @@ async function renderGovBody(){ const el=document.getElementById('govbody'); if(
   if(state.govtab==='track') return renderGovTrack(el);
   if(state.govtab==='fair') return renderGovFair(el);
   if(state.govtab==='vuln') return renderGovVuln(el);
+  if(state.govtab==='qa') return renderGovQA(el);
+}
+async function renderGovQA(el){
+  let d; try{d=await J('/governance/qa');}catch(e){el.innerHTML='<p class="muted">Unavailable — has notebook 03 (§4e) been run on this workspace?</p>';return;}
+  if(state.section!=='governance'||state.govtab!=='qa')return;
+  const s=d.summary||{}, total=+s.claims||1;
+  const pcs=n=>pct(100.0*(+n||0)/total);
+  const maxf=Math.max(1,...(d.breakdown||[]).map(b=>+b.fails));
+  const bars=(d.breakdown||[]).map(b=>bkBar(b.check,+b.fails,maxf,+b.fails?'#dc2626':'#10b981')).join('');
+  const worst=(d.worst||[]).map(w=>`<tr style="cursor:pointer" onclick="openWork('${esc(w.claim_public_id)}')">
+    <td class="mono link">${esc(w.claim_public_id)}</td><td>${esc(PERIL[w.peril_type]||w.peril_type||'')}</td>
+    <td>${gbp(w.total_incurred)}</td><td style="text-align:right;font-weight:700;color:#dc2626">${esc(w.qa_score)}%</td>
+    <td>${(w.failed||[]).map(f=>`<span class="badge b-red" style="margin:1px;font-size:10px">${esc(f)}</span>`).join('')}</td></tr>`).join('');
+  el.innerHTML=`<div class="card" style="margin-bottom:16px"><h2>💯 QA on every claim — not a sample</h2>
+    <p class="muted" style="margin:6px 0 0;font-size:13px">Traditional QA reviews a <b>sampled handful</b> of claims because human review is slow. Here the adherence checks are <b>codified and run over 100% of the book</b> (${num(s.claims)} claims) as a governed view — every claim, every day, same rules. It <b>flags, never overrides</b>: deviations feed coaching, claim review and audit, and a human decides.${d.qa_url?` <a class="link" href="${d.qa_url}" target="_blank">gold_qa_scores ↗</a>`:''}</p></div>
+  <div class="grid4" style="margin-bottom:14px">
+    <div class="tile"><div class="l">Coverage</div><div class="n">100%</div><div class="s">of ${num(s.claims)} claims · industry samples ~2–5%</div></div>
+    <div class="tile" style="border-left:3px solid #10b981"><div class="l">Clean</div><div class="n">${pcs(s.clean)}</div><div class="s">${num(s.clean)} pass all six checks</div></div>
+    <div class="tile" style="border-left:3px solid #f59e0b"><div class="l">Attention</div><div class="n">${pcs(s.attention)}</div><div class="s">${num(s.attention)} fail one check</div></div>
+    <div class="tile" style="border-left:3px solid #ef4444"><div class="l">Fail</div><div class="n">${num(s.failing)}</div><div class="s">fail two or more — review first</div></div></div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card"><h2>Which checks fail — whole book</h2><div style="margin-top:8px">${bars}</div>
+      <p class="muted" style="font-size:11.5px;margin:8px 0 0">ⓘ Most "attention" items fail only the SLA-pace check — the demo book's dates re-anchor on Reset. The other five checks are conduct controls.</p></div>
+    <div class="card"><h2>The six checks</h2>${(d.checks||[]).map(c=>`<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid #f4f5f8">✓ ${esc(c)}</div>`).join('')}
+      <p class="muted" style="font-size:11.5px;margin:8px 0 0">Deterministic SQL over silver + the decision audit tables — extend the view, and the whole book is re-scored.</p></div></div>
+  <div class="card"><h2>Failing claims — review first</h2>
+    <table style="margin-top:6px"><tr><th>Claim</th><th>Peril</th><th>Incurred</th><th style="text-align:right">QA score</th><th>Failed checks</th></tr>${worst||'<tr><td colspan=5 class="muted">None — a clean book.</td></tr>'}</table></div>`;
 }
 async function renderGovVuln(el){
   let d; try{d=await J('/governance/vulnerability');}catch(e){el.innerHTML='<p class="muted">Unavailable — has notebook 03 (§4d) been run on this workspace?</p>';return;}
