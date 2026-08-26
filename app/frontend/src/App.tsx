@@ -1,18 +1,16 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Sparkles, Database, Layers, Shield, ShieldCheck, Zap, Archive, RotateCcw, Bot } from 'lucide-react';
+import { Sparkles, Database, Layers, Shield, ShieldCheck, Zap, Archive, RotateCcw } from 'lucide-react';
 import { api } from './lib/api';
 import ClaimsAI from './pages/ClaimsAI';
 import Ingestion from './pages/Ingestion';
 import Transformation from './pages/Transformation';
 import Governance from './pages/Governance';
-import AgentInterface from './pages/AgentInterface';
 
 const NAV = [
   { to: '/ingestion',      label: 'Ingestion',              icon: Database, match: (p: string) => p.startsWith('/ingestion') },
   { to: '/transformation', label: 'Transformation',         icon: Layers,   match: (p: string) => p.startsWith('/transformation') },
   { to: '/',               label: 'Claims AI',              icon: Sparkles, match: (p: string) => p === '/' },
-  { to: '/agent-interface',label: 'Agent Interface',        icon: Bot,      match: (p: string) => p.startsWith('/agent-interface') },
   { to: '/governance',     label: 'Governance & Portfolio', icon: Shield,   match: (p: string) => p.startsWith('/governance') },
 ];
 
@@ -118,7 +116,6 @@ export default function App() {
           <main className="flex-1 overflow-auto">
             <Routes>
               <Route path="/" element={<ClaimsAI />} />
-              <Route path="/agent-interface" element={<AgentInterface />} />
               <Route path="/ingestion" element={<Ingestion />} />
               <Route path="/transformation" element={<Transformation />} />
               <Route path="/governance" element={<Governance />} />
