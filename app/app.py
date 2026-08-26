@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.routes import claims
+from server.routes import mcp
 from utils import config
 
 logging.basicConfig(level=logging.INFO,
@@ -17,6 +18,7 @@ FRONTEND_DIR = Path(__file__).parent / "frontend" / "dist"
 
 app = FastAPI(title="Claims Intelligence Workbench", version="1.0.0")
 app.include_router(claims.router)
+app.include_router(mcp.router)
 
 
 def _host() -> str:

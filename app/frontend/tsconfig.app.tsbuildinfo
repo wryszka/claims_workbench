@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/lib/api.ts","./src/pages/agentinterface.tsx","./src/pages/claimsai.tsx","./src/pages/governance.tsx","./src/pages/ingestion.tsx","./src/pages/transformation.tsx"],"version":"5.9.3"}
